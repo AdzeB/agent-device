@@ -505,6 +505,7 @@ function sourceRuntimeFacts(
       ...gestureRuntimeOperationFacts({ unsupported: unavailable }),
       ...scrollRuntimeOperationFacts({ scroll: unavailable }),
       readTextAtPoint: unavailable,
+      comparePrivateField: unavailable,
       back: unavailable,
       setOrientation: unavailable,
       unlockOrientation: unavailable,

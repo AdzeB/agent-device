@@ -1,7 +1,7 @@
 import type { ElementTextTarget } from './element-text-target.ts';
 export type { ElementTextTarget } from './element-text-target.ts';
 import type { DeviceInfo } from '@agent-device/kernel/device';
-import type { Point } from '@agent-device/kernel/snapshot';
+import type { Point, SnapshotNode, RawSnapshotNode } from '@agent-device/kernel/snapshot';
 import type { Interactor, RunnerContext } from './interactor-types.ts';
 import { invalidRuntimeContract } from './runtime-contract-error.ts';
 import type { RuntimeOperationFact } from './platform-runtime.ts';
@@ -50,6 +50,7 @@ export function elementTextRead(text: string | undefined | null): ElementTextRea
 }
 
 export type ElementTextRuntimeOperations = Readonly<{
+  comparePrivateField(input: PrivateFieldComparisonInput): Promise<PrivateFieldComparisonResult>;
   /**
    * The live text an owner reads at a point, which can exceed the readable text carried by an
    * already-captured snapshot node (an editable field whose value is longer than its label).
@@ -63,14 +64,63 @@ export type ElementTextRuntimeOperations = Readonly<{
 }>;
 
 export type ElementTextRuntimeOperationFacts = Readonly<{
+  comparePrivateField: RuntimeOperationFact;
   readTextAtPoint: RuntimeOperationFact;
 }>;
 
 export function elementTextRuntimeOperationFacts(
-  input: ElementTextRuntimeOperationFacts,
+  input: Omit<ElementTextRuntimeOperationFacts, 'comparePrivateField'> &
+    Partial<Pick<ElementTextRuntimeOperationFacts, 'comparePrivateField'>>,
 ): ElementTextRuntimeOperationFacts {
-  return Object.freeze({ readTextAtPoint: input.readTextAtPoint });
+  return Object.freeze({
+    readTextAtPoint: input.readTextAtPoint,
+    comparePrivateField: input.comparePrivateField ?? {
+      available: false,
+      reason: 'owner-capability-missing',
+      hint: 'Private field comparison unavailable',
+    },
+  });
 }
+
+export type PrivateFieldComparisonInput = Readonly<{
+  target: SnapshotNode;
+  appId: string;
+  expectedValue: string;
+}>;
+
+const privateFieldEvidence = Symbol('privateFieldEvidence');
+export type PrivateFieldEvidence = Readonly<{
+  connectionToken: string;
+  appId: string;
+  fieldId: number;
+  windowId: number;
+}>;
+
+export function attachPrivateFieldEvidence(
+  node: RawSnapshotNode,
+  evidence: PrivateFieldEvidence,
+): void {
+  Object.defineProperty(node, privateFieldEvidence, {
+    value: Object.freeze(evidence),
+    enumerable: true,
+  });
+}
+
+export function readPrivateFieldEvidence(node: RawSnapshotNode): PrivateFieldEvidence | undefined {
+  return (node as RawSnapshotNode & { [privateFieldEvidence]?: PrivateFieldEvidence })[
+    privateFieldEvidence
+  ];
+}
+
+export type PrivateFieldComparisonResult =
+  | Readonly<{ status: 'unknown'; reason: string }>
+  | Readonly<{
+      status: 'match' | 'mismatch';
+      source: 'android-ime-extracted-text';
+      connectionToken: string;
+      appId: string;
+      fieldId: number;
+    }>;
 
 /** Resolves the selected owner's interactor, exactly as the snapshot runtime does. */
 export type ElementTextInteractorResolver = (
@@ -93,6 +143,7 @@ export function bindElementTextRuntime(
   }>,
 ): ElementTextRuntimeOperations {
   return Object.freeze({
+    comparePrivateField: async () => ({ status: 'unknown', reason: 'unsupported' }) as const,
     readTextAtPoint: async (input: ReadTextAtPointInput) => {
       const signal = params.signal;
       signal.throwIfAborted();
