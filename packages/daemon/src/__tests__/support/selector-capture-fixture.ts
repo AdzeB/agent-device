@@ -6,6 +6,7 @@ import {
   providerRuntimeOwner,
 } from '@agent-device/contracts/platform-runtime';
 import type { PlatformRuntimeOperations } from '@agent-device/contracts/platform-runtime-operations';
+import type { ElementTextRuntimeOperations } from '@agent-device/contracts/element-text-runtime';
 import {
   type CaptureSnapshotInput,
   type SnapshotResult,
@@ -34,6 +35,7 @@ export function selectorCaptureFixture(
     withoutActiveApp?: RuntimeOperationFact;
     findText?: RuntimeOperationFact;
     snapshot?: (input: CaptureSnapshotInput, index: number) => SnapshotResult;
+    comparePrivateField?: ElementTextRuntimeOperations['comparePrivateField'];
   }> = {},
 ): Readonly<{
   inspectFacts: InspectDeviceRuntimeFacts;
@@ -61,6 +63,7 @@ export function selectorCaptureFixture(
           withoutActiveApp: params.withoutActiveApp ?? params.capture ?? available,
         }),
         ...(params.findText ? { findText: params.findText } : {}),
+        ...(params.comparePrivateField ? { comparePrivateField: available } : {}),
       },
     };
   };
@@ -93,6 +96,9 @@ export function selectorCaptureFixture(
             captureSnapshot,
             captureSnapshotWithCustomActions: captureSnapshot,
             captureSnapshotWithoutActiveApp: captureSnapshot,
+            ...(params.comparePrivateField
+              ? { comparePrivateField: params.comparePrivateField }
+              : {}),
           },
           [Symbol.asyncDispose]: async () => {},
         },

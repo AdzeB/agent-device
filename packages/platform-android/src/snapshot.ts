@@ -123,15 +123,35 @@ export async function captureAndroidUiHierarchyXml(
   return (await captureAndroidUiHierarchy(device, options)).xml;
 }
 
+export async function captureAndroidCompleteUiHierarchy(
+  device: DeviceInfo,
+  options: AndroidSnapshotOptions = {},
+): Promise<AndroidUiHierarchy | undefined> {
+  const adb = resolveAndroidAdbProvider(device, options.helperAdb).exec;
+  const capture = await captureAndroidUiHierarchy(device, options);
+  if (
+    capture.metadata.helperTruncated !== false ||
+    capture.metadata.rootPresent !== true ||
+    capture.metadata.systemSurfaceOnly
+  )
+    return undefined;
+  return parseUiHierarchyTree(capture.xml);
+}
+
 export async function snapshotAndroid(
   device: DeviceInfo,
   options: AndroidSnapshotOptions = {},
 ): Promise<AndroidSnapshotCapture> {
+  const { beginPrivateFieldCapture, finishPrivateFieldCapture } =
+    await import('./private-field-capture.ts');
+  const adb = resolveAndroidAdbProvider(device, options.helperAdb).exec;
+  const privateScope = await beginPrivateFieldCapture(
+    device,
+    adb,
+    options.appBundleId,
+    options.signal,
+  );
   const capture = await captureAndroidUiHierarchy(device, options);
-  // The one place Android answers the viewport question (#3182): the helper's own display read,
-  // through the shared guard, so both the healthy and the presentation-failed capture below publish
-  // the same box the tree was measured against, and a display the helper could not address stays
-  // absent rather than becoming a zero.
   const viewport = androidSnapshotViewportFromHelperMetadata(capture.helperMetadata);
   const xml = capture.xml;
   const tree = parseUiHierarchyTree(xml);
@@ -167,6 +187,15 @@ export async function snapshotAndroid(
       keyboard,
       ...(viewport ? { viewport } : {}),
     };
+    await finishPrivateFieldCapture({
+      adb,
+      scope: privateScope,
+      signal: options.signal,
+      nodes: result.nodes,
+      tree,
+      metadata: capture.metadata,
+      truncated,
+    });
     return createAndroidSnapshotCapture(result, {
       clickability: buildAndroidSnapshotClickabilityEvidence(built),
       occlusionContext,

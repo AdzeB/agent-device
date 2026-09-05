@@ -31,6 +31,7 @@ final class AccessibilityTreeXml {
     node.getBoundsInScreen(bounds);
     xml.append("<node");
     appendAttribute(xml, "index", Integer.toString(nodeIndex));
+    appendAttribute(xml, "window-id", Integer.toString(node.getWindowId()));
     if (windowMetadata != null) {
       appendWindowMetadata(xml, windowMetadata);
     }

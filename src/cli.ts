@@ -147,6 +147,19 @@ async function runCliOnHost(argv: string[], deps: CliDeps, host: HostEnvironment
   // One transport per run: its ensure-once state is shared by the materialization client and the
   // command client, so a run ensures the daemon once.
   const transport = resolveRunTransport(deps, host);
+  if (argv[0] === 'compare-field') {
+    try {
+      const { runPrivateFieldComparison } = await import('./cli/private-field-comparison.ts');
+      await runPrivateFieldComparison(argv, async (args) => await runCli(args, deps, host));
+    } catch {
+      await printJson({
+        success: false,
+        error: { code: 'INVALID_ARGS', message: 'Private field comparison failed' },
+      });
+      process.exitCode = 1;
+    }
+    return;
+  }
   const requestId = createRequestId();
   const version = readVersion();
   const debugEnabled = isDebugRequested(argv);

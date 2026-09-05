@@ -42,6 +42,7 @@ export type AndroidUiHierarchy = {
   canScrollForward?: boolean;
   canScrollBackward?: boolean;
   windowIndex?: number;
+  windowId?: number;
   windowType?: number;
   windowLayer?: number;
   windowActive?: boolean;

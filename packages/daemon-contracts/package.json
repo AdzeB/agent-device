@@ -75,6 +75,14 @@
     "./session-repair-tombstone": {
       "types": "./src/session-repair-tombstone.ts",
       "default": "./src/session-repair-tombstone.ts"
+    },
+    "./private-field-comparison": {
+      "types": "./src/private-field-comparison.ts",
+      "default": "./src/private-field-comparison.ts"
+    },
+    "./private-field-response": {
+      "types": "./src/private-field-response.ts",
+      "default": "./src/private-field-response.ts"
     }
   },
   "devDependencies": {

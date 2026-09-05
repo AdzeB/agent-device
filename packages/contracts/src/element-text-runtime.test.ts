@@ -3,12 +3,29 @@ import { test } from 'vitest';
 import { AppError } from '@agent-device/kernel/errors';
 import {
   bindElementTextRuntime,
+  attachPrivateFieldEvidence,
+  readPrivateFieldEvidence,
   elementTextRead,
   type ElementTextReadOutcome,
   type ElementTextUnreadableReason,
 } from './element-text-runtime.ts';
 import type { Interactor } from './interactor-types.ts';
 import type { DeviceInfo } from '@agent-device/kernel/device';
+import { attachRefs, type RawSnapshotNode } from '@agent-device/kernel/snapshot';
+
+test('private scope survives ref attachment without serializing into public nodes', () => {
+  const node: RawSnapshotNode = { index: 1, editable: true };
+  const evidence = {
+    connectionToken: 'private-connection',
+    appId: 'example.app',
+    fieldId: 3,
+    windowId: 7,
+  };
+  attachPrivateFieldEvidence(node, evidence);
+  const published = attachRefs([{ ...node }])[0]!;
+  assert.deepEqual(readPrivateFieldEvidence(published), evidence);
+  assert.equal(JSON.stringify(published).includes('private-connection'), false);
+});
 
 /**
  * The reasons this suite exercises. Kept local on purpose: exhaustiveness is enforced at the

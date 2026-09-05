@@ -3,7 +3,7 @@ import type { DaemonResponse } from '@agent-device/kernel/contracts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
-import { test } from 'vitest';
+import { expect, it, test } from 'vitest';
 import { createSocketServer, listenHttpServer, listenNetServer } from './transport.ts';
 import { getRequestSignal } from '@agent-device/host-kit/request';
 import { closeLoopbackServer, skipWhenLoopbackUnavailable } from '@agent-device/test-kit';
@@ -60,7 +60,7 @@ test('Provider-backed integration daemon socket transport frames requests and no
       },
     });
     assert.equal(responses[1]?.ok, false);
-    assert.equal(responses[1]?.error?.code, 'UNKNOWN');
+    assert.equal(responses[1]?.error?.code, 'INVALID_ARGS');
 
     const clientClosed = new Promise<void>((resolve) => client.once('close', () => resolve()));
     server.destroyConnections?.();
@@ -206,3 +206,42 @@ async function writeSocketRequests(
     socket.write(`${lines.join('\n')}\n`);
   });
 }
+
+import { consumePrivateFieldComparison } from '@agent-device/daemon-contracts/private-field-comparison';
+it('strips private wire input before invoking the daemon and scopes its consumption', async () => {
+  let ordinaryRequest = '';
+  const server = createSocketServer(async (req) => {
+    ordinaryRequest = JSON.stringify(req);
+    expect(consumePrivateFieldComparison()?.expectedValue).toBe('private fixture');
+    return { ok: true, data: { status: 'unknown' } };
+  });
+  const port = await listenNetServer(server as net.Server);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const socket = net.createConnection({ host: '127.0.0.1', port }, () => {
+        socket.write(
+          JSON.stringify({
+            command: 'get',
+            positionals: ['attrs', '@e1~s2'],
+            session: 'qa',
+            privateFieldComparison: {
+              protocol: 'android-private-input-v1',
+              requestId: '12345678-1234-1234-1234-123456789abc',
+              expectedValue: 'private fixture',
+            },
+          }) + '\n',
+        );
+      });
+      socket.on('data', () => {
+        socket.destroy();
+        resolve();
+      });
+      socket.on('error', reject);
+    });
+    expect(ordinaryRequest).not.toContain('private');
+    expect(consumePrivateFieldComparison()).toBeUndefined();
+  } finally {
+    server.destroyConnections?.();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
