@@ -42,6 +42,8 @@ public class TestInputMethodService extends InputMethodService {
   private final PrivateInputComparison privateComparison = new PrivateInputComparison();
   private static final String ACTION_PRIVATE_INPUT =
       "com.callstack.agentdevice.imehelper.ACTION_PRIVATE_INPUT";
+  private static final String ACTION_PRIVATE_INPUT_SCOPE =
+      "com.callstack.agentdevice.imehelper.ACTION_PRIVATE_INPUT_SCOPE";
 
   @Override
   public void onStartInput(android.view.inputmethod.EditorInfo info, boolean restarting) {
@@ -62,6 +64,16 @@ public class TestInputMethodService extends InputMethodService {
         new BroadcastReceiver() {
           @Override
           public void onReceive(Context context, Intent intent) {
+            if (ACTION_PRIVATE_INPUT_SCOPE.equals(intent.getAction())) {
+              try {
+                setResultData(privateComparison.acquire(intent.getStringExtra("protocol"),
+                    intent.getStringExtra("appId"), getCurrentInputConnection(),
+                    getCurrentInputEditorInfo()).toString());
+              } catch (Throwable ignored) {
+                setResultData(PrivateInputComparison.unknown("invalid_request").toString());
+              }
+              return;
+            }
             if (ACTION_PRIVATE_INPUT.equals(intent.getAction())) {
               try {
                 setResultData(privateComparison.handle(
@@ -85,6 +97,7 @@ public class TestInputMethodService extends InputMethodService {
     filter.addAction(ACTION_INPUT_TEXT_B64);
     filter.addAction(ACTION_CLEAR_TEXT);
     filter.addAction(ACTION_PRIVATE_INPUT);
+    filter.addAction(ACTION_PRIVATE_INPUT_SCOPE);
     // Register the receiver in the running IME process (so getCurrentInputConnection() is live)
     // but require REQUIRED_SENDER_PERMISSION of every sender. On API 33+ the receiver must also be
     // flagged exported to accept out-of-app broadcasts; the permission is the actual trust gate.
