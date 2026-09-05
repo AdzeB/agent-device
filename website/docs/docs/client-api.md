@@ -471,3 +471,18 @@ await client.apps.installFromSource({
 Remote daemons may also support `{ kind: 'github-actions-artifact', owner, repo, artifactName }` or `{ kind: 'github-actions-artifact', owner, repo, runId, artifactName }`. The local client passes these payloads through unchanged; it does not authenticate with GitHub or download the artifact.
 
 Android `.apk` and `.aab` URL sources resolve package identity from the downloaded install artifact. Archive URLs may contain one installable `.apk`, `.aab`, `.ipa`, or iOS `.app`, including inside nested archives.
+
+## Early post-action response content
+
+`--settle --json` includes `data.settle.response`: `frames` and `omittedFrames`. Each frame has
+`capturedAt` (capture completion in runtime epoch milliseconds), `snapshot.nodes` containing optional
+`type`, `label`, and `identifier`, and `truncated`. These are historical observations from the same
+action's existing settle captures, not fresh targets or a semantic success verdict. Only the final
+settled diff grants refs.
+
+The first four changed observations are retained; adjacent identical content collapses. Each frame
+is capped at 256 nodes and 16 KiB of serialized JSON. `omittedFrames` counts later changed
+observations dropped by the frame limit; `truncated` discloses a frame's node/byte limit. Values,
+refs, and geometry are excluded. Editable/secure controls, their text descendants, and aggregating
+ancestors omit labels. No extra capture or wait is added. A transient response that disappears
+before the native action returns or is absent from accessibility may still be missed.
