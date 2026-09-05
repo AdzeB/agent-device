@@ -47,6 +47,7 @@ export type AndroidUiNodeMetadata = {
   canScrollForward?: boolean;
   canScrollBackward?: boolean;
   windowIndex?: number;
+  windowId?: number;
   windowType?: number;
   windowLayer?: number;
   windowActive?: boolean;
@@ -160,6 +161,7 @@ function readNodeAttributes(node: string): Omit<AndroidUiNodeMetadata, 'rect'> {
     ...optionalBoolAttr('canScrollForward', 'can-scroll-forward'),
     ...optionalBoolAttr('canScrollBackward', 'can-scroll-backward'),
     ...optionalNumberAttr('windowIndex', 'window-index'),
+    ...optionalNumberAttr('windowId', 'window-id'),
     ...optionalNumberAttr('windowType', 'window-type'),
     ...optionalNumberAttr('windowLayer', 'window-layer'),
     ...optionalBoolAttr('windowActive', 'window-active'),
@@ -318,6 +320,7 @@ function normalizeAndroidUiHierarchyNode(
       canScrollForward: attrs.canScrollForward,
       canScrollBackward: attrs.canScrollBackward,
       windowIndex: attrs.windowIndex,
+      windowId: attrs.windowId,
       windowType: attrs.windowType,
       windowLayer: attrs.windowLayer,
       windowActive: attrs.windowActive,

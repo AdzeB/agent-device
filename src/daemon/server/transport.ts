@@ -1,5 +1,9 @@
 import { AppError, normalizeError, createRequestCanceledError } from '@agent-device/kernel/errors';
 import net from 'node:net';
+import {
+  parsePrivateFieldComparison,
+  withPrivateFieldComparison,
+} from '../private-field-comparison.ts';
 import type { Server as HttpServer } from 'node:http';
 import type { DaemonInvokeFn, DaemonRequest, DaemonResponse } from '../types.ts';
 import {
@@ -63,7 +67,7 @@ export function createSocketServer(handleRequest: DaemonInvokeFn): DaemonServer 
         let requestAbortRegistration: ReturnType<typeof registerRequestAbort>;
         let streamProgress = false;
         try {
-          const req = parseSocketDaemonRequest(line);
+          const { request: req, privatePayload } = parseSocketDaemonRequest(line);
           streamProgress = shouldStreamRequestProgress(req);
           requestIdForCleanup = resolveRequestTrackingId(req.meta?.requestId, 'socket');
           req.meta = {
@@ -83,7 +87,12 @@ export function createSocketServer(handleRequest: DaemonInvokeFn): DaemonServer 
                   }
                 }
               : undefined,
-            async () => await handleRequest(req),
+            async () =>
+              await withPrivateFieldComparison(
+                privatePayload,
+                async () => await handleRequest(req),
+                requestAbortRegistration?.controller.signal,
+              ),
           );
         } catch (error) {
           response = { ok: false, error: normalizeError(error) };
@@ -113,17 +122,41 @@ export function createSocketServer(handleRequest: DaemonInvokeFn): DaemonServer 
   return server;
 }
 
-function parseSocketDaemonRequest(line: string): DaemonRequest {
-  const parsed = JSON.parse(line) as unknown;
+function parseSocketDaemonRequest(line: string) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    throw new AppError('INVALID_ARGS', 'Invalid socket request');
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return parsed as DaemonRequest;
+    return { request: parsed as DaemonRequest, privatePayload: undefined };
   }
   // `internal` carries daemon-issued capabilities and provenance. The socket is
   // a public transport like HTTP, so a token-bearing client must not be able to
   // forge those semantics even though the legacy socket request otherwise
   // preserves its existing raw wire shape.
-  const { internal: _internal, ...request } = parsed as Record<string, unknown>;
-  return request as DaemonRequest;
+  const {
+    internal: _internal,
+    privateFieldComparison,
+    ...request
+  } = parsed as Record<string, unknown>;
+  const privatePayload =
+    privateFieldComparison === undefined
+      ? undefined
+      : parsePrivateFieldComparison(privateFieldComparison);
+  if (privatePayload) validatePrivateComparisonRoute(request);
+  return { request: request as DaemonRequest, privatePayload };
+}
+
+function validatePrivateComparisonRoute(request: Record<string, unknown>): void {
+  if (
+    request.command !== 'get' ||
+    !Array.isArray(request.positionals) ||
+    request.positionals[0] !== 'attrs'
+  ) {
+    throw new AppError('INVALID_ARGS', 'Invalid private comparison route');
+  }
 }
 
 export function listenNetServer(server: net.Server): Promise<number> {

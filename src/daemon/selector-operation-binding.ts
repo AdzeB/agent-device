@@ -17,6 +17,7 @@ export type BoundNativeTextRead = FindTextRuntimeOperations['findText'];
 export type BoundNativeSelectorRead = FindSelectorRuntimeOperations['findSelector'];
 
 type SelectorOperations = Readonly<{
+  comparePrivateField?: ElementTextRuntimeOperations['comparePrivateField'];
   readTextAtPoint?: BoundElementRead;
   findText?: BoundNativeTextRead;
   findSelector?: BoundNativeSelectorRead;
@@ -25,19 +26,25 @@ type SelectorOperations = Readonly<{
 /** Projects the one preferred operation admitted for `get` and read-only `find`. */
 export function selectElementTextOperation(
   runtime: Readonly<{
-    operations: Readonly<{ readTextAtPoint?: BoundElementRead }>;
+    operations: Readonly<{
+      readTextAtPoint?: BoundElementRead;
+      comparePrivateField?: ElementTextRuntimeOperations['comparePrivateField'];
+    }>;
   }>,
-): Pick<SelectorOperations, 'readTextAtPoint'> {
+): Pick<SelectorOperations, 'readTextAtPoint' | 'comparePrivateField'> {
   const { readTextAtPoint } = runtime.operations;
   const selected = readTextAtPoint ? { operations: { readTextAtPoint } } : undefined;
-  return Object.freeze(
-    selected
+  return Object.freeze({
+    ...(runtime.operations.comparePrivateField
+      ? { comparePrivateField: runtime.operations.comparePrivateField }
+      : {}),
+    ...(selected
       ? {
           readTextAtPoint: async (input: ReadTextAtPointInput) =>
             await selected.operations.readTextAtPoint(input),
         }
-      : {},
-  );
+      : {}),
+  });
 }
 
 /** Projects only the fact-conditional observations admitted for `wait`. */

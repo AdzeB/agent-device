@@ -66,7 +66,7 @@ test('Provider-backed integration daemon socket transport frames requests and no
       },
     });
     assert.equal(responses[1]?.ok, false);
-    assert.equal(responses[1]?.error?.code, 'UNKNOWN');
+    assert.equal(responses[1]?.error?.code, 'INVALID_ARGS');
 
     const clientClosed = new Promise<void>((resolve) => client.once('close', () => resolve()));
     server.destroyConnections?.();

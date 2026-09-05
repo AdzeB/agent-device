@@ -39,6 +39,21 @@ public class TestInputMethodService extends InputMethodService {
   private static final int MAX_TEXT_LENGTH = 32_000;
 
   private BroadcastReceiver receiver;
+  private final PrivateInputComparison privateComparison = new PrivateInputComparison();
+  private static final String ACTION_PRIVATE_INPUT =
+      "com.callstack.agentdevice.imehelper.ACTION_PRIVATE_INPUT";
+
+  @Override
+  public void onStartInput(android.view.inputmethod.EditorInfo info, boolean restarting) {
+    privateComparison.invalidate();
+    super.onStartInput(info, restarting);
+  }
+
+  @Override
+  public void onFinishInput() {
+    privateComparison.invalidate();
+    super.onFinishInput();
+  }
 
   @Override
   public void onCreate() {
@@ -47,6 +62,16 @@ public class TestInputMethodService extends InputMethodService {
         new BroadcastReceiver() {
           @Override
           public void onReceive(Context context, Intent intent) {
+            if (ACTION_PRIVATE_INPUT.equals(intent.getAction())) {
+              try {
+                setResultData(privateComparison.handle(
+                    PrivateInputRequestProvider.take(intent.getStringExtra("requestId")),
+                    getCurrentInputConnection(), getCurrentInputEditorInfo()).toString());
+              } catch (Throwable ignored) {
+                setResultData(PrivateInputComparison.unknown("invalid_request").toString());
+              }
+              return;
+            }
             try {
               handleAction(intent);
             } catch (Throwable error) {
@@ -59,6 +84,7 @@ public class TestInputMethodService extends InputMethodService {
     filter.addAction(ACTION_INPUT_TEXT);
     filter.addAction(ACTION_INPUT_TEXT_B64);
     filter.addAction(ACTION_CLEAR_TEXT);
+    filter.addAction(ACTION_PRIVATE_INPUT);
     // Register the receiver in the running IME process (so getCurrentInputConnection() is live)
     // but require REQUIRED_SENDER_PERMISSION of every sender. On API 33+ the receiver must also be
     // flagged exported to accept out-of-app broadcasts; the permission is the actual trust gate.

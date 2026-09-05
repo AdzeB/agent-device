@@ -378,6 +378,7 @@ function sourceRuntimeFacts(
       }),
       ...scrollRuntimeOperationFacts({ scroll: unavailable }),
       readTextAtPoint: unavailable,
+      comparePrivateField: unavailable,
       back: unavailable,
       home: unavailable,
       setOrientation: unavailable,

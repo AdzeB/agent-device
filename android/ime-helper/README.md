@@ -71,6 +71,24 @@ field without an active input method.
   tokenization; prefer the base64 variant for anything with spaces or non-ASCII).
 - `ACTION_CLEAR_TEXT` -- select-all and commit an empty string.
 
+Private field comparison uses `content write` with a permission-gated provider at
+`content://com.callstack.agentdevice.imehelper.private/request/<random-id>`.
+The JSON request travels over stdin, never command arguments or disk. The provider
+accepts at most 64 KiB, closes an unfinished pipe after two seconds, and expires
+unconsumed requests after five seconds. `ACTION_PRIVATE_INPUT` consumes the random
+request ID once and returns only a comparison status and bounded provenance.
+
+The `android-private-input-v1` protocol first acquires an input-connection token,
+then compares against the same app and service-instance/input-generation token.
+The original snapshot brackets its native capture with that token and retains
+the token plus native window ID privately on its focused node. Comparison requires
+the original token, a fresh complete capture of the same focused target and native
+window, and another token fence after comparison. This private provenance is omitted
+from JSON output and cannot survive a daemon restart. Null, partial, oversized,
+fully or partially masked, timed-out, or changed-connection
+readings return `unknown`. Neither dispatched text nor accessibility masks prove
+equality. The IME's pure comparison tests run as part of its normal build.
+
 An optional `--es protocol android-ime-helper-v1` extra is a defensive sanity check (not a
 security boundary): if present and it doesn't match, the broadcast is dropped and logged.
 

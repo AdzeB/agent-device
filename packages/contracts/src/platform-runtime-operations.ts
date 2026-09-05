@@ -374,11 +374,11 @@ const selectorCaptureWithoutActiveAppUse = defineUse({
 /** `get` and read-only `find` may improve a captured result with a live element read. */
 const selectorTextCaptureUse = defineUse({
   required: ['captureSnapshot'],
-  preferred: ['readTextAtPoint'],
+  preferred: ['readTextAtPoint', 'comparePrivateField'],
 });
 const selectorTextCaptureWithoutActiveAppUse = defineUse({
   required: ['captureSnapshot', 'captureSnapshotWithoutActiveApp'],
-  preferred: ['readTextAtPoint'],
+  preferred: ['readTextAtPoint', 'comparePrivateField'],
 });
 
 /**

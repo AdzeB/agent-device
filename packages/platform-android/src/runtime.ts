@@ -339,6 +339,7 @@ export function createAndroidPlatformRuntime(host: PlatformRuntimeHost): Platfor
         // uiautomator reads text at a point through the same adb path the snapshot uses, so the
         // synthetic `simulator` row is the only Android kind without a live read.
         ...elementTextRuntimeOperationFacts({
+          comparePrivateField: device.kind === 'simulator' ? elementTextKindUnavailable : available,
           readTextAtPoint: device.kind === 'simulator' ? elementTextKindUnavailable : available,
         }),
         ...backRuntimeOperationFacts({ back: androidTouchFact(device) }),
@@ -523,5 +524,15 @@ function androidInteractionOperations(
       facts: facts.operations,
       pause: async (milliseconds) => await host.clock.sleep(milliseconds, request.scope.signal),
     }),
+    ...(facts.operations.comparePrivateField.available
+      ? {
+          comparePrivateField: async (
+            input: import('@agent-device/contracts/element-text-runtime').PrivateFieldComparisonInput,
+          ) => {
+            const { compareAndroidPrivateField } = await import('./private-field-runtime.ts');
+            return await compareAndroidPrivateField(request.device, input, request.scope.signal);
+          },
+        }
+      : {}),
   };
 }

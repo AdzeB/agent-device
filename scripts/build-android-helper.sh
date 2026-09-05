@@ -33,7 +33,7 @@ case "$HELPER" in
   ime)
     HELPER_DIR="$PROJECT_DIR/android/ime-helper"
     PACKAGE_NAME="com.callstack.agentdevice.imehelper"
-    RUN_TEST_CLASS=""
+    RUN_TEST_CLASS="com.callstack.agentdevice.imehelper.PrivateInputValueTest"
     RESOURCE_DIR="$PROJECT_DIR/android/ime-helper/res"
     ;;
   *)

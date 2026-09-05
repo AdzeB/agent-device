@@ -9,6 +9,11 @@
         android:testOnly="true"
         android:theme="@android:style/Theme.NoDisplay">
 
+        <provider
+            android:name=".PrivateInputRequestProvider"
+            android:authorities="com.callstack.agentdevice.imehelper.private"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS"
+            android:exported="true" />
         <service
             android:name=".TestInputMethodService"
             android:label="Agent Device Test IME"

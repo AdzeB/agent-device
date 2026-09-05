@@ -35,6 +35,7 @@ export type BoundSelectorFindSelector = FindSelectorRuntimeOperations['findSelec
 
 export type BoundSelectorOperations = Readonly<{
   capture: BoundSelectorCapture;
+  comparePrivateField?: ElementTextRuntimeOperations['comparePrivateField'];
   readText?: BoundSelectorRead;
   findText?: BoundSelectorFindText;
   findSelector?: BoundSelectorFindSelector;
@@ -73,6 +74,7 @@ export async function resolveBoundSelectorCapture(
     ok: true,
     operations: {
       capture: bound.capture,
+      ...(bound.comparePrivateField ? { comparePrivateField: bound.comparePrivateField } : {}),
       ...(bound.readTextAtPoint ? { readText: bound.readTextAtPoint } : {}),
       ...(bound.findText ? { findText: bound.findText } : {}),
       ...(bound.findSelector ? { findSelector: bound.findSelector } : {}),

@@ -200,7 +200,10 @@ export function createUnavailablePlatformRuntimeFacts(
         fillRef: touch,
         tapElementSelector: touch,
       }),
-      ...elementTextRuntimeOperationFacts({ readTextAtPoint: elementText }),
+      ...elementTextRuntimeOperationFacts({
+        readTextAtPoint: elementText,
+        comparePrivateField: elementText,
+      }),
       ...backRuntimeOperationFacts({ back }),
       ...homeRuntimeOperationFacts({ home }),
       ...orientationRuntimeOperationFacts({ orientation }),

@@ -104,6 +104,19 @@ const REMOTE_MATERIALIZATION_DEFERRED_COMMANDS = new Set([
 ]);
 
 export async function runCli(argv: string[], deps: CliDeps = DEFAULT_CLI_DEPS): Promise<void> {
+  if (argv[0] === 'compare-field') {
+    try {
+      const { runPrivateFieldComparison } = await import('./cli/private-field-comparison.ts');
+      await runPrivateFieldComparison(argv, async (args) => await runCli(args, deps));
+    } catch {
+      await printJson({
+        success: false,
+        error: { code: 'INVALID_ARGS', message: 'Private field comparison failed' },
+      });
+      process.exitCode = 1;
+    }
+    return;
+  }
   const requestId = createRequestId();
   const version = readVersion();
   const debugEnabled = isDebugRequested(argv);
