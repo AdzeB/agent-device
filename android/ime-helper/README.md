@@ -78,6 +78,10 @@ accepts at most 64 KiB, closes an unfinished pipe after two seconds, and expires
 unconsumed requests after five seconds. `ACTION_PRIVATE_INPUT` consumes the random
 request ID once and returns only a comparison status and bounded provenance.
 
+Value-free scope acquisition uses `ACTION_PRIVATE_INPUT_SCOPE` through the same
+permission-gated receiver. Its only input extras are the protocol and app package;
+it reads connection metadata without extracting text or using the content pipe.
+
 The `android-private-input-v1` protocol first acquires an input-connection token,
 then compares against the same app and service-instance/input-generation token.
 The original snapshot brackets its native capture with that token and retains
