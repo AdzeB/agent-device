@@ -161,6 +161,10 @@ beforeEach(() => {
 const SETTLE_FLAGS = { settle: true, settleQuietMs: 25, timeoutMs: 2_000 };
 
 type SettlePayload = {
+  response?: {
+    frames: Array<{ capturedAt: number; snapshot: { nodes: unknown[] }; truncated: boolean }>;
+    omittedFrames: number;
+  };
   settled: boolean;
   captures: number;
   quietMs: number;
@@ -218,6 +222,14 @@ test('press --settle responds with the settled diff, refsGeneration, and activat
   const data = expectOkData(response);
   const settle = data.settle as SettlePayload;
   expect(settle).toBeTruthy();
+  expect(settle.response?.frames).toHaveLength(1);
+  expect(settle.response?.frames[0]?.snapshot.nodes.length).toBeGreaterThan(0);
+  const { runCliCapture } = await import('../../../../__tests__/cli-capture.ts');
+  const cli = await runCliCapture(['press', 'label=Continue', '--settle', '--json'], {
+    defaultResponse: response!,
+  });
+  expect(cli.code).toBeNull();
+  expect(JSON.parse(cli.stdout).data.settle.response).toEqual(settle.response);
   expect(settle.settled).toBe(true);
   expect(settle.quietMs).toBe(25);
   expect(settle.timeoutMs).toBe(2_000);

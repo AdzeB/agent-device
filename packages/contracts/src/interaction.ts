@@ -229,12 +229,28 @@ export type FindReadResult =
   /** #1625: the read-only inspection surface — every match, never a tap. */
   | { kind: 'list'; matches: Array<{ ref: string; node: SnapshotNode }> };
 
+export type PostActionResponseFrame = {
+  /** Capture completion on the runtime clock, in epoch milliseconds. */
+  capturedAt: number;
+  /** Historical content only: never grants refs or target coordinates. */
+  snapshot: { nodes: Array<{ type?: string; label?: string; identifier?: string }> };
+  truncated: boolean;
+};
+
+export type PostActionResponse = {
+  frames: PostActionResponseFrame[];
+  /** Changed observations omitted after the frame limit; identical adjacent captures collapse. */
+  omittedFrames: number;
+};
+
 export type SettleObservation = {
   settled: boolean;
   waitedMs: number;
   captures: number;
   quietMs: number;
   timeoutMs: number;
+  /** Bounded early observations from the same action, separate from the final ref frame. */
+  response?: PostActionResponse;
   /**
    * The session's snapshot generation after the settled tree became the stored
    * snapshot (#1076 versioned refs). Attached by the daemon response layer
