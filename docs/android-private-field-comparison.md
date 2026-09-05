@@ -19,3 +19,9 @@ An expired or reused private context fails closed. Ordinary `get attrs` requests
 private context. Native comparison requires the original versioned field identity and fresh
 focus, application, window, and input-connection evidence. Results contain an equality
 status and bounded provenance; neither observed nor expected text is returned.
+
+Scope acquisition is metadata-only: the permission-gated IME broadcast accepts only
+the protocol and app package and returns the current connection token and field ID.
+It does not open a content pipe or extract text. Both acquisitions bracketing the
+original snapshot remain required, as do the current-target and final connection
+fences around comparison. Only the expected-value comparison uses the private pipe.

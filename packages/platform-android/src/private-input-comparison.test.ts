@@ -13,25 +13,22 @@ const bound = {
 };
 
 function transport(status: 'match' | 'mismatch', changed = false) {
-  let payload: Record<string, unknown> = {};
   const argsSeen: string[][] = [];
   const adb: AndroidAdbExecutor = async (args, options) => {
     argsSeen.push(args);
     if (options?.stdin) {
-      payload = JSON.parse(String(options.stdin));
       return { exitCode: 0, stdout: '', stderr: '' };
     }
-    const result =
-      payload.operation === 'acquire'
-        ? {
-            status: 'unknown',
-            reason: 'scope_acquired',
-            ...bound,
-            connectionToken: changed
-              ? bound.connectionToken.replace(':1', ':2')
-              : bound.connectionToken,
-          }
-        : { status, ...bound, source: 'android-ime-extracted-text' };
+    const result = args.includes('com.callstack.agentdevice.imehelper.ACTION_PRIVATE_INPUT_SCOPE')
+      ? {
+          status: 'unknown',
+          reason: 'scope_acquired',
+          ...bound,
+          connectionToken: changed
+            ? bound.connectionToken.replace(':1', ':2')
+            : bound.connectionToken,
+        }
+      : { status, ...bound, source: 'android-ime-extracted-text' };
     return {
       exitCode: 0,
       stdout: `Broadcast completed: result=0, data="${JSON.stringify(result)}"`,
@@ -73,6 +70,52 @@ test('acquisition validates connection provenance', async () => {
     await acquireAndroidPrivateInputScope(transport('match').adb, 'other.app'),
     undefined,
   );
+});
+
+test('scope acquisition uses one metadata-only broadcast and forwards its deadline', async () => {
+  const calls: { args: string[]; options: unknown }[] = [];
+  const signal = new AbortController().signal;
+  const delegate = transport('match').adb;
+  const adb: AndroidAdbExecutor = async (args, options) => {
+    calls.push({ args, options });
+    return delegate(args, options);
+  };
+  assert.deepEqual(
+    await acquireAndroidPrivateInputScope(adb, bound.appId, { signal, timeoutMs: 1234 }),
+    bound,
+  );
+  assert.equal(calls.length, 1);
+  const call = calls[0];
+  assert.ok(call);
+  assert.deepEqual(call.args, [
+    'shell',
+    'am',
+    'broadcast',
+    '--receiver-foreground',
+    '-p',
+    'com.callstack.agentdevice.imehelper',
+    '-a',
+    'com.callstack.agentdevice.imehelper.ACTION_PRIVATE_INPUT_SCOPE',
+    '--es',
+    'protocol',
+    'android-private-input-v1',
+    '--es',
+    'appId',
+    bound.appId,
+  ]);
+  assert.deepEqual(call.options, { signal, timeoutMs: 1234, allowFailure: true });
+});
+
+test('invalid scope package metadata never reaches shell transport', async () => {
+  let calls = 0;
+  const adb: AndroidAdbExecutor = async () => {
+    calls++;
+    throw new Error('unexpected');
+  };
+  for (const appId of ['', 'x'.repeat(257), 'example.app;echo']) {
+    assert.equal(await acquireAndroidPrivateInputScope(adb, appId), undefined);
+  }
+  assert.equal(calls, 0);
 });
 
 test('transport exceptions and oversized values cannot leak sensitive messages', async () => {

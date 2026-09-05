@@ -15,6 +15,15 @@ final class PrivateInputComparison {
 
   void invalidate() { generation++; }
 
+  JSONObject acquire(String protocol, String appId, InputConnection connection, EditorInfo editor) {
+    try {
+      if (appId == null || !appId.matches("[A-Za-z0-9_.]{1,256}"))
+        return unknown("invalid_request");
+      return handle(new JSONObject().put("protocol", protocol).put("operation", "acquire")
+          .put("appId", appId), connection, editor);
+    } catch (Throwable ignored) { return unknown("invalid_request"); }
+  }
+
   JSONObject handle(JSONObject request, InputConnection connection, EditorInfo editor) {
     try {
       if (request == null) return unknown("request_unavailable");

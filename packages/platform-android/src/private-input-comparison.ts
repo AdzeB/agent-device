@@ -23,8 +23,32 @@ export async function acquireAndroidPrivateInputScope(
   appId: string,
   options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<AndroidPrivateInputScope | undefined> {
-  const result = await request(adb, { protocol: PROTOCOL, operation: 'acquire', appId }, options);
-  return result.reason === 'scope_acquired' ? scope(result, appId) : undefined;
+  if (!/^[A-Za-z0-9_.]{1,256}$/.test(appId)) return undefined;
+  try {
+    const response = await adb(
+      [
+        'shell',
+        'am',
+        'broadcast',
+        '--receiver-foreground',
+        '-p',
+        PACKAGE,
+        '-a',
+        `${PACKAGE}.ACTION_PRIVATE_INPUT_SCOPE`,
+        '--es',
+        'protocol',
+        PROTOCOL,
+        '--es',
+        'appId',
+        appId,
+      ],
+      { timeoutMs: options.timeoutMs ?? TIMEOUT_MS, signal: options.signal, allowFailure: true },
+    );
+    const result = response.exitCode === 0 ? parseResponse(response.stdout) : {};
+    return result.reason === 'scope_acquired' ? scope(result, appId) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Caller must bind this scope to its fresh focused target before comparing. */
