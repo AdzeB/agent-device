@@ -65,6 +65,7 @@ test('the npm package build covers every package-owned output before verificatio
   assert.equal(script('package:npm'), 'pnpm build:package && pnpm check:package');
 
   assert.deepEqual(script('build:android').split(' && '), [
+    'node --experimental-strip-types scripts/node-test-tmpdir.ts --test scripts/android-helper-version-code.test.mjs',
     'pnpm package:android-snapshot-helper:npm',
     'pnpm package:android-ime-helper:npm',
   ]);

@@ -96,15 +96,7 @@ for BUILD_TOOL in aapt2 d8 zipalign apksigner; do
   fi
 done
 
-VERSION_CODE="$(
-  printf '%s\n' "$VERSION" | awk -F. '
-    /^[0-9]+[.][0-9]+[.][0-9]+$/ {
-      print ($1 * 1000000) + ($2 * 1000) + $3
-      next
-    }
-    { print 1 }
-  '
-)"
+VERSION_CODE="$(node "$PROJECT_DIR/scripts/android-helper-version-code.mjs" "$VERSION")"
 
 BUILD_DIR="$HELPER_DIR/build"
 CLASSES_DIR="$BUILD_DIR/classes"
