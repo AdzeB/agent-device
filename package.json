@@ -1,6 +1,6 @@
 {
   "name": "agent-device",
-  "version": "0.20.11-a1",
+  "version": "0.20.11-a2",
   "description": "Mobile app automation and verification for AI coding agents. CLI, MCP server, and typed Node.js API for iOS, Android, HarmonyOS, TV, web, macOS, and Linux.",
   "mcpName": "io.github.callstack/agent-device",
   "license": "MIT",
@@ -101,7 +101,7 @@
     "package:android-snapshot-helper": "AGENT_DEVICE_ANDROID_HELPER=snapshot sh ./scripts/package-android-helper.sh $(node -p \"require('./package.json').version\") v$(node -p \"require('./package.json').version\") .tmp/android-snapshot-helper",
     "package:android-snapshot-helper:npm": "rm -rf android/snapshot-helper/dist && AGENT_DEVICE_ANDROID_HELPER=snapshot sh ./scripts/package-android-helper.sh $(node -p \"require('./package.json').version\") v$(node -p \"require('./package.json').version\") android/snapshot-helper/dist",
     "package:apple-runner:npm": "node scripts/package-apple-runner-source.mjs",
-    "build:android": "pnpm package:android-snapshot-helper:npm && pnpm package:android-ime-helper:npm",
+    "build:android": "node --experimental-strip-types scripts/node-test-tmpdir.ts --test scripts/android-helper-version-code.test.mjs && pnpm package:android-snapshot-helper:npm && pnpm package:android-ime-helper:npm",
     "build:android-ime-helper": "AGENT_DEVICE_ANDROID_HELPER=ime sh ./scripts/build-android-helper.sh $(node -p \"require('./package.json').version\") .tmp/android-ime-helper",
     "package:android-ime-helper": "AGENT_DEVICE_ANDROID_HELPER=ime sh ./scripts/package-android-helper.sh $(node -p \"require('./package.json').version\") .tmp/android-ime-helper",
     "package:android-ime-helper:npm": "rm -rf android/ime-helper/dist && AGENT_DEVICE_ANDROID_HELPER=ime sh ./scripts/package-android-helper.sh $(node -p \"require('./package.json').version\") android/ime-helper/dist",
