@@ -31,7 +31,7 @@ const verifyField = () =>
 
 const settleFields = () => ({
   settle: booleanField(
-    'After the action, wait for the UI to go quiet and return the settled diff vs the pre-action tree in the same response. Best-effort; never fails the action.',
+    'After the action, wait for the UI to go quiet and return the settled diff vs the pre-action tree. JSON also retains up to four early content frames (16 KiB/256 nodes each), without refs or editable labels. Best-effort; never fails the action.',
   ),
   settleQuietMs: integerField(
     'Settle: quiet window in milliseconds (default 500; 300 when the settled tree comes from the iOS simulator snapshot bridge). On iOS, a broad screen replacement such as a modal dismissal is confirmed for at least 1500ms whatever window is asked for, within the timeoutMs settle deadline; a replacement from a screen the pre-action capture read as presenting nothing, such as a tab switch, gets no 1500ms confirmation and keeps the asked window.',
