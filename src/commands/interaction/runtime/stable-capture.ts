@@ -72,6 +72,8 @@ export async function runStableCaptureLoop(
     resetBudgetOnPrivateAxRecovery?: boolean;
     /** Immutable pre-action projection; the stored session may advance before settle begins. */
     broadTransitionBaselineNodes?: SnapshotNode[];
+    /** Retain post-action content without additional captures or session writes. */
+    onCapture?: (capture: CapturedSnapshot, capturedAt: number) => void;
   },
 ): Promise<StableCaptureLoopResult> {
   const { quietMs, timeoutMs } = params;
@@ -110,6 +112,7 @@ export async function runStableCaptureLoop(
     }
     captures += 1;
     lastCapture = capture;
+    params.onCapture?.(capture, now(runtime));
     transitionBaseline ??= stableCaptureTransitionBaseline(
       params.broadTransitionBaselineNodes,
       capture.snapshot,

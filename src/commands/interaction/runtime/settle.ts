@@ -22,6 +22,7 @@ import type {
 } from '@agent-device/contracts/interaction';
 import type { RuntimeCommand } from '../../runtime-types.ts';
 import type { CapturedSnapshot } from './selector-read-shared.ts';
+import { createPostActionResponseCollector } from './post-action-response.ts';
 import {
   DEFAULT_STABLE_QUIET_MS,
   DEFAULT_STABLE_TIMEOUT_MS,
@@ -128,13 +129,22 @@ async function settleAfterAction(
 ): Promise<SettleOutcome> {
   const quietMs = params.quietMs ?? DEFAULT_STABLE_QUIET_MS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_STABLE_TIMEOUT_MS;
-  const base: SettleObservation = { settled: false, waitedMs: 0, captures: 0, quietMs, timeoutMs };
+  const collector = createPostActionResponseCollector();
+  const base: SettleObservation = {
+    settled: false,
+    waitedMs: 0,
+    captures: 0,
+    quietMs,
+    timeoutMs,
+    response: collector.response,
+  };
   try {
     const outcome = await runStableCaptureLoop(runtime, options, {
       quietMs,
       timeoutMs,
       resetBudgetOnPrivateAxRecovery: true,
       broadTransitionBaselineNodes: params.baseline.nodes,
+      onCapture: (capture, capturedAt) => collector.capture(capture.snapshot.nodes, capturedAt),
     });
     return await readSettledOutcome(runtime, options, params, base, outcome);
   } catch (error) {

@@ -31,7 +31,7 @@ const verifyField = () =>
 
 const settleFields = () => ({
   settle: booleanField(
-    'After the action, wait for the UI to go quiet and return the settled diff vs the pre-action tree in the same response. Best-effort; never fails the action.',
+    'After the action, wait for the UI to go quiet and return the settled diff vs the pre-action tree. JSON also retains up to four early content frames (16 KiB/256 nodes each), without refs or editable labels. Best-effort; never fails the action.',
   ),
   settleQuietMs: integerField('Settle: quiet window in milliseconds (default 500).', { min: 0 }),
   timeoutMs: integerField('Settle: wait deadline in milliseconds (default 10000).', { min: 1 }),
