@@ -240,6 +240,32 @@ export async function sendRequest(
 ): Promise<DaemonResponse> {
   const transport = chooseTransport(info, preference);
   const deadline = typeof timeoutMs === 'number' ? performance.now() + timeoutMs : undefined;
+  const { hasOutgoingPrivateFieldComparison } = await import('../daemon/private-field-comparison.ts');
+  if (hasOutgoingPrivateFieldComparison()) {
+    const { sanitizePrivateFieldResponse } = await import('../daemon/private-field-response.ts');
+    if (transport !== 'socket' || info.baseUrl) {
+      throw new AppError('INVALID_ARGS', 'Private comparison requires the local socket transport');
+    }
+    try {
+      const { requirePrivateFieldDaemonIdentity } =
+        await import('./private-field-daemon-identity.ts');
+      await requirePrivateFieldDaemonIdentity(info);
+      return sanitizePrivateFieldResponse(
+        await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
+          onProgress: () => {},
+        }),
+      );
+    } catch {
+      return {
+        ok: true,
+        data: {
+          protocol: 'android-private-input-v1',
+          status: 'unknown',
+          reason: 'private-comparison-transport-failed',
+        },
+      };
+    }
+  }
   try {
     return await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, options);
   } catch (error) {
@@ -450,13 +476,20 @@ async function sendSocketRequest(
   timeoutMs: number | undefined,
   options: SendRequestOptions,
 ): Promise<DaemonResponse> {
+  const { serializePrivateSocketRequest } = await import('../daemon/private-field-comparison.ts');
   const port = info.port;
   if (!port) throw daemonEndpointUnavailableError('socket');
   return new Promise((resolve, reject) => {
     let requestWritten = false;
     const socket = net.createConnection({ host: '127.0.0.1', port }, () => {
-      requestWritten = true;
-      socket.write(`${JSON.stringify(req)}\n`);
+      try {
+        const wire = serializePrivateSocketRequest(req);
+        requestWritten = true;
+        socket.write(`${wire}\n`);
+      } catch {
+        socket.destroy();
+        reject(new AppError('INVALID_ARGS', 'Private comparison request expired'));
+      }
     });
     let settled = false;
     const timeoutHandle =

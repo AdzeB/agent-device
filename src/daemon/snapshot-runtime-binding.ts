@@ -73,6 +73,7 @@ export type AdmittedSnapshotCapture =
        * simply absent for them — the member is additive and they are unchanged.
        */
       readTextAtPoint?: BoundElementRead;
+      comparePrivateField?: import('@agent-device/contracts/element-text-runtime').ElementTextRuntimeOperations['comparePrivateField'];
       /** A fact-conditional native text observation, present when the owner advertises it. */
       findText?: BoundNativeTextRead;
       /** A fact-conditional one-sided simple-selector observation. */
@@ -122,6 +123,7 @@ export async function admitAndBindSnapshotCapture(
     ok: true,
     capture: async (input: CaptureSnapshotInput) => await bound.captureSnapshot(input),
     ...(bound.readTextAtPoint ? { readTextAtPoint: bound.readTextAtPoint } : {}),
+    ...(bound.comparePrivateField ? { comparePrivateField: bound.comparePrivateField } : {}),
     ...(bound.findText ? { findText: bound.findText } : {}),
     ...(bound.focusPoint ? { focusPoint: bound.focusPoint } : {}),
     ...(bound.typeText ? { typeText: bound.typeText } : {}),
@@ -181,6 +183,7 @@ async function bindSnapshotCaptureRuntime(
   Readonly<{
     captureSnapshot(input: CaptureSnapshotInput): Promise<SnapshotResult>;
     readTextAtPoint?: BoundElementRead;
+    comparePrivateField?: import('@agent-device/contracts/element-text-runtime').ElementTextRuntimeOperations['comparePrivateField'];
     findText?: BoundNativeTextRead;
     focusPoint?: (
       input: import('@agent-device/contracts/focus-runtime').FocusPointInput,

@@ -236,7 +236,10 @@ export function createUnavailablePlatformRuntimeFacts(
         longPress: frozen.touch,
         fill: frozen.touch,
       }),
-      ...elementTextRuntimeOperationFacts({ readTextAtPoint: frozen.elementText }),
+      ...elementTextRuntimeOperationFacts({
+        readTextAtPoint: frozen.elementText,
+        comparePrivateField: frozen.elementText,
+      }),
       ...backRuntimeOperationFacts({ back: frozen.back }),
       ...orientationRuntimeOperationFacts({ orientation: frozen.orientation }),
       // Stated directly rather than through `foldRuntimeOperationFacts`, so this hub does not
