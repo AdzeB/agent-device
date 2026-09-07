@@ -1,3 +1,4 @@
+import { observeOnlySessionResponse } from './observe-only-policy.ts';
 import type {
   AgentDeviceBackend,
   BackendCommandContext,
@@ -90,6 +91,8 @@ async function resolveSelectorRuntimeDevice(
 ): Promise<ResolvedSelectorDevice> {
   params.consumedSnapshot ??= {};
   const session = params.sessionStore.get(params.sessionName);
+  const invalidObservation = observeOnlySessionResponse(params.req, session);
+  if (invalidObservation) return { ok: false, response: invalidObservation };
   if (!session && requireSession) return { ok: false, response: noActiveSessionError() };
   const device = session?.device ?? (await resolveTargetDevice(params.req.flags ?? {}));
   return { ok: true, session, device };
@@ -116,6 +119,7 @@ export async function createBoundSelectorRuntime(
   if (!resolved.ok) return resolved;
   const bound = await resolveBoundSelectorCapture({
     command: options.command,
+    observeOnly: params.req.flags?.observeOnly,
     device: resolved.device,
     session: resolved.session,
     inspectFacts: params.inspectFacts,
@@ -134,72 +138,17 @@ export async function createBoundSelectorRuntime(
 }
 
 function createSelectorBackend(params: SelectorRuntimeDeviceParams): AgentDeviceBackend {
-  // The bound operation is the ONLY element read. Both consumers of the shared backend read —
-  // `get text` and read-only `find … get text` — construct a bound backend, so there is no second
-  // read path to choose between and nothing reaches the retired `read` dispatch.
-  const { req, session, device, logPath, sessionName, sessionStore } = params;
+  const { req, session, device, logPath } = params;
   const resolveContextFromFlags: BoundContextFromFlags =
     params.contextFromFlags ??
     ((flags, appBundleId, traceLogPath) =>
       contextFromFlags(logPath ?? '', flags, appBundleId, traceLogPath));
-  const readTextAtPoint = params.bound?.readText;
-  const boundFindText = params.bound?.findText;
-  // The native reading must run in the SAME runner context as the capture it short-circuits:
-  // one requestId so diagnostics land in one request file, the session's log/trace paths, and
-  // the XCUITest override + runner-lease context the caller configured. Built through the one
-  // capture-intent builder the capture leg uses, never a second hand-rolled context.
-  const runnerExecution = buildRuntimeCaptureInput({
-    flags: req.flags,
-    logPath: logPath ?? '',
-    meta: req.meta,
-    session,
-    snapshotScope: undefined,
-  }).execution;
-  const boundOperations = params.bound;
-  const captureRuntime =
-    boundOperations === undefined
-      ? undefined
-      : createSelectorCaptureRuntime({
-          device,
-          session,
-          sessionStore,
-          sessionName,
-          req,
-          consumedSnapshot: params.consumedSnapshot,
-          logPath,
-          capture: boundOperations.capture,
-        });
   return {
     platform: publicPlatformString(device),
-    captureSnapshot:
-      captureRuntime &&
-      (async (context, options): Promise<BackendSnapshotResult> => {
-        const flags = {
-          ...req.flags,
-          ...snapshotOptionsToFlags(options),
-        };
-        const includeRects = options?.includeRects === true;
-        const snapshotScope = options?.scope ?? req.flags?.snapshotScope;
-        const needsFreshSnapshot =
-          req.command === 'wait' ||
-          req.command === 'find' ||
-          isAbsentPredicateRequest(req) ||
-          (includeRects && device.platform === 'web');
-        return await captureRuntime.capture({
-          flags,
-          signal: context.signal,
-          snapshotScope,
-          includeRects,
-          cache: {
-            forceFresh: needsFreshSnapshot,
-            useSessionSnapshot: true,
-            bypassForPostGestureStabilization: true,
-          },
-        });
-      }),
+    captureSnapshot: createSelectorSnapshotCapture(params),
     readText: async (_context, node: SnapshotNode) => ({
       text: await readTextForNode({
-        readTextAtPoint,
+        readTextAtPoint: params.bound?.readText,
         device,
         node,
         flags: req.flags,
@@ -209,23 +158,81 @@ function createSelectorBackend(params: SelectorRuntimeDeviceParams): AgentDevice
         contextFromFlags: resolveContextFromFlags,
       }),
     }),
-    // The owner's native text reading, forwarded only when its facts advertised it. The daemon
-    // makes no family, provider, surface, or session decision here: an owner that cannot answer
-    // reports `found: false` and the poll consults the canonical tree.
-    ...(boundFindText
-      ? {
-          findText: async (context: BackendCommandContext, text: string) => ({
-            found: (
-              await boundFindText({
-                text,
-                options: { appBundleId: session?.appBundleId, surface: session?.surface },
-                execution: runnerExecution,
-                ...(context.signal ? { signal: context.signal } : {}),
-              })
-            ).found,
-          }),
-        }
-      : {}),
+    ...createSelectorNativeTextBackend(params),
+  };
+}
+
+function createSelectorSnapshotCapture(
+  params: SelectorRuntimeDeviceParams,
+): AgentDeviceBackend['captureSnapshot'] {
+  const { req, session, device, logPath, sessionName, sessionStore, bound } = params;
+  if (bound === undefined) return undefined;
+  const captureRuntime = createSelectorCaptureRuntime({
+    device,
+    session,
+    sessionStore,
+    sessionName,
+    req,
+    consumedSnapshot: params.consumedSnapshot,
+    logPath,
+    capture: bound.capture,
+  });
+  return async (context, options): Promise<BackendSnapshotResult> => {
+    const flags = { ...req.flags, ...snapshotOptionsToFlags(options) };
+    const includeRects = options?.includeRects === true;
+    const snapshotScope = options?.scope ?? req.flags?.snapshotScope;
+    return await captureRuntime.capture({
+      flags,
+      signal: context.signal,
+      snapshotScope,
+      includeRects,
+      cache: {
+        forceFresh: requiresFreshSelectorCapture(req, includeRects, device.platform),
+        useSessionSnapshot: true,
+        bypassForPostGestureStabilization: true,
+      },
+    });
+  };
+}
+
+function requiresFreshSelectorCapture(
+  req: DaemonRequest,
+  includeRects: boolean,
+  platform: SessionState['device']['platform'],
+): boolean {
+  return (
+    req.flags?.observeOnly === true ||
+    req.command === 'wait' ||
+    req.command === 'find' ||
+    isAbsentPredicateRequest(req) ||
+    (includeRects && platform === 'web')
+  );
+}
+
+function createSelectorNativeTextBackend(
+  params: SelectorRuntimeDeviceParams,
+): Pick<AgentDeviceBackend, 'findText'> {
+  const { req, session, logPath } = params;
+  const boundFindText = params.bound?.findText;
+  if (!boundFindText || req.flags?.observeOnly === true) return {};
+  const runnerExecution = buildRuntimeCaptureInput({
+    flags: req.flags,
+    logPath: logPath ?? '',
+    meta: req.meta,
+    session,
+    snapshotScope: undefined,
+  }).execution;
+  return {
+    findText: async (context: BackendCommandContext, text: string) => ({
+      found: (
+        await boundFindText({
+          text,
+          options: { appBundleId: session?.appBundleId, surface: session?.surface },
+          execution: runnerExecution,
+          ...(context.signal ? { signal: context.signal } : {}),
+        })
+      ).found,
+    }),
   };
 }
 

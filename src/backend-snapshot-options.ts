@@ -4,6 +4,7 @@ import type { BackendSnapshotOptions } from './backend.ts';
 type RoutedSnapshotOption = keyof Omit<BackendSnapshotOptions, 'includeRects' | 'outPath'>;
 
 const SNAPSHOT_OPTION_FLAGS = {
+  observeOnly: 'observeOnly',
   interactiveOnly: 'snapshotInteractiveOnly',
   scope: 'snapshotScope',
   depth: 'snapshotDepth',

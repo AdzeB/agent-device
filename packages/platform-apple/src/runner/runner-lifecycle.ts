@@ -8,6 +8,7 @@ import {
   assertExpectedRunnerSession,
   ensureRunnerSession,
   getRunnerSessionSnapshot,
+  getReadyRunnerSession,
   invalidateRunnerSession,
   executeRunnerCommandWithSession,
   readRunnerStartupTimeoutMs,
@@ -260,6 +261,22 @@ export async function executeRunnerCommand(
 ): Promise<Record<string, unknown>> {
   assertRunnerRequestActive(options.requestId);
   const signal = resolveRunnerRequestSignal(options);
+  if (command.observeOnly) {
+    const { assertObserveOnlyRunnerCommand, observationUnavailable } =
+      await import('./runner-observation.ts');
+    assertObserveOnlyRunnerCommand(command);
+    const session = getReadyRunnerSession(device.id);
+    if (!session) throw observationUnavailable('runner_not_ready');
+    assertExpectedRunnerSession(session, options.expectedRunnerSessionId);
+    return executeRunnerCommandWithSession(
+      device,
+      session,
+      command,
+      options.logPath,
+      RUNNER_COMMAND_TIMEOUT_MS,
+      signal,
+    );
+  }
   const recycleKey = runnerRecycleLedgerKey(options, command);
   let session: RunnerSession | undefined;
   let recycleBootBegun = false;

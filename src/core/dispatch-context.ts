@@ -29,6 +29,7 @@ export type DispatchContext = ScreenshotDispatchFlags & {
   iosXctestEnvDir?: string;
   runnerLeaseContext?: RunnerLogicalLeaseContext;
   screenshotCaptureBackend?: 'runner';
+  observeOnly?: boolean;
   snapshotInteractiveOnly?: boolean;
   snapshotPreferredBackend?: SnapshotPreferredBackend;
   snapshotDepth?: number;

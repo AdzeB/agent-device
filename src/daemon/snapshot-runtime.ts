@@ -17,15 +17,9 @@ export async function dispatchSnapshotViaRuntime(
       req: request,
       snapshotScope,
     }) => {
-      const result = await agentRuntime.capture.snapshot({
-        session: resolvedSessionName,
-        interactiveOnly: request.flags?.snapshotInteractiveOnly,
-        depth: request.flags?.snapshotDepth,
-        scope: snapshotScope,
-        raw: request.flags?.snapshotRaw,
-        customActions: request.flags?.snapshotCustomActions,
-        forceFull: request.flags?.snapshotForceFull,
-      });
+      const result = await agentRuntime.capture.snapshot(
+        snapshotCommandOptions(request, resolvedSessionName, snapshotScope),
+      );
       const refsGeneration = publishedSnapshotGeneration(
         request,
         params.sessionStore.get(resolvedSessionName),
@@ -36,15 +30,17 @@ export async function dispatchSnapshotViaRuntime(
         publicNodes === result.nodes ? result : { ...result, nodes: publicNodes },
       );
       const session = params.sessionStore.get(resolvedSessionName);
-      const fallbackScreenshot = await captureSparseFallbackScreenshot({
-        req: request,
-        session,
-        sessionName: resolvedSessionName,
-        logPath: params.logPath,
-        verdict: result.snapshotQuality,
-        inspectFacts: params.inspectFacts,
-        bindDevice: params.bindDevice,
-      });
+      const fallbackScreenshot = request.flags?.observeOnly
+        ? undefined
+        : await captureSparseFallbackScreenshot({
+            req: request,
+            session,
+            sessionName: resolvedSessionName,
+            logPath: params.logPath,
+            verdict: result.snapshotQuality,
+            inspectFacts: params.inspectFacts,
+            bindDevice: params.bindDevice,
+          });
       const published = copySnapshotClickabilityEvidence(
         publicResult,
         fallbackScreenshot
@@ -76,4 +72,20 @@ function publishedSnapshotGeneration(
   session: SessionState | undefined,
 ): number | undefined {
   return req.internal?.observationOnly === true ? undefined : session?.snapshotGeneration;
+}
+
+function snapshotCommandOptions(
+  request: DaemonRequest,
+  sessionName: string,
+  snapshotScope: string | undefined,
+) {
+  return {
+    session: sessionName,
+    interactiveOnly: request.flags?.snapshotInteractiveOnly,
+    depth: request.flags?.snapshotDepth,
+    scope: snapshotScope,
+    raw: request.flags?.snapshotRaw,
+    customActions: request.flags?.snapshotCustomActions,
+    forceFull: request.flags?.snapshotForceFull,
+  };
 }

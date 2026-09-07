@@ -4,6 +4,8 @@ function flagKeys<const TKeys extends readonly FlagKey[]>(...keys: TKeys): TKeys
   return keys;
 }
 
+export const OBSERVATION_FLAGS = flagKeys('observeOnly');
+
 export const SNAPSHOT_FLAGS = flagKeys(
   'snapshotInteractiveOnly',
   'snapshotDepth',

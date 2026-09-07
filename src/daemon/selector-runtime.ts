@@ -1,3 +1,4 @@
+import { withObserveOnlyEvidence } from './observe-only-policy.ts';
 import { asAppError } from '@agent-device/kernel/errors';
 import type { SnapshotNode } from '@agent-device/kernel/snapshot';
 import { absenceCaptureOptionError } from '../core/absence-observation-errors.ts';
@@ -101,7 +102,10 @@ export async function dispatchFindReadOnlyViaRuntime(
   });
   // The consumed capture was just stored on the session: when it is an occluding system surface,
   // both found and not-found outcomes must disclose that app content is occluded.
-  return withSystemSurfaceDisclosure(response, consumedSessionSnapshot(params));
+  return withObserveOnlyEvidence(
+    withSystemSurfaceDisclosure(response, consumedSessionSnapshot(params)),
+    params.consumedSnapshot?.state,
+  );
 }
 
 export function consumedSessionSnapshot(params: SelectorRuntimeParams) {
@@ -181,7 +185,10 @@ export async function dispatchGetViaRuntime(
     const data = toDaemonGetData(result);
     return staleRefsWarning ? { ...data, warning: staleRefsWarning } : data;
   });
-  return withSystemSurfaceDisclosure(response, consumedSessionSnapshot(params));
+  return withObserveOnlyEvidence(
+    withSystemSurfaceDisclosure(response, consumedSessionSnapshot(params)),
+    params.consumedSnapshot?.state,
+  );
 }
 
 export async function dispatchIsViaRuntime(
@@ -237,9 +244,12 @@ export async function dispatchIsViaRuntime(
     recordIfSession(params.sessionStore, params.sessionName, req, strippedResult, recordedTarget);
     return stripSelectorChain(strippedResult);
   });
-  return withSystemSurfaceDisclosure(
-    await maybeAndroidForegroundBlockerResponse(params, response, `is ${predicate}`),
-    consumedSessionSnapshot(params),
+  return withObserveOnlyEvidence(
+    withSystemSurfaceDisclosure(
+      await maybeAndroidForegroundBlockerResponse(params, response, `is ${predicate}`),
+      consumedSessionSnapshot(params),
+    ),
+    params.consumedSnapshot?.state,
   );
 }
 

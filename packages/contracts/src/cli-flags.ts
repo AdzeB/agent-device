@@ -73,6 +73,8 @@ export type CliFlags = CloudProviderProfileFields &
     verbose?: boolean;
     cost?: boolean;
     responseLevel?: ResponseLevel;
+    /** Observe without launching, activating, or recovering the target app. Defaults to false. */
+    observeOnly?: boolean;
     snapshotInteractiveOnly?: boolean;
     /** Internal (no CLI flag): pin the capture backend for same-backend evidence probes. */
     snapshotPreferredBackend?: SnapshotPreferredBackend;

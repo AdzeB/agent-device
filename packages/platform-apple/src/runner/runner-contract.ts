@@ -63,6 +63,7 @@ export type RunnerCommand = {
   commandId?: string;
   statusCommandId?: string;
   appBundleId?: string;
+  observeOnly?: boolean;
   text?: string;
   selectorKey?: ElementSelectorKey;
   selectorValue?: string;

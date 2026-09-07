@@ -22,6 +22,7 @@ import {
 import { FIND_LOCATORS } from '@agent-device/selectors';
 import {
   booleanField,
+  observeOnlyField,
   elementTargetField,
   enumField,
   integerField,
@@ -165,6 +166,7 @@ const recordControlFields = () => ({
 });
 
 const getFields = {
+  observeOnly: observeOnlyField(),
   format: requiredField(enumField(['text', 'attrs'] as const)),
   target: requiredField(elementTargetField()),
   ...selectorSnapshotFields(),
@@ -172,6 +174,7 @@ const getFields = {
 };
 
 const isFields = {
+  observeOnly: observeOnlyField(),
   predicate: requiredField(enumField(IS_PREDICATES)),
   selector: requiredField(stringField()),
   value: stringField(),
@@ -180,6 +183,7 @@ const isFields = {
 };
 
 const findFields = {
+  observeOnly: observeOnlyField(),
   locator: enumField(FIND_LOCATORS),
   query: requiredField(stringField()),
   action: enumField(FIND_ACTION_VALUES),

@@ -348,7 +348,7 @@ agent-device close
 ## Snapshot and inspect
 
 ```bash
-agent-device snapshot [--diff] [-i] [-d <depth>] [-s <scope>] [--raw] [--actions] [--force-full] [--timeout <ms>]
+agent-device snapshot [--observe-only] [--diff] [-i] [-d <depth>] [-s <scope>] [--raw] [--actions] [--force-full] [--timeout <ms>]
 agent-device diff snapshot [-i] [-d <depth>] [-s <scope>] [--raw]
 agent-device get text @e1
 agent-device get attrs @e1
@@ -394,6 +394,7 @@ agent-device get attrs @e1
 - `diff snapshot` compares the current snapshot with the previous session baseline and then updates baseline.
 - `snapshot --diff` is an alias for `diff snapshot`.
 - Default snapshot text is an agent-facing, token-efficient view for planning and targeting actions. It may collapse helper/accessibility noise; use `--raw` or `--json` when you need the full provider tree.
+- Operators can use `--observe-only` to prohibit launch, activation, focus changes, and recovery during evidence acquisition. It requires an existing local Apple app session with a ready runner; other backends fail. It defaults to `false`; an unprepared target or a read requiring those changes fails instead of changing the target to obtain evidence. The same option applies to selector-based `get text/attrs`, `is`, and `find` with an explicit `exists`, `list`, `get text`, `get attrs`, or `wait` action. `get text @ref` and `get attrs @ref` are unsupported with this flag; use a selector instead. Top-level `wait`, `diff snapshot`, and `snapshot --diff` do not accept it. It is excluded from model-facing MCP/AI SDK inputs. See [Snapshots](/docs/snapshots#observation-without-changing-the-target) for the contract.
 
 ## Wait and alerts
 

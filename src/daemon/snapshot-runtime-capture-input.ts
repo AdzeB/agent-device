@@ -37,6 +37,7 @@ export function buildRuntimeCaptureInput(
   return {
     options: {
       appBundleId,
+      observeOnly: flags?.observeOnly,
       interactiveOnly: flags?.snapshotInteractiveOnly,
       preferredBackend: flags?.snapshotPreferredBackend,
       depth: flags?.snapshotDepth,

@@ -269,7 +269,10 @@ function assignReplayMetadataValue<Key extends keyof ReplayScriptMetadata>(
 function parseReplayScriptLine(line: string): SessionAction | null {
   const trimmed = line.trim();
   if (trimmed.length === 0 || trimmed.startsWith('#')) return null;
-  const tokens = tokenizeReplayLine(trimmed);
+  const observeOnly = /\s--observe-only$/.test(trimmed);
+  const tokens = tokenizeReplayLine(
+    observeOnly ? trimmed.replace(/\s--observe-only$/, '') : trimmed,
+  );
   const [command, ...args] = tokens;
   if (command === undefined) return null;
   if (command === 'context') return null;
@@ -278,7 +281,7 @@ function parseReplayScriptLine(line: string): SessionAction | null {
     ts: Date.now(),
     command,
     positionals: [],
-    flags: {},
+    flags: observeOnly ? { observeOnly: true } : {},
   };
 
   if (command === 'snapshot') {

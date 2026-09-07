@@ -70,15 +70,17 @@ type CaptureSnapshotResult = {
 export async function captureSnapshot(
   params: CaptureSnapshotParams,
 ): Promise<CaptureSnapshotResult> {
-  const deferred = await resolveDeferredInteractionOutcome({
-    session: params.session,
-    device: params.device,
-    logPath: params.logPath,
-    interactiveOnly: params.flags?.snapshotInteractiveOnly === true,
-    androidFreshnessMode: params.androidFreshnessMode,
-    capture: () => captureSnapshotAttempt(params),
-    retryTap: createInteractionRetryTap(params),
-  });
+  const deferred = params.flags?.observeOnly
+    ? undefined
+    : await resolveDeferredInteractionOutcome({
+        session: params.session,
+        device: params.device,
+        logPath: params.logPath,
+        interactiveOnly: params.flags?.snapshotInteractiveOnly === true,
+        androidFreshnessMode: params.androidFreshnessMode,
+        capture: () => captureSnapshotAttempt(params),
+        retryTap: createInteractionRetryTap(params),
+      });
   if (deferred) return deferred;
 
   const latest = await captureSnapshotAttempt(params);
@@ -115,6 +117,7 @@ export async function captureSnapshotData(params: CaptureSnapshotParams): Promis
     options: {
       appBundleId: context.appBundleId,
       signal: params.signal,
+      observeOnly: context.observeOnly,
       interactiveOnly: context.snapshotInteractiveOnly,
       preferredBackend: context.snapshotPreferredBackend,
       depth: context.snapshotDepth,
@@ -145,6 +148,7 @@ async function captureSnapshotAttempt(params: CaptureSnapshotParams): Promise<Sn
   // The one seam where snapshot state and capture annotations meet: consumers that only keep the
   // SnapshotState (selector-backed find/wait, session-stored snapshots) must still learn that the
   // capture is an occluding system surface, so the disclosure is not lost with the annotations.
+  if (annotations.observation) snapshot.observation = annotations.observation;
   if (annotations.androidSnapshot?.systemSurfaceOnly === true) {
     snapshot.systemSurfaceOnly = true;
   }

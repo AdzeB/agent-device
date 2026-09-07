@@ -16,9 +16,15 @@ import {
   buildIosSnapshotPresentationKey,
 } from '@agent-device/capture-kit/ios-snapshot-planning';
 import { AppError } from '@agent-device/kernel/errors';
-import type { RawSnapshotNode, SnapshotQualityVerdict } from '@agent-device/kernel/snapshot';
+import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
+import type {
+  ObserveOnlyEvidence,
+  RawSnapshotNode,
+  SnapshotQualityVerdict,
+} from '@agent-device/kernel/snapshot';
 
 export type AppleRunnerSnapshotResult = Readonly<{
+  observation?: ObserveOnlyEvidence;
   nodes?: RawSnapshotNode[];
   truncated?: boolean;
   message?: string;
@@ -31,6 +37,7 @@ export function readAppleSnapshotResult(
   result: Record<string, unknown>,
 ): AppleRunnerSnapshotResult {
   return {
+    observation: readObserveOnlyEvidence(result.observation),
     nodes: Array.isArray(result.nodes) ? (result.nodes as RawSnapshotNode[]) : undefined,
     truncated: typeof result.truncated === 'boolean' ? result.truncated : undefined,
     quality: readSnapshotQualityVerdict(result.snapshotQuality),

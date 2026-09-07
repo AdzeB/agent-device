@@ -67,7 +67,15 @@ export type Point = {
   y: number;
 };
 
+export type ObserveOnlyEvidence = Readonly<{
+  mode: 'observe-only';
+  capability: 'non-activating-foreground-v1';
+  foregroundVerified: true;
+  targetAppBundleId: string;
+}>;
+
 export type SnapshotOptions = {
+  observeOnly?: boolean;
   interactiveOnly?: boolean;
   depth?: number;
   scope?: string;
@@ -239,6 +247,7 @@ export function usesMobileSnapshotPresentation(backend: SnapshotBackend | undefi
 }
 
 export type SnapshotState = {
+  observation?: ObserveOnlyEvidence;
   nodes: SnapshotNode[];
   createdAt: number;
   truncated?: boolean;

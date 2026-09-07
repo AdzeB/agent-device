@@ -56,11 +56,13 @@ export function assertLockedLeaseAdmissionPreflight(req: DaemonRequest): void {
 }
 
 export async function cleanupExpiredLeasedSession(params: {
+  observeOnly?: boolean;
   sessionName: string;
   sessionStore: SessionStore;
   leaseRegistry: LeaseRegistry;
   teardownSession: SessionTeardown;
 }): Promise<boolean> {
+  if (params.observeOnly) return false;
   const session = params.sessionStore.get(params.sessionName);
   const lease = session?.lease;
   if (!session || !lease) return false;

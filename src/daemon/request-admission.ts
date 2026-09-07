@@ -17,6 +17,7 @@ import {
 import { leaseScopeToHeartbeatRequest } from '../core/lease-scope.ts';
 import type { LeaseRegistry } from './lease-registry.ts';
 import type { DaemonRequest, SessionState } from './types.ts';
+import { requireObserveOnlyLease } from './observe-only-policy.ts';
 
 export function scopeRequestSession(req: DaemonRequest): DaemonRequest {
   const isolation = resolveSessionIsolationMode(
@@ -93,6 +94,19 @@ export function assertRequestLeaseAdmission(
   }
   assertRequestSessionLeaseMatches(requestLeaseScope, sessionLease);
   const leaseScope = resolveRequestOrSessionLeaseScope(req, session);
+  return admitResolvedLease(req, leaseRegistry, leaseScope);
+}
+
+function admitResolvedLease(
+  req: DaemonRequest,
+  leaseRegistry: LeaseRegistry,
+  leaseScope: ReturnType<typeof resolveRequestOrSessionLeaseScope>,
+): DeviceLease {
+  if (req.flags?.observeOnly) {
+    return requireObserveOnlyLease(
+      leaseRegistry.readActiveLease(leaseScopeToHeartbeatRequest(leaseScope)),
+    );
+  }
   const heartbeatLeaseScope = {
     ...leaseScope,
     leaseTtlMs:

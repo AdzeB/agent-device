@@ -1,7 +1,7 @@
 import { PUBLIC_COMMANDS } from '../../command-catalog.ts';
 import { SNAPSHOT_BACKEND_CAPABILITIES } from '@agent-device/capture-kit/snapshot-quality-backend-capabilities';
-import { SNAPSHOT_FLAGS } from '../cli-grammar/flag-groups.ts';
-import { booleanField, integerField, stringField } from '../command-input.ts';
+import { OBSERVATION_FLAGS, SNAPSHOT_FLAGS } from '../cli-grammar/flag-groups.ts';
+import { booleanField, integerField, stringField, observeOnlyField } from '../command-input.ts';
 import { defineExecutableCommand } from '../command-contract.ts';
 import {
   commonInputFromFlags,
@@ -29,6 +29,7 @@ const snapshotCommandMetadata = defineFieldCommandMetadata(
   SNAPSHOT_COMMAND_NAME,
   snapshotCommandDescription,
   {
+    observeOnly: observeOnlyField(),
     interactiveOnly: booleanField(),
     depth: integerField(),
     scope: stringField(),
@@ -56,10 +57,11 @@ const snapshotCommandDefinition = defineExecutableCommand(
 
 const snapshotCliSchema = {
   usageOverride:
-    'snapshot [--diff] [-i] [-d <depth>] [-s <scope>] [--raw] [--actions] [--force-full] [--timeout <ms>]',
+    'snapshot [--diff] [--observe-only] [-i] [-d <depth>] [-s <scope>] [--raw] [--actions] [--force-full] [--timeout <ms>]',
   allowedFlags: [
     'snapshotDiff',
     ...SNAPSHOT_FLAGS,
+    ...OBSERVATION_FLAGS,
     'snapshotCustomActions',
     'snapshotForceFull',
     'timeoutMs',
@@ -70,6 +72,7 @@ const snapshotCliSchema = {
 export const snapshotCliReader: CliReader = (_positionals, flags) => ({
   ...commonInputFromFlags(flags),
   ...observationRecordInputFromFlags(flags),
+  observeOnly: flags.observeOnly,
   interactiveOnly: flags.snapshotInteractiveOnly,
   depth: flags.snapshotDepth,
   scope: flags.snapshotScope,
@@ -85,7 +88,7 @@ export const snapshotCommandFacet = defineCommandFacet({
   name: SNAPSHOT_COMMAND_NAME,
   text: {
     summary: 'Capture or diff the accessibility tree',
-    cliDetail: `For iOS raw-coordinate fallback after a no-op ref press, inspect rects with snapshot -i --json, press the rect center, then verify with diff snapshot -i or snapshot --diff. iOS backend capability contract: ${snapshotBackendCapabilityHelp}.`,
+    cliDetail: `For iOS raw-coordinate fallback after a no-op ref press, inspect rects with snapshot -i --json, press the rect center, then verify with diff snapshot -i or snapshot --diff. iOS backend capability contract: ${snapshotBackendCapabilityHelp}. Operator --observe-only requires an existing local Apple app session and ready runner. It captures fresh evidence without launch, activation, or recovery, and refuses missing foreground proof. It cannot be combined with --diff.`,
   },
   metadata: snapshotCommandMetadata,
   definition: snapshotCommandDefinition,

@@ -17,6 +17,7 @@ import { toAppleTvRemoteButton } from '@agent-device/contracts/tv-remote';
 import type { SessionSurface } from '@agent-device/contracts/session';
 import { DEVICE_ROTATIONS, type DeviceRotation } from '@agent-device/contracts/device';
 import { normalizeSnapshotScope } from '@agent-device/contracts/snapshot';
+import { snapshotCaptureAnnotationsFrom } from '@agent-device/contracts/capture';
 import { withDiagnosticTimer } from '@agent-device/host-kit/diagnostics';
 import { isMacOs, isTvOsDevice, type DeviceInfo } from '@agent-device/kernel/device';
 import { AppError } from '@agent-device/kernel/errors';
@@ -209,6 +210,15 @@ async function captureAppleSnapshot(
   runnerOpts: RunnerCallOptions,
 ) {
   if (isMacOs(device) && options?.surface && options.surface !== 'app') {
+    if (options.observeOnly) {
+      throw new AppError('UNSUPPORTED_OPERATION', '--observe-only requires an Apple app surface.', {
+        observation: {
+          mode: 'observe-only',
+          foregroundVerified: false,
+          reason: 'unsupported_surface',
+        },
+      });
+    }
     return await captureMacOsSurfaceSnapshot(options, options.signal);
   }
   return await captureAppleRunnerSnapshot(device, options, runnerOpts);
@@ -219,6 +229,7 @@ async function captureAppleRunnerSnapshot(
   options: SnapshotOptions | undefined,
   runnerOpts: RunnerCallOptions,
 ) {
+  const captureOptions = options ?? {};
   const result = readAppleSnapshotResult(
     await withDiagnosticTimer(
       'snapshot_capture',
@@ -227,15 +238,16 @@ async function captureAppleRunnerSnapshot(
           device,
           {
             command: 'snapshot',
-            appBundleId: options?.appBundleId,
-            interactiveOnly: options?.interactiveOnly,
-            preferredBackend: options?.preferredBackend,
-            customActions: options?.customActions,
-            depth: options?.depth,
-            scope: options?.scope,
-            raw: options?.raw,
+            observeOnly: captureOptions.observeOnly,
+            appBundleId: captureOptions.appBundleId,
+            interactiveOnly: captureOptions.interactiveOnly,
+            preferredBackend: captureOptions.preferredBackend,
+            customActions: captureOptions.customActions,
+            depth: captureOptions.depth,
+            scope: captureOptions.scope,
+            raw: captureOptions.raw,
           },
-          mergeRunnerCallSignal(runnerOpts, options?.signal),
+          mergeRunnerCallSignal(runnerOpts, captureOptions.signal),
         ),
       { backend: 'xctest' },
     ),
@@ -250,10 +262,16 @@ async function captureAppleRunnerSnapshot(
     truncated: result.truncated ?? false,
     backend: 'xctest' as const,
     producer: 'apple-runner' as const,
-    ...(result.quality ? { quality: result.quality } : {}),
-    // Legacy runners without a quality verdict still surface their message text.
-    ...(!result.quality && result.message ? { warnings: [result.message] } : {}),
+    ...snapshotCaptureAnnotationsFrom({
+      observation: result.observation,
+      quality: result.quality,
+      warnings: legacySnapshotWarnings(result),
+    }),
   };
+}
+
+function legacySnapshotWarnings(result: AppleRunnerSnapshotResult): string[] | undefined {
+  return !result.quality && result.message ? [result.message] : undefined;
 }
 
 function presentRunnerSnapshotForDevice(

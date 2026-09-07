@@ -1007,7 +1007,10 @@ extension RunnerTests {
   func executeAccepted(command: Command) throws -> Response {
     commandJournal.start(command: command)
     do {
-      let response = try executeDispatched(command: command)
+      let response = try completeObservation(
+        command: command,
+        response: executeDispatched(command: command)
+      )
       commandJournal.finish(command: command, response: response)
       return response
     } catch {
@@ -1037,7 +1040,10 @@ extension RunnerTests {
     // fresher send-time stamp on every ok response; kept so direct callers still get a value.
     Response(
       ok: true,
-      data: DataPayload(currentUptimeMs: currentUptimeMs())
+      data: DataPayload(
+        observationCapabilities: ["non-activating-foreground-v1"],
+        currentUptimeMs: currentUptimeMs()
+      )
     )
   }
 
@@ -1241,7 +1247,7 @@ extension RunnerTests {
     }
   }
 
-  private func mainThreadExecutionTimeoutError() -> Error {
+  func mainThreadExecutionTimeoutError() -> Error {
     NSError(
       domain: RunnerErrorDomain.general,
       code: RunnerErrorCode.mainThreadExecutionTimedOut,
@@ -1644,6 +1650,9 @@ extension RunnerTests {
     command: Command,
     routeToSpringboard: Bool = false
   ) -> ActiveCommandPreparation {
+    if command.observeOnly == true {
+      return prepareObservationContext(command: command)
+    }
     var activeApp = currentApp ?? app
     if routeToSpringboard {
       activeApp = springboard
@@ -2141,7 +2150,9 @@ extension RunnerTests {
       // macOS keeps the app-targeted capture behavior for window-level screenshots.
       if let bundleId = command.appBundleId, !bundleId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         let targetApp = XCUIApplication(bundleIdentifier: bundleId)
-        targetApp.activate()
+        if command.observeOnly != true {
+          targetApp.activate()
+        }
         activeApp = targetApp
         // Brief wait for the app transition animation to complete
         sleepFor(0.5)

@@ -224,6 +224,15 @@ export function booleanField(description?: string): CommandField<boolean> {
   return optionalField(booleanSchema(description), optionalBoolean);
 }
 
+export function observeOnlyField() {
+  return operatorField(
+    booleanField(
+      'Refuse evidence acquisition that would launch, activate, or recover the target app. Defaults to false. On find, requires an explicit read-only action.',
+    ),
+    { operatorConfig: true },
+  );
+}
+
 export function enumField<const TValues extends readonly string[]>(
   values: TValues,
   description?: string,

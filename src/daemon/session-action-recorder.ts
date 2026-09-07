@@ -367,6 +367,7 @@ const SANITIZED_FLAG_KEYS = [
   'metroPort',
   'bundleUrl',
   'launchUrl',
+  'observeOnly',
   'snapshotInteractiveOnly',
   'snapshotDepth',
   'snapshotScope',

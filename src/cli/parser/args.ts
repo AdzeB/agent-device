@@ -362,6 +362,9 @@ function normalizeParsedCommandAliases(parsed: ParsedArgs): ParsedArgs {
     return parsed;
   }
   if (parsed.command === 'snapshot' && parsed.flags.snapshotDiff) {
+    if (parsed.flags.observeOnly === true) {
+      throw new AppError('INVALID_ARGS', '--observe-only is not supported with snapshot --diff.');
+    }
     const { snapshotDiff: _snapshotDiff, ...remainingFlags } = parsed.flags;
     return {
       command: 'diff',

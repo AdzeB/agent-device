@@ -171,6 +171,14 @@ export const WORKFLOW_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
     usageDescription: 'Apps: include system/OEM apps',
   },
   {
+    key: 'observeOnly',
+    names: ['--observe-only'],
+    type: 'boolean',
+    usageLabel: '--observe-only',
+    usageDescription:
+      'Observation: refuse reads that require app launch, activation, or recovery (operator only; default false)',
+  },
+  {
     key: 'snapshotInteractiveOnly',
     names: ['-i'],
     type: 'boolean',

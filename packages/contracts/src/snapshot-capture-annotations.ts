@@ -1,5 +1,24 @@
-import type { SnapshotQualityVerdict } from '@agent-device/kernel/snapshot';
+import type { ObserveOnlyEvidence, SnapshotQualityVerdict } from '@agent-device/kernel/snapshot';
 import type { AndroidSnapshotBackendMetadata } from './snapshot-types.ts';
+
+export function readObserveOnlyEvidence(value: unknown): ObserveOnlyEvidence | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const observation = value as Record<string, unknown>;
+  if (
+    observation.mode !== 'observe-only' ||
+    observation.capability !== 'non-activating-foreground-v1' ||
+    observation.foregroundVerified !== true ||
+    typeof observation.targetAppBundleId !== 'string' ||
+    observation.targetAppBundleId.trim().length === 0
+  )
+    return undefined;
+  return {
+    mode: 'observe-only',
+    capability: 'non-activating-foreground-v1',
+    foregroundVerified: true,
+    targetAppBundleId: observation.targetAppBundleId,
+  };
+}
 
 export type SnapshotCaptureAnalysis = {
   rawNodeCount: number;
@@ -14,6 +33,7 @@ export type SnapshotCaptureFreshness = {
 };
 
 export type SnapshotCaptureAnnotations = {
+  observation?: ObserveOnlyEvidence;
   analysis?: SnapshotCaptureAnalysis;
   androidSnapshot?: AndroidSnapshotBackendMetadata;
   freshness?: SnapshotCaptureFreshness;
@@ -23,7 +43,7 @@ export type SnapshotCaptureAnnotations = {
 
 export type PublicSnapshotCaptureAnnotations = Pick<
   SnapshotCaptureAnnotations,
-  'androidSnapshot' | 'warnings'
+  'androidSnapshot' | 'observation' | 'warnings'
 > & {
   snapshotQuality?: SnapshotQualityVerdict;
 };
@@ -33,6 +53,7 @@ export function snapshotCaptureAnnotationsFrom(
 ): SnapshotCaptureAnnotations {
   const quality = readSnapshotQualityVerdict(source.quality);
   return {
+    ...(source.observation ? { observation: source.observation } : {}),
     ...(source.analysis ? { analysis: source.analysis } : {}),
     ...(source.androidSnapshot ? { androidSnapshot: source.androidSnapshot } : {}),
     ...(source.freshness ? { freshness: source.freshness } : {}),
@@ -45,6 +66,7 @@ export function publicSnapshotCaptureAnnotations(
   annotations: Partial<SnapshotCaptureAnnotations>,
 ): PublicSnapshotCaptureAnnotations {
   return {
+    ...(annotations.observation ? { observation: annotations.observation } : {}),
     ...(annotations.androidSnapshot ? { androidSnapshot: annotations.androidSnapshot } : {}),
     ...(annotations.quality ? { snapshotQuality: annotations.quality } : {}),
     ...(annotations.warnings && annotations.warnings.length > 0
@@ -56,12 +78,14 @@ export function publicSnapshotCaptureAnnotations(
 export function readSerializedSnapshotCaptureAnnotations(
   data: Record<string, unknown>,
 ): PublicSnapshotCaptureAnnotations {
+  const observation = readObserveOnlyEvidence(data.observation);
   const androidSnapshot = readObject(data.androidSnapshot);
   const warnings = Array.isArray(data.warnings)
     ? data.warnings.filter((entry): entry is string => typeof entry === 'string')
     : undefined;
   const quality = readSnapshotQualityVerdict(data.snapshotQuality);
   return publicSnapshotCaptureAnnotations({
+    ...(observation ? { observation } : {}),
     ...(androidSnapshot
       ? { androidSnapshot: androidSnapshot as AndroidSnapshotBackendMetadata }
       : {}),

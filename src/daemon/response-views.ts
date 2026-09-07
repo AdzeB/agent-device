@@ -12,6 +12,15 @@ import type { DaemonResponseData } from './types.ts';
 export type ResponseView = (data: DaemonResponseData, level: ResponseLevel) => DaemonResponseData;
 
 const DIGEST_REF_LIMIT = 12;
+const SNAPSHOT_DIGEST_METADATA_FIELDS = [
+  'observation',
+  'visibility',
+  'snapshotQuality',
+  'warnings',
+  'fallbackScreenshotPath',
+  'artifacts',
+  'refsGeneration',
+] as const;
 
 /**
  * Token-cheap snapshot digest: the node count plus the first N actionable refs
@@ -32,17 +41,16 @@ function snapshotView(data: DaemonResponseData, level: ResponseLevel): DaemonRes
     nodeCount: nodes.length,
     refs,
     truncated: data.truncated,
-    ...(data.visibility !== undefined ? { visibility: data.visibility } : {}),
-    ...(data.snapshotQuality !== undefined ? { snapshotQuality: data.snapshotQuality } : {}),
-    ...(data.warnings !== undefined ? { warnings: data.warnings } : {}),
-    ...(data.fallbackScreenshotPath !== undefined
-      ? { fallbackScreenshotPath: data.fallbackScreenshotPath }
-      : {}),
-    ...(data.artifacts !== undefined ? { artifacts: data.artifacts } : {}),
-    // #1076 versioned refs: the one-number generation is the pinning signal for
-    // the refs above — cheap, and dropping it would strand auto-pinning clients.
-    ...(data.refsGeneration !== undefined ? { refsGeneration: data.refsGeneration } : {}),
+    ...pickSnapshotDigestMetadata(data),
   };
+}
+
+function pickSnapshotDigestMetadata(data: DaemonResponseData): DaemonResponseData {
+  const metadata: Record<string, unknown> = {};
+  for (const field of SNAPSHOT_DIGEST_METADATA_FIELDS) {
+    if (data[field] !== undefined) metadata[field] = data[field];
+  }
+  return metadata;
 }
 
 const DIGEST_OVERLAY_LIMIT = 12;

@@ -18,7 +18,6 @@ import type {
 } from '@agent-device/contracts/interaction';
 import type { RuntimeCommand } from '../../runtime-types.ts';
 import type { CapturedSnapshot } from './selector-read-shared.ts';
-import { createPostActionResponseCollector } from './post-action-response.ts';
 import {
   DEFAULT_STABLE_QUIET_MS,
   DEFAULT_STABLE_TIMEOUT_MS,
@@ -118,16 +117,17 @@ async function settleAfterAction(
 ): Promise<SettleOutcome> {
   const quietMs = params.quietMs ?? DEFAULT_STABLE_QUIET_MS;
   const timeoutMs = params.timeoutMs ?? DEFAULT_STABLE_TIMEOUT_MS;
-  const collector = createPostActionResponseCollector();
   const base: SettleObservation = {
     settled: false,
     waitedMs: 0,
     captures: 0,
     quietMs,
     timeoutMs,
-    response: collector.response,
   };
   try {
+    const { createPostActionResponseCollector } = await import('./post-action-response.ts');
+    const collector = createPostActionResponseCollector();
+    base.response = collector.response;
     const outcome = await runStableCaptureLoop(runtime, options, {
       quietMs,
       timeoutMs,

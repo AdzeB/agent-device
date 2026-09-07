@@ -116,6 +116,7 @@ struct Command: Codable {
   let commandId: String?
   let statusCommandId: String?
   let appBundleId: String?
+  var observeOnly: Bool? = nil
   let text: String?
   let selectorKey: String?
   let selectorValue: String?
@@ -232,6 +233,8 @@ extension Response {
 }
 
 struct DataPayload: Codable {
+  var observation: ObservationEvidence? = nil
+  var observationCapabilities: [String]? = nil
   var message: String?
   var imageBase64: String?
   var text: String?
@@ -304,4 +307,5 @@ struct ErrorPayload: Codable {
   var code: String?
   let message: String
   var hint: String?
+  var observation: ObservationEvidence? = nil
 }

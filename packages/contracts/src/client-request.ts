@@ -26,6 +26,7 @@ export type CommandExecutionOptions = Partial<ScreenshotRequestFlags> &
     artifact?: string;
     dsym?: string;
     searchPath?: string;
+    observeOnly?: boolean;
     interactiveOnly?: boolean;
     depth?: number;
     scope?: string;

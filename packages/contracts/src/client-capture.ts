@@ -18,6 +18,8 @@ import type {
 
 export type CaptureSnapshotOptions = AgentDeviceRequestOverrides &
   AgentDeviceSelectionOptions & {
+    /** Operator-only: refuse acquisition that would launch, activate, or recover the target app. */
+    observeOnly?: boolean;
     interactiveOnly?: boolean;
     depth?: number;
     scope?: string;

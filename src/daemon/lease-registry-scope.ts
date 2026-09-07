@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { DeviceLease } from '@agent-device/contracts/device';
+import type { HumanControlHold } from '@agent-device/contracts/client';
 import type { LeaseBackend } from '@agent-device/kernel/contracts';
 import { AppError } from '@agent-device/kernel/errors';
 import { normalizeTenantId } from './config.ts';
@@ -13,6 +14,8 @@ export type LeaseRegistryOptions = {
   now?: () => number;
   onLeaseExpired?: (lease: DeviceLease) => void;
 };
+
+export type OwnedHumanControlHold = { hold: HumanControlHold; ownerLeaseId?: string };
 
 export type AllocateLeaseRequest = {
   tenantId: string;
@@ -283,6 +286,36 @@ export function assertLeaseOwnerScope(lease: DeviceLease, request: HeartbeatLeas
       reason: 'LEASE_SCOPE_REQUIRED',
     });
   }
+}
+
+export function readActiveLease(
+  leases: ReadonlyMap<string, DeviceLease>,
+  holdsByDevice: ReadonlyMap<string, ReadonlyMap<string, OwnedHumanControlHold>>,
+  request: ReleaseLeaseRequest,
+  now: number,
+): DeviceLease | undefined {
+  const lease = leases.get(normalizeRequiredLeaseId(request.leaseId));
+  if (!lease || !isLeaseActive(lease, holdsByDevice, now)) return undefined;
+  assertLeaseOwnerScope(lease, request);
+  assertLeaseScopeMatch(lease, request);
+  return { ...lease };
+}
+
+function isLeaseActive(
+  lease: DeviceLease,
+  holdsByDevice: ReadonlyMap<string, ReadonlyMap<string, OwnedHumanControlHold>>,
+  now: number,
+): boolean {
+  if (lease.expiresAt > now) return true;
+  const key = leaseDeviceBindingKey(lease);
+  const holds = key === undefined ? undefined : holdsByDevice.get(key);
+  if (!holds?.size) return false;
+  let releasedAt = 0;
+  for (const { hold } of holds.values()) {
+    if (hold.expiresAt === undefined || hold.expiresAt > now) return true;
+    releasedAt = Math.max(releasedAt, hold.expiresAt);
+  }
+  return Math.max(releasedAt, lease.heartbeatAt) + lease.expiresAt - lease.heartbeatAt > now;
 }
 
 export function leaseDeviceBindingKey(

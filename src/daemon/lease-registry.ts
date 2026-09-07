@@ -13,6 +13,7 @@ import {
   type ReleaseLeaseRequest,
   type LeaseRegistryOptions,
   type NormalizedAllocateLeaseRequest,
+  type OwnedHumanControlHold,
   createLeaseTtlResolver,
   normalizeAllocateLeaseRequest,
   createDeviceLease,
@@ -24,6 +25,7 @@ import {
   assertLeaseScopeMatch,
   leaseDeviceBindingKey,
   leaseRunBindingKey,
+  readActiveLease,
 } from './lease-registry-scope.ts';
 import { DeviceMutationDrain } from './device-mutation-drain.ts';
 import {
@@ -36,8 +38,6 @@ import {
 } from './human-control-contract.ts';
 
 export type SimulatorLease = DeviceLease;
-
-type OwnedHumanControlHold = { hold: HumanControlHold; ownerLeaseId?: string };
 
 export class LeaseRegistry {
   private readonly holdsByDevice = new Map<string, Map<string, OwnedHumanControlHold>>();
@@ -140,6 +140,10 @@ export class LeaseRegistry {
     const scope = normalizeLeaseAdmissionRequest(request);
     this.cleanupExpiredLeases();
     assertLeaseScopeMatch(this.getActiveLease(scope.leaseId), scope);
+  }
+
+  readActiveLease(request: ReleaseLeaseRequest): DeviceLease | undefined {
+    return readActiveLease(this.leases, this.holdsByDevice, request, this.now());
   }
 
   listActiveLeases(): DeviceLease[] {

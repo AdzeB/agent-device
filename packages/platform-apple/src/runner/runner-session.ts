@@ -430,6 +430,11 @@ export function getRunnerSessionSnapshot(
   };
 }
 
+export function getReadyRunnerSession(deviceId: string): RunnerSession | undefined {
+  const session = runnerSessions.get(deviceId);
+  return session?.ready && isRunnerProcessAlive(session.child.pid) ? session : undefined;
+}
+
 export async function invalidateRunnerSession(
   session: RunnerSession,
   reason: string,
@@ -649,6 +654,41 @@ export async function executeRunnerCommandWithSession(
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  if (command.observeOnly) {
+    const {
+      assertObserveOnlyRunnerCommand,
+      assertObserveOnlyRunnerCapability,
+      assertObserveOnlyRunnerResponse,
+      observationUnavailable,
+    } = await import('./runner-observation.ts');
+    assertObserveOnlyRunnerCommand(command);
+    if (getReadyRunnerSession(device.id) !== session) {
+      throw observationUnavailable('runner_not_ready');
+    }
+    const deadline = Deadline.fromTimeoutMs(timeoutMs);
+    const capabilityResponse = await sendRunnerCommandOnce(
+      device,
+      session.port,
+      withRunnerCommandId({ command: 'uptime' }),
+      deadline.remainingMs(),
+      signal,
+    );
+    const capability = await parseRunnerResponse(capabilityResponse, session, logPath);
+    assertObserveOnlyRunnerCapability(capability);
+    if (getReadyRunnerSession(device.id) !== session) {
+      throw observationUnavailable('runner_not_ready');
+    }
+    const response = await sendRunnerCommandOnce(
+      device,
+      session.port,
+      withRunnerCommandId(command),
+      deadline.remainingMs(),
+      signal,
+    );
+    const data = await parseRunnerResponse(response, session, logPath);
+    assertObserveOnlyRunnerResponse(command, data);
+    return data;
+  }
   emitRunnerStartupTimings(session, command.command);
   const runnerCommand = withRunnerCommandId(command);
   const readOnlyCommand = isReadOnlyRunnerCommand(runnerCommand.command);
@@ -850,7 +890,7 @@ function emitRunnerReadinessPreflightSkipped(
 
 type RunnerResponsePayload = {
   ok?: unknown;
-  error?: { code?: unknown; message?: unknown; hint?: unknown };
+  error?: { code?: unknown; message?: unknown; hint?: unknown; observation?: unknown };
   data?: unknown;
 };
 
@@ -886,6 +926,7 @@ function buildRunnerResponseError(json: RunnerResponsePayload, logPath?: string)
   return new AppError(runnerAppErrorCode(runnerErrorCode), errorMessage ?? 'Runner error', {
     runner: json,
     runnerErrorCode,
+    ...observationErrorDetails(json.error?.observation),
     retriable: runnerErrorCode === 'RUNNER_BUSY' ? true : undefined,
     xcodebuild: {
       exitCode: 1,
@@ -895,6 +936,11 @@ function buildRunnerResponseError(json: RunnerResponsePayload, logPath?: string)
     hint,
     logPath,
   });
+}
+
+function observationErrorDetails(value: unknown): { observation?: object } {
+  if (!value || typeof value !== 'object') return {};
+  return { observation: structuredClone(value) };
 }
 
 function readRunnerErrorCode(rawCode: unknown): string | undefined {
@@ -908,6 +954,7 @@ function readRunnerErrorCode(rawCode: unknown): string | undefined {
  */
 const DIAGNOSTIC_ONLY_RUNNER_ERROR_CODES: ReadonlySet<string> = new Set([
   'RUNNER_BUSY',
+  'OBSERVATION_UNAVAILABLE',
   ALERT_NOT_FOUND_RUNNER_CODE,
 ]);
 

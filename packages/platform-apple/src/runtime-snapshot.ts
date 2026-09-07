@@ -13,6 +13,7 @@ import type {
   PlatformRuntimeHost,
   PlatformRuntimeOperations,
 } from '@agent-device/contracts/platform-runtime-operations';
+import { AppError } from '@agent-device/kernel/errors';
 import { isMacOs, type DeviceInfo } from '@agent-device/kernel/device';
 
 /** Apple-owned selection between app snapshots and explicit macOS surface snapshots. */
@@ -31,6 +32,19 @@ export function bindAppleSnapshotRuntime(
       input.options?.surface !== undefined &&
       input.options.surface !== 'app'
     ) {
+      if (input.options?.observeOnly) {
+        throw new AppError(
+          'UNSUPPORTED_OPERATION',
+          '--observe-only requires an Apple app surface.',
+          {
+            observation: {
+              mode: 'observe-only',
+              foregroundVerified: false,
+              reason: 'unsupported_surface',
+            },
+          },
+        );
+      }
       return await host.snapshot.captureSurface(
         request.device,
         input.options,

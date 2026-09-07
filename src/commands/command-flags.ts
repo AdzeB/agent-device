@@ -66,6 +66,7 @@ function buildFlags(options: InternalRequestOptions): CommandFlags {
     metroPort: options.metroPort,
     bundleUrl: options.bundleUrl,
     launchUrl: options.launchUrl,
+    observeOnly: options.observeOnly,
     snapshotInteractiveOnly: options.interactiveOnly,
     snapshotDepth: options.depth,
     snapshotScope: options.scope,
