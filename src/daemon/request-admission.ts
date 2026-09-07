@@ -16,6 +16,7 @@ import { leaseScopeToHeartbeatRequest } from '@agent-device/contracts/lease-scop
 import type { LeaseRegistry } from './lease-registry.ts';
 import type { DaemonRequest } from './daemon-request.ts';
 import type { SessionState } from './session-state.ts';
+import { requireObserveOnlyLease } from './observe-only-policy.ts';
 
 export function scopeRequestSession(req: DaemonRequest): DaemonRequest {
   const isolation = resolveSessionIsolationMode(
@@ -92,6 +93,11 @@ export function assertRequestLeaseAdmission(
   }
   assertRequestSessionLeaseMatches(requestLeaseScope, sessionLease);
   const leaseScope = resolveRequestOrSessionLeaseScope(req, session);
+  if (req.flags?.observeOnly) {
+    return requireObserveOnlyLease(
+      leaseRegistry.readActiveLease(leaseScopeToHeartbeatRequest(leaseScope)),
+    );
+  }
   leaseRegistry.assertLeaseAdmission(leaseScopeToHeartbeatRequest(leaseScope));
   // Admission renews for the window the lease already carries, or the window this request named.
   // Naming a proxy-specific default here used to shorten every lease allocated above it — a client

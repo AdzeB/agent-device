@@ -283,6 +283,7 @@ type SafeFlagSpec = {
 };
 
 const COMMON_SAFE_FLAG_SPEC = {
+  booleans: [{ source: 'observeOnly' }],
   enums: [
     { source: 'platform', values: PLATFORM_SELECTORS },
     { source: 'target', values: DEVICE_TARGETS },

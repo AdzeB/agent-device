@@ -21,7 +21,9 @@ import {
 } from '@agent-device/capture-kit/ios-snapshot-planning';
 import { AppError } from '@agent-device/kernel/errors';
 import { readSnapshotKeyboardBandFact } from '@agent-device/kernel/record';
+import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
 import type {
+  ObserveOnlyEvidence,
   RawSnapshotNode,
   SnapshotKeyboardBandFact,
   SnapshotQualityVerdict,
@@ -35,6 +37,7 @@ import { emitDiagnostic } from './host.ts';
 import { TARGET_ACTIVATION_WIRE_KEY, readTargetActivationFact } from './target-activation.ts';
 
 export type AppleRunnerSnapshotResult = Readonly<{
+  observation?: ObserveOnlyEvidence;
   nodes?: RawSnapshotNode[];
   truncated?: boolean;
   message?: string;
@@ -59,7 +62,9 @@ export function readAppleSnapshotResult(
       data: detail,
     }),
   );
+  const observation = readObserveOnlyEvidence(result.observation);
   return {
+    ...(observation ? { observation } : {}),
     nodes: Array.isArray(result.nodes) ? (result.nodes as RawSnapshotNode[]) : undefined,
     truncated: typeof result.truncated === 'boolean' ? result.truncated : undefined,
     quality: readSnapshotQualityVerdict(result.snapshotQuality),

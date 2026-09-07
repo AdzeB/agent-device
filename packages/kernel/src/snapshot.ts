@@ -81,7 +81,20 @@ export type Point = {
   y: number;
 };
 
+export type ObserveOnlyEvidence = Readonly<{
+  mode: 'observe-only';
+  capability: 'non-activating-foreground-v1';
+  foregroundVerified: true;
+  targetAppBundleId: string;
+  /** Observation never activates; a capture that needed activation is refused instead. */
+  activationPerformed: false;
+  /** The target's `XCUIApplication.state` re-read after capture, by name. */
+  appState: 'runningForeground';
+  appStateSource: 'xcuiapplication-state';
+}>;
+
 export type SnapshotOptions = {
+  observeOnly?: boolean;
   interactiveOnly?: boolean;
   depth?: number;
   scope?: string;
@@ -125,6 +138,7 @@ export type SnapshotOptions = {
 // from the published .d.ts) instead of a bundled JSDoc block.
 /** The CLI/daemon flag key for each snapshot capture option, by option name. */
 export const SNAPSHOT_OPTION_FLAGS = {
+  observeOnly: 'observeOnly',
   interactiveOnly: 'snapshotInteractiveOnly',
   depth: 'snapshotDepth',
   scope: 'snapshotScope',
@@ -138,6 +152,7 @@ export const SNAPSHOT_OPTION_FLAGS = {
 export type SnapshotOptionKey = keyof typeof SNAPSHOT_OPTION_FLAGS;
 
 type SnapshotOptionValues = {
+  observeOnly: boolean;
   interactiveOnly: boolean;
   depth: number;
   scope: string;
@@ -164,6 +179,7 @@ export type SnapshotOptionFlagFields<TKeys extends SnapshotOptionKey = SnapshotO
  * this projection and then override that one key.
  */
 export const SNAPSHOT_COMMAND_OPTION_KEYS = [
+  'observeOnly',
   'interactiveOnly',
   'depth',
   'scope',
@@ -184,6 +200,7 @@ export type SnapshotCommandOptionFields = SnapshotOptionFields<
 
 /** Option keys a daemon runtime capture input carries; `forceFull` is a command-level concern. */
 export const SNAPSHOT_CAPTURE_OPTION_KEYS = [
+  'observeOnly',
   'interactiveOnly',
   'preferredBackend',
   'depth',
@@ -615,6 +632,7 @@ export type IosTargetActivation = Readonly<{
 }>;
 
 export type SnapshotState = {
+  observation?: ObserveOnlyEvidence;
   nodes: SnapshotNode[];
   createdAt: number;
   truncated?: boolean;

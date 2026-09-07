@@ -1,3 +1,4 @@
+import { observeOnlySessionResponse, observeOnlyRuntimeFacts } from './observe-only-policy.ts';
 import type { RuntimeOperationFact } from '@agent-device/contracts/platform-runtime';
 import {
   type SelectorCaptureRuntimePlan,
@@ -102,10 +103,15 @@ export async function admitAndBindSnapshotCapture(
     inspectFacts?: InspectDeviceRuntimeFacts;
     bindDevice?: BindDeviceRuntime;
     readiness?: boolean;
+    observeOnly?: boolean;
   }>,
 ): Promise<AdmittedSnapshotCapture> {
   const { command, device, session, plan } = params;
-  const admission = await admitRuntimePlan({ device, plan, inspectFacts: params.inspectFacts });
+  const admission = await admitRuntimePlan({
+    device,
+    plan,
+    inspectFacts: observeOnlyRuntimeFacts(params.observeOnly, params.inspectFacts),
+  });
   if (!admission.admitted) {
     return {
       ok: false,
@@ -118,7 +124,11 @@ export async function admitAndBindSnapshotCapture(
       }),
     };
   }
-  const bound = await bindSnapshotCaptureRuntime(params.bindDevice, admission, params.readiness);
+  const bound = await bindSnapshotCaptureRuntime(
+    params.bindDevice,
+    admission,
+    params.observeOnly ? false : params.readiness,
+  );
   return Object.freeze({
     ok: true,
     capture: async (input: CaptureSnapshotInput) => await bound.captureSnapshot(input),
@@ -136,12 +146,15 @@ export async function resolveBoundSnapshotCaptureRuntime(
   command: 'snapshot' | 'diff',
 ): Promise<ResolvedSnapshotCaptureRuntime> {
   const { req, sessionName, sessionStore } = params;
+  const invalidObservation = observeOnlySessionResponse(req, sessionStore.get(sessionName));
+  if (invalidObservation) return { ok: false, response: invalidObservation };
   const { session, device } = await resolveSessionDevice(sessionStore, sessionName, req.flags);
   const resolvedScope = resolveSnapshotScope(req.flags?.snapshotScope, session);
   if (!resolvedScope.ok) return { ok: false, response: resolvedScope };
 
   const bound = await admitAndBindSnapshotCapture({
     command,
+    observeOnly: req.flags?.observeOnly,
     device,
     session,
     plan: resolveSnapshotRuntimePlan({

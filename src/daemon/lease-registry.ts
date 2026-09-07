@@ -173,6 +173,18 @@ export class LeaseRegistry {
     return { ...lease };
   }
 
+  /**
+   * Observe-only admission: the lease as protected right now, without sweeping expired leases or
+   * renewing this one, so an observation neither revives nor tears down anything.
+   */
+  readActiveLease(request: ReleaseLeaseRequest): DeviceLease | undefined {
+    const lease = this.leases.get(normalizeRequiredLeaseId(request.leaseId));
+    if (!lease || !this.isLeaseProtected(lease, this.now())) return undefined;
+    assertLeaseOwnerScope(lease, request);
+    assertLeaseScopeMatch(lease, request);
+    return { ...lease };
+  }
+
   assertLeaseAdmission(request: AdmissionRequest): void {
     const scope = normalizeLeaseAdmissionRequest(request);
     this.cleanupExpiredLeases();

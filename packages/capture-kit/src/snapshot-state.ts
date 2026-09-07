@@ -9,6 +9,7 @@ import {
   buildSnapshotPresentationKey,
   snapshotPresentationOptionsFromFlags,
   type IosTargetActivation,
+  type ObserveOnlyEvidence,
   type RawSnapshotNode,
   type SnapshotBackend,
   type SnapshotCaptureProvenance,
@@ -49,6 +50,8 @@ export function buildSnapshotState(
     systemSurface?: IosSystemSurfaceProvenance;
     /** Foreground repair this capture's own command performed (#2682). */
     targetActivation?: IosTargetActivation;
+    /** Non-activating proof an observe-only capture carried; never present beside a repair. */
+    observation?: ObserveOnlyEvidence;
     /** The keyboard band the producer measured, carried to the state the tap guards read (#2660). */
     keyboard?: SnapshotKeyboardBandFact;
   } & SnapshotCaptureProvenance,
@@ -88,6 +91,7 @@ export function buildSnapshotState(
       : {}),
     ...(data.systemSurface ? { iosSystemSurfaceBundleId: data.systemSurface.bundleId } : {}),
     ...(data.targetActivation ? { targetActivation: data.targetActivation } : {}),
+    ...(data.observation ? { observation: data.observation } : {}),
     ...(data.keyboard ? { keyboard: data.keyboard } : {}),
     presentationKey: buildSnapshotPresentationKey(snapshotPresentationOptionsFromFlags(flags)),
     // Only broad Android snapshots become freshness baselines. If the user asked for a scoped

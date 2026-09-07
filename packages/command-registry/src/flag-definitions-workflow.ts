@@ -225,6 +225,16 @@ export const WORKFLOW_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
     recorded: false,
   },
   {
+    key: 'observeOnly',
+    names: ['--observe-only'],
+    type: 'boolean',
+    usageLabel: '--observe-only',
+    usageDescription:
+      'Observation: refuse reads that require app launch, activation, or recovery (operator only; default false)',
+    projectConfig: false,
+    recorded: true,
+  },
+  {
     key: 'snapshotInteractiveOnly',
     names: ['-i'],
     type: 'boolean',

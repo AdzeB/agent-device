@@ -27,6 +27,7 @@ export type {
 } from '../screenshot.ts';
 export {
   publicSnapshotCaptureAnnotations,
+  readObserveOnlyEvidence,
   readSerializedSnapshotCaptureAnnotations,
   snapshotCaptureAnnotationsFrom,
 } from '../snapshot-capture-annotations.ts';

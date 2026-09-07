@@ -18,6 +18,7 @@ import {
   ensureRunnerSession,
   invalidateRunnerSession,
   executeRunnerCommandWithSession,
+  getReadyRunnerSession,
   markRunnerSessionServed,
   readRunnerSessionLiveness,
 } from './runner-session.ts';
@@ -285,6 +286,31 @@ export async function executeRunnerCommand(
   }
 }
 
+/** Observe-only never starts, restarts, or adopts a runner: it uses the ready session or refuses. */
+async function executeObserveOnlyRunnerCommand(
+  device: DeviceInfo,
+  command: RunnerCommand,
+  options: AppleRunnerCommandOptions,
+  exchange: { entered: boolean },
+  signal: AbortSignal | undefined,
+): Promise<Record<string, unknown>> {
+  const { assertObserveOnlyRunnerCommand, observationUnavailable } =
+    await import('./runner-observation.ts');
+  assertObserveOnlyRunnerCommand(command);
+  const session = getReadyRunnerSession(device.id);
+  if (!session) throw observationUnavailable('runner_not_ready');
+  assertExpectedRunnerSession(session, options.expectedRunnerSessionId);
+  exchange.entered = true;
+  return await executeRunnerCommandWithSession(
+    device,
+    session,
+    command,
+    options.logPath,
+    RUNNER_COMMAND_TIMEOUT_MS,
+    signal,
+  );
+}
+
 // fallow-ignore-next-line complexity
 async function executeRunnerCommandAttempt(
   device: DeviceInfo,
@@ -294,6 +320,9 @@ async function executeRunnerCommandAttempt(
 ): Promise<Record<string, unknown>> {
   assertRunnerRequestActive(options.requestId);
   const signal = resolveRunnerRequestSignal(options);
+  if (command.observeOnly) {
+    return await executeObserveOnlyRunnerCommand(device, command, options, exchange, signal);
+  }
   const recycleKey = runnerRecycleLedgerKey(options, command);
   let session: RunnerSession | undefined;
   let recycleBootBegun = false;

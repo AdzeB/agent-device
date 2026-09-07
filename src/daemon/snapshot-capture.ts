@@ -68,13 +68,16 @@ type CaptureSnapshotResult = {
 export async function captureSnapshot(
   params: CaptureSnapshotParams,
 ): Promise<CaptureSnapshotResult> {
-  const deferred = await resolveDeferredInteractionOutcome({
-    session: params.session,
-    device: params.device,
-    interactiveOnly: params.flags?.snapshotInteractiveOnly === true,
-    androidFreshnessMode: params.androidFreshnessMode,
-    capture: () => captureSnapshotAttempt(params),
-  });
+  // Observe-only reads the current target once; deferred interaction outcomes may re-capture.
+  const deferred = params.flags?.observeOnly
+    ? undefined
+    : await resolveDeferredInteractionOutcome({
+        session: params.session,
+        device: params.device,
+        interactiveOnly: params.flags?.snapshotInteractiveOnly === true,
+        androidFreshnessMode: params.androidFreshnessMode,
+        capture: () => captureSnapshotAttempt(params),
+      });
   if (deferred) return deferred;
 
   const latest = await captureSnapshotAttempt(params);

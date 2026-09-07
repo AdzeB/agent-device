@@ -240,7 +240,8 @@ export async function sendRequest(
 ): Promise<DaemonResponse> {
   const transport = chooseTransport(info, preference);
   const deadline = typeof timeoutMs === 'number' ? performance.now() + timeoutMs : undefined;
-  const { hasOutgoingPrivateFieldComparison } = await import('../daemon/private-field-comparison.ts');
+  const { hasOutgoingPrivateFieldComparison } =
+    await import('../daemon/private-field-comparison.ts');
   if (hasOutgoingPrivateFieldComparison()) {
     const { sanitizePrivateFieldResponse } = await import('../daemon/private-field-response.ts');
     if (transport !== 'socket' || info.baseUrl) {

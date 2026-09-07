@@ -111,6 +111,7 @@ export const interactionCliReaders = {
     ...commonInputFromFlags(flags),
     ...observationRecordInputFromFlags(flags),
     ...selectorSnapshotInputFromFlags(flags),
+    observeOnly: flags.observeOnly,
     format: readGetFormat(positionals[0]),
     target: targetInputFromClientTarget(readElementTargetFromPositionals(positionals.slice(1))),
   }),

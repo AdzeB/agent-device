@@ -13,6 +13,7 @@ agent-device snapshot -d 3               # Limit depth to 3 levels
 agent-device snapshot -s "Contacts"      # Scope to label/identifier
 agent-device snapshot -i -d 5            # Combine options
 agent-device snapshot --actions          # Name custom actions merged into elements (iOS simulator)
+agent-device snapshot --observe-only     # Read without launching, activating, or recovering the target
 agent-device diff snapshot               # Preferred structural diff vs previous session baseline
 agent-device snapshot --diff             # Alias for the same diff operation
 ```
@@ -25,6 +26,7 @@ agent-device snapshot --diff             # Alias for the same diff operation
 | `-s <scope>`     | Scope to label or identifier                                                     |
 | `--raw`          | Full provider tree instead of the visible-first agent view                       |
 | `--actions`      | Name the custom accessibility actions merged inside an element (iOS simulator)   |
+| `--observe-only` | Require evidence acquisition without launch, activation, focus changes, or recovery |
 | `--force-full`   | Re-emit the full tree even when it is unchanged since the previous snapshot      |
 | `--timeout <ms>` | Maximum wall-clock time for the snapshot command                                 |
 
@@ -43,6 +45,33 @@ agent-device snapshot --diff             # Alias for the same diff operation
 - Mutually exclusive with `--raw`. Custom actions are only readable through the private-AX capture
   path, which the raw diagnostic strategy does not take, so the pair is rejected as `INVALID_ARGS`
   before any device work — on the CLI, the Node client, and MCP alike. Choose one or the other.
+
+## Observation without changing the target
+
+`--observe-only` is an operator option for evidence that must describe the current target state.
+It requires an existing local Apple app session with a ready runner; other backends fail. Prepare
+the session and runtime before using it. The read cannot launch or activate an app, change focus,
+or recover an app/runtime to acquire evidence. If the target cannot be read without such changes,
+the command fails; that failure is unavailable evidence, not proof of an empty screen or an
+absent element.
+
+The flag defaults to `false` when omitted. It is excluded from the model-facing MCP and AI SDK
+structured inputs. Operators can apply it to `snapshot`, selector-based `get text` and `get attrs`, `is`, and
+`find` with an explicit `exists`, `list`, `get text`, `get attrs`, or `wait` action. A bare `find`
+defaults to an interaction and is not allowed with this flag. `get text @ref` and `get attrs @ref`
+are unsupported with `--observe-only`; use a selector instead. Top-level `wait`, `diff snapshot`,
+and `snapshot --diff` do not accept it.
+
+```bash
+agent-device snapshot -i --observe-only
+agent-device get attrs 'id="submit"' --observe-only
+agent-device find "Confirmation" exists --observe-only
+agent-device find "Confirmation" wait --observe-only
+```
+
+An observation does not freeze the application: its own asynchronous work can still change the
+screen while the command reads or waits. The guarantee applies to changes initiated by evidence
+acquisition.
 
 ## Efficient snapshot usage
 

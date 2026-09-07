@@ -8,7 +8,11 @@ import type { DaemonResponse } from './daemon-request.ts';
 /** The capture provenance a response must be disclosed against (#2438, #2682, gesture outcomes). */
 export type CaptureProvenance = Pick<
   SnapshotState,
-  'systemSurfaceOnly' | 'iosSystemSurfaceBundleId' | 'targetActivation' | 'postGestureOutcome'
+  | 'systemSurfaceOnly'
+  | 'iosSystemSurfaceBundleId'
+  | 'targetActivation'
+  | 'postGestureOutcome'
+  | 'observation'
 >;
 
 /**
@@ -24,7 +28,7 @@ export type CaptureProvenance = Pick<
  */
 export type RequestCaptureProof = Pick<
   CaptureProvenance,
-  'targetActivation' | 'postGestureOutcome'
+  'targetActivation' | 'postGestureOutcome' | 'observation'
 >;
 
 /**
@@ -39,6 +43,7 @@ export function recordCaptureProof<T extends CaptureProvenance>(
   if (proof === undefined) return snapshot;
   proof.targetActivation ??= snapshot.targetActivation;
   proof.postGestureOutcome ??= snapshot.postGestureOutcome;
+  proof.observation ??= snapshot.observation;
   return snapshot;
 }
 
@@ -64,7 +69,7 @@ export function withSystemSurfaceDisclosure(
  * warning, and the typed fact lands on either outcome (`data` or `error.details`) even when the
  * sentence was already carried.
  */
-function withTreeFactDisclosure<K extends keyof RequestCaptureProof>(
+function withTreeFactDisclosure<K extends Exclude<keyof RequestCaptureProof, 'observation'>>(
   response: DaemonResponse,
   key: K,
   fact: RequestCaptureProof[K],
@@ -105,15 +110,35 @@ export function withCaptureDisclosures(params: {
   captureProof?: RequestCaptureProof;
 }): DaemonResponse {
   const { response, consumedTree, captureProof } = params;
-  return withTargetActivationDisclosure(
-    withTreeFactDisclosure(
-      withSystemSurfaceDisclosure(response, consumedTree),
-      'postGestureOutcome',
-      consumedTree?.postGestureOutcome,
-      formatPostGestureOutcomeWarning,
+  return withObservationEvidence(
+    withTargetActivationDisclosure(
+      withTreeFactDisclosure(
+        withSystemSurfaceDisclosure(response, consumedTree),
+        'postGestureOutcome',
+        consumedTree?.postGestureOutcome,
+        formatPostGestureOutcomeWarning,
+      ),
+      captureProof,
     ),
-    captureProof,
+    captureProof?.observation,
   );
+}
+
+/**
+ * The observe-only proof this request's own capture carried, as a typed fact with no sentence. A
+ * failure that already carries the runner's own `details.observation` refusal keeps it.
+ */
+export function withObservationEvidence(
+  response: DaemonResponse,
+  observation: RequestCaptureProof['observation'],
+): DaemonResponse {
+  if (!observation) return response;
+  if (response.ok) return { ...response, data: { ...response.data, observation } };
+  if (response.error.details?.observation) return response;
+  return {
+    ...response,
+    error: { ...response.error, details: { ...response.error.details, observation } },
+  };
 }
 
 /**

@@ -1,5 +1,6 @@
 import type {
   IosTargetActivation,
+  ObserveOnlyEvidence,
   SnapshotCaptureBackend,
   SnapshotQualityState,
   SnapshotQualityVerdict,
@@ -23,6 +24,32 @@ const DECLARED_BACKENDS: Record<SnapshotCaptureBackend, true> = {
   'android-helper': true,
 };
 
+/** Accepts only the complete non-activating proof; anything partial is no proof at all. */
+export function readObserveOnlyEvidence(value: unknown): ObserveOnlyEvidence | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const observation = value as Record<string, unknown>;
+  if (
+    observation.mode !== 'observe-only' ||
+    observation.capability !== 'non-activating-foreground-v1' ||
+    observation.foregroundVerified !== true ||
+    observation.activationPerformed !== false ||
+    observation.appState !== 'runningForeground' ||
+    observation.appStateSource !== 'xcuiapplication-state' ||
+    typeof observation.targetAppBundleId !== 'string' ||
+    observation.targetAppBundleId.trim().length === 0
+  )
+    return undefined;
+  return {
+    mode: 'observe-only',
+    capability: 'non-activating-foreground-v1',
+    foregroundVerified: true,
+    targetAppBundleId: observation.targetAppBundleId,
+    activationPerformed: false,
+    appState: 'runningForeground',
+    appStateSource: 'xcuiapplication-state',
+  };
+}
+
 export type SnapshotCaptureAnalysis = {
   rawNodeCount: number;
   maxDepth: number;
@@ -36,6 +63,7 @@ export type SnapshotCaptureFreshness = {
 };
 
 export type SnapshotCaptureAnnotations = {
+  observation?: ObserveOnlyEvidence;
   analysis?: SnapshotCaptureAnalysis;
   androidSnapshot?: AndroidSnapshotBackendMetadata;
   freshness?: SnapshotCaptureFreshness;
@@ -47,7 +75,7 @@ export type SnapshotCaptureAnnotations = {
 
 export type PublicSnapshotCaptureAnnotations = Pick<
   SnapshotCaptureAnnotations,
-  'androidSnapshot' | 'warnings' | 'targetActivation'
+  'androidSnapshot' | 'observation' | 'warnings' | 'targetActivation'
 > & {
   snapshotQuality?: SnapshotQualityVerdict;
 };
@@ -57,6 +85,7 @@ export function snapshotCaptureAnnotationsFrom(
 ): SnapshotCaptureAnnotations {
   const quality = readPublishedSnapshotQualityVerdict(source.quality);
   return {
+    ...(source.observation ? { observation: source.observation } : {}),
     ...(source.analysis ? { analysis: source.analysis } : {}),
     ...(source.androidSnapshot ? { androidSnapshot: source.androidSnapshot } : {}),
     ...(source.freshness ? { freshness: source.freshness } : {}),
@@ -70,6 +99,7 @@ export function publicSnapshotCaptureAnnotations(
   annotations: Partial<SnapshotCaptureAnnotations>,
 ): PublicSnapshotCaptureAnnotations {
   return {
+    ...(annotations.observation ? { observation: annotations.observation } : {}),
     ...(annotations.androidSnapshot ? { androidSnapshot: annotations.androidSnapshot } : {}),
     ...(annotations.quality ? { snapshotQuality: annotations.quality } : {}),
     ...(annotations.warnings && annotations.warnings.length > 0
@@ -82,6 +112,7 @@ export function publicSnapshotCaptureAnnotations(
 export function readSerializedSnapshotCaptureAnnotations(
   data: Record<string, unknown>,
 ): PublicSnapshotCaptureAnnotations {
+  const observation = readObserveOnlyEvidence(data.observation);
   const androidSnapshot = readObject(data.androidSnapshot);
   // Declared exception to kernel's shared `readResponseWarnings` (see its doc): this facade
   // pins its eager module closure, and absent-or-non-array keeps the serialized tri-state.
@@ -92,6 +123,7 @@ export function readSerializedSnapshotCaptureAnnotations(
   const quality = readPublishedSnapshotQualityVerdict(data.snapshotQuality);
   const targetActivation = readTargetActivation(data.targetActivation);
   return publicSnapshotCaptureAnnotations({
+    ...(observation ? { observation } : {}),
     ...(androidSnapshot
       ? { androidSnapshot: androidSnapshot as AndroidSnapshotBackendMetadata }
       : {}),

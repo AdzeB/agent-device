@@ -328,6 +328,19 @@ function optionEnumValues(definition: FlagDefinition): readonly string[] {
   return values;
 }
 
+/** Operator-only observe-without-activation switch shared by snapshot, get, is, and find. */
+export function observeOnlyField(): CommandField<boolean> {
+  return operatorField(
+    booleanField(
+      'Operator-only: refuse evidence acquisition that would launch, activate, or recover the target app. Defaults to false. On find, requires an explicit read-only action.',
+    ),
+    {
+      operatorPath:
+        'Pass observeOnly directly as CLI/Node.js command input; it is not exposed to model-facing tools.',
+    },
+  );
+}
+
 export function enumField<const TValues extends readonly string[]>(
   values: TValues,
   description?: string,

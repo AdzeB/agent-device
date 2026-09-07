@@ -213,9 +213,21 @@ async function captureAppleSnapshot(
 ) {
   const helper = isMacOs(device) ? macOsHelperSurface(options?.surface) : undefined;
   if (helper) {
+    if (options?.observeOnly) throw observeOnlyUnsupportedSurface();
     return await captureMacOsSurfaceSnapshot({ ...options, surface: helper }, options?.signal);
   }
   return await captureAppleRunnerSnapshot(device, options, runnerOpts);
+}
+
+function observeOnlyUnsupportedSurface(): AppError {
+  return new AppError('UNSUPPORTED_OPERATION', '--observe-only requires an Apple app surface.', {
+    observation: {
+      mode: 'observe-only',
+      foregroundVerified: false,
+      activationPerformed: false,
+      reason: 'unsupported_surface',
+    },
+  });
 }
 
 async function captureAppleRunnerSnapshot(
@@ -231,6 +243,7 @@ async function captureAppleRunnerSnapshot(
           device,
           {
             command: 'snapshot',
+            observeOnly: options?.observeOnly,
             appBundleId: options?.appBundleId,
             interactiveOnly: options?.interactiveOnly,
             preferredBackend: options?.preferredBackend,
@@ -251,6 +264,7 @@ async function captureAppleRunnerSnapshot(
     truncated: result.truncated ?? false,
     backend: 'xctest' as const,
     producer: 'apple-runner' as const,
+    ...(result.observation ? { observation: result.observation } : {}),
     ...(result.quality ? { quality: result.quality } : {}),
     ...(result.systemSurface ? { systemSurface: result.systemSurface } : {}),
     ...(result.keyboard ? { keyboard: result.keyboard } : {}),

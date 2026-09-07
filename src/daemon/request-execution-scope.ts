@@ -270,6 +270,7 @@ export async function createRequestExecutionScope(params: {
         throwIfRequestCanceled(scopedReq.meta?.requestId);
         try {
           await cleanupExpiredLeasedSession({
+            observeOnly: scopedReq.flags?.observeOnly,
             sessionName,
             sessionStore,
             leaseRegistry,

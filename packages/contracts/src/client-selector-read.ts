@@ -2,6 +2,7 @@
 
 import type { FindLocator } from './snapshot-types.ts';
 import type {
+  CaptureSnapshotOptions,
   FindSnapshotCommandOptions,
   SelectorSnapshotCommandOptions,
 } from './client-capture.ts';
@@ -20,16 +21,18 @@ export type RecordControlOptions = {
   record?: boolean;
 };
 
+type ObservationControlOptions = RecordControlOptions & Pick<CaptureSnapshotOptions, 'observeOnly'>;
+
 export type GetOptions = DeviceCommandBaseOptions &
   SelectorSnapshotCommandOptions &
   ElementTarget &
-  RecordControlOptions & {
+  ObservationControlOptions & {
     format: 'text' | 'attrs';
   };
 
 export type IsTextPredicateOptions = DeviceCommandBaseOptions &
   SelectorSnapshotCommandOptions &
-  RecordControlOptions & {
+  ObservationControlOptions & {
     predicate: Extract<IsPredicate, 'text'>;
     selector: string;
     value: string;
@@ -37,7 +40,7 @@ export type IsTextPredicateOptions = DeviceCommandBaseOptions &
 
 export type IsStatePredicateOptions = DeviceCommandBaseOptions &
   SelectorSnapshotCommandOptions &
-  RecordControlOptions & {
+  ObservationControlOptions & {
     predicate: Exclude<IsPredicate, 'text'>;
     selector: string;
     value?: never;
@@ -47,7 +50,7 @@ export type IsOptions = IsTextPredicateOptions | IsStatePredicateOptions;
 
 export type FindBaseOptions = DeviceCommandBaseOptions &
   FindSnapshotCommandOptions &
-  RecordControlOptions & {
+  ObservationControlOptions & {
     locator?: FindLocator;
     query: string;
     first?: boolean;

@@ -34,6 +34,7 @@ function snapshotView(data: DaemonResponseData, level: ResponseLevel): DaemonRes
   const carriedFields = [
     'visibility',
     'snapshotQuality',
+    'observation',
     'targetActivation',
     'warnings',
     'fallbackScreenshotPath',

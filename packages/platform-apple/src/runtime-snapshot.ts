@@ -13,6 +13,7 @@ import type {
 } from '@agent-device/contracts/platform-runtime-operations';
 import { macOsSurfaceBackend, type SessionSurface } from '@agent-device/contracts/session';
 import { isMacOs, type DeviceInfo } from '@agent-device/kernel/device';
+import { AppError } from '@agent-device/kernel/errors';
 import { hasSimulatorBridge } from './snapshot-observability.ts';
 import type { AppleSnapshotRoute } from './snapshot-route.ts';
 
@@ -29,13 +30,28 @@ export function bindAppleSnapshotRuntime(
   });
   const captureSnapshot = async (input: CaptureSnapshotInput) => {
     if (isMacOs(request.device) && macOsSurfaceBackend(input.options?.surface) === 'macos-helper') {
+      if (input.options?.observeOnly) {
+        throw new AppError(
+          'UNSUPPORTED_OPERATION',
+          '--observe-only requires an Apple app surface.',
+          {
+            observation: {
+              mode: 'observe-only',
+              foregroundVerified: false,
+              activationPerformed: false,
+              reason: 'unsupported_surface',
+            },
+          },
+        );
+      }
       return await host.snapshot.captureSurface(
         request.device,
         input.options,
         captureSnapshotSignal(request.signal, input),
       );
     }
-    if (!route) return await appSnapshot.captureSnapshot(input);
+    // Observe-only proof comes from the runner's non-activating route, never an alternate source.
+    if (!route || input.options?.observeOnly) return await appSnapshot.captureSnapshot(input);
     const signal = captureSnapshotSignal(request.signal, input);
     return await route.capture(
       request.device,

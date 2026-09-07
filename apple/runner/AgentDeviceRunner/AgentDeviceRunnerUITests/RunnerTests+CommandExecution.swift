@@ -431,10 +431,12 @@ extension RunnerTests {
       // macOS keeps the app-targeted capture behavior for window-level screenshots.
       if let bundleId = command.appBundleId, !bundleId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         let targetApp = XCUIApplication(bundleIdentifier: bundleId)
-        targetApp.activate()
+        if command.observeOnly != true {
+          targetApp.activate()
+          // Brief wait for the app transition animation to complete
+          sleepFor(0.5)
+        }
         activeApp = targetApp
-        // Brief wait for the app transition animation to complete
-        sleepFor(0.5)
       }
       let screenshot: XCUIScreenshot
       if command.fullscreen == true {

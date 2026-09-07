@@ -32,6 +32,7 @@ export function formatPortableActionLine(
   } else {
     appendGenericActionScriptArgs(parts, action);
   }
+  if (action.flags?.observeOnly === true) parts.push('--observe-only');
   return parts.join(' ');
 }
 

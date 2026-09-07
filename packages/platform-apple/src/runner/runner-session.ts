@@ -516,6 +516,14 @@ export function readRunnerSessionLiveness(deviceId: string): RunnerSessionRegist
   };
 }
 
+/** The registered session only when it is ready and its process is alive; never starts one. */
+export function getReadyRunnerSession(deviceId: string): RunnerSession | undefined {
+  const session = runnerSessions.get(deviceId);
+  return session?.state === 'ready' && isRunnerProcessAlive(session.child.pid)
+    ? session
+    : undefined;
+}
+
 function readRunnerSessionLivenessFor(session: RunnerSession): RunnerSessionLiveness {
   return resolveRunnerSessionLiveness({
     state: session.state,
@@ -856,6 +864,19 @@ export async function executeRunnerCommandWithSession(
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  if (command.observeOnly) {
+    const { executeObserveOnlyRunnerExchange } = await import('./runner-observation.ts');
+    return executeObserveOnlyRunnerExchange({
+      device,
+      session,
+      command,
+      logPath,
+      timeoutMs,
+      isCurrentReadySession: () => getReadyRunnerSession(device.id) === session,
+      invalidateFatalSession: (reason) => invalidateRunnerSession(session, reason),
+      signal,
+    });
+  }
   emitRunnerStartupTimings(session, command.command);
   const { executeRunnerExchange } = await import('./runner-exchange.ts');
   return executeRunnerExchange(

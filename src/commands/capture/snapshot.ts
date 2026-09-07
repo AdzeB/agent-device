@@ -4,8 +4,14 @@ import {
   SNAPSHOT_COMMAND_OPTION_KEYS,
   snapshotOptionsFromFlags,
 } from '@agent-device/kernel/snapshot';
-import { SNAPSHOT_FLAGS } from '@agent-device/command-registry/flag-groups';
-import { booleanField, integerField, optionField, stringField } from '../command-input.ts';
+import { OBSERVATION_FLAGS, SNAPSHOT_FLAGS } from '@agent-device/command-registry/flag-groups';
+import {
+  booleanField,
+  integerField,
+  observeOnlyField,
+  optionField,
+  stringField,
+} from '../command-input.ts';
 import {
   commonInputFromFlags,
   direct,
@@ -32,6 +38,7 @@ const snapshotCommandMetadata = defineFieldCommandMetadata(
   SNAPSHOT_COMMAND_NAME,
   snapshotCommandDescription,
   {
+    observeOnly: observeOnlyField(),
     interactiveOnly: booleanField(),
     depth: integerField(),
     scope: stringField(),
@@ -54,6 +61,7 @@ const snapshotCliSchema = {
   allowedFlags: [
     'snapshotDiff',
     ...SNAPSHOT_FLAGS,
+    ...OBSERVATION_FLAGS,
     'snapshotCustomActions',
     'snapshotForceFull',
     'timeoutMs',
@@ -74,7 +82,7 @@ export const snapshotCommandFacet = defineCommandFacet({
   name: SNAPSHOT_COMMAND_NAME,
   text: {
     summary: 'Capture or diff the accessibility tree',
-    cliDetail: `Repeated equivalent unfiltered Android snapshots return a compact unchanged acknowledgement. Use --force-full to re-emit the tree; --json and --raw retain full output. For iOS raw-coordinate fallback after a no-op ref press, inspect rects with snapshot -i --json, press the rect center, then verify with diff snapshot -i or snapshot --diff. iOS backend capability contract: ${snapshotBackendCapabilityHelp}.`,
+    cliDetail: `Repeated equivalent unfiltered Android snapshots return a compact unchanged acknowledgement. Use --force-full to re-emit the tree; --json and --raw retain full output. For iOS raw-coordinate fallback after a no-op ref press, inspect rects with snapshot -i --json, press the rect center, then verify with diff snapshot -i or snapshot --diff. iOS backend capability contract: ${snapshotBackendCapabilityHelp}. Operator --observe-only requires an existing local Apple app session and ready runner. It captures fresh evidence without launch, activation, or recovery, and refuses missing foreground proof. It cannot be combined with --diff.`,
   },
   metadata: snapshotCommandMetadata,
   run: (client, input) => client.capture.snapshot(input),

@@ -44,15 +44,18 @@ export async function dispatchSnapshotViaRuntime(
         publicNodes === result.nodes ? result : { ...result, nodes: publicNodes },
       );
       const session = params.sessionStore.get(resolvedSessionName);
-      const fallbackScreenshot = await captureSparseFallbackScreenshot({
-        req: request,
-        session,
-        sessionName: resolvedSessionName,
-        logPath: params.logPath,
-        verdict: result.snapshotQuality,
-        inspectFacts: params.inspectFacts,
-        bindDevice: params.bindDevice,
-      });
+      // A sparse-fallback screenshot is a second, proof-less capture; observe-only takes none.
+      const fallbackScreenshot = request.flags?.observeOnly
+        ? undefined
+        : await captureSparseFallbackScreenshot({
+            req: request,
+            session,
+            sessionName: resolvedSessionName,
+            logPath: params.logPath,
+            verdict: result.snapshotQuality,
+            inspectFacts: params.inspectFacts,
+            bindDevice: params.bindDevice,
+          });
       const published = copySnapshotClickabilityEvidence(
         publicResult,
         fallbackScreenshot
