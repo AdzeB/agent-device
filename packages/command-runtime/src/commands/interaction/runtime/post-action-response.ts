@@ -4,7 +4,7 @@ import type {
   PostActionResponse,
   PostActionResponseFrame,
 } from '@agent-device/contracts/interaction';
-import { formatRole } from '../../../snapshot/snapshot-lines.ts';
+import { formatRole } from '@agent-device/capture-kit/snapshot-lines';
 
 const MAX_FRAMES = 4;
 const MAX_NODES = 256;

@@ -23,7 +23,6 @@ import type {
 } from '@agent-device/contracts/interaction';
 import type { RuntimeCommand } from '../../runtime-types.ts';
 import type { CapturedSnapshot } from './selector-read-shared.ts';
-import { createPostActionResponseCollector } from './post-action-response.ts';
 import {
   DEFAULT_STABLE_QUIET_MS,
   DEFAULT_STABLE_TIMEOUT_MS,
@@ -134,5 +133,364 @@ async function settleAfterAction(
   // observation still has to report; once the loop returns, its own window replaces it, including on
   // a failure while the outcome is read.
   const timeoutMs = params.timeoutMs ?? DEFAULT_STABLE_TIMEOUT_MS;
-      broadTransitionBaselineNodes: params.baseline.nodes,
+  const base: SettleObservation = {
+    settled: false,
+    waitedMs: 0,
+    captures: 0,
+    quietMs: params.quietMs ?? DEFAULT_STABLE_QUIET_MS,
+    timeoutMs,
+  };
+  let outcome: StableCaptureLoopResult | undefined;
+  try {
+    const { createPostActionResponseCollector } = await import('./post-action-response.ts');
+    const collector = createPostActionResponseCollector();
+    base.response = collector.response;
+    outcome = await runStableCaptureLoop(runtime, options, {
+      ...(params.quietMs === undefined ? {} : { quietMs: params.quietMs }),
+      timeoutMs,
+      resetBudgetOnPrivateAxRecovery: true,
+      broadTransitionBaseline: params.baseline,
       onCapture: (capture, capturedAt) => collector.capture(capture.snapshot.nodes, capturedAt),
+    });
+    if (outcome.failure) return settleUnavailable(base, outcome, outcome.failure.error);
+    return await readSettledOutcome(runtime, options, params, base, outcome);
+  } catch (error) {
+    return settleUnavailable(base, outcome, error);
+  }
+}
+
+/** Turns a finished stable-capture loop into the settled observation payload. */
+async function readSettledOutcome(
+  runtime: AgentDeviceRuntime,
+  options: CommandContext,
+  params: { baseline: SurfaceScopedNodes; actionPoint?: Point },
+  base: SettleObservation,
+  outcome: Awaited<ReturnType<typeof runStableCaptureLoop>>,
+): Promise<SettleOutcome> {
+  const observation: SettleObservation = {
+    ...base,
+    settled: outcome.settled,
+    waitedMs: outcome.waitedMs,
+    captures: outcome.captures,
+    // The window the loop actually ran. For an unrequested settle that is the one its own captures
+    // priced, which `base` cannot know because it is built before the first read.
+    quietMs: outcome.quietMs,
+  };
+  if (!outcome.lastCapture) {
+    return {
+      observation: {
+        ...observation,
+        hint: outcome.stalled ? SETTLE_CAPTURE_STALLED_HINT : NEVER_SETTLED_HINT,
+      },
+    };
+  }
+  const { stored, session } = await storeSettledSnapshot(runtime, options, outcome.lastCapture);
+  const settledCapture = surfaceScopedNodes(outcome.lastCapture.snapshot);
+  const settledNodes = settledCapture.nodes;
+  // A settled capture of an in-place system surface (a web sign-in sheet) and a pre-action capture
+  // of the app describe different surfaces (#2438). The diff below would then be a whole-surface
+  // replacement presented as change within one surface, refs included, so it is refused and the
+  // transition is disclosed instead.
+  const surfaceChange = resolvePostActionSurfaceChange(params.baseline, settledCapture);
+  return {
+    observation: {
+      ...observation,
+      ...(surfaceChange ? { surfaceChange } : {}),
+      // The diff (with its added-line refs) is only attached when the settled
+      // tree actually became the stored session snapshot: those refs must be
+      // valid against the tree the next @ref command resolves on. The daemon
+      // treats `diff` presence as "this response issues refs". Unsettled
+      // captures are intentionally diff-less: they are not a stable
+      // observation, so surfacing refs would invite agents to act on
+      // advisory state.
+      ...(outcome.settled && stored && !surfaceChange
+        ? buildSettleDiffAndTail(
+            params.baseline.nodes,
+            settledNodes,
+            params.actionPoint,
+            session?.appBundleId,
+          )
+        : {}),
+      ...resolveSettleHint(outcome, stored, settledNodes.length, surfaceChange),
+    },
+    settledCapture,
+  };
+}
+
+/**
+ * `--settle --verify` composition: the settle loop's final capture doubles as
+ * the verify evidence source, so the pair costs zero extra captures. Without a
+ * final capture there is no evidence — best-effort, like verify itself.
+ */
+export function settleEvidence(
+  settledCapture: SurfaceScopedNodes | undefined,
+  baseline: SurfaceScopedNodes | undefined,
+): InteractionEvidence | undefined {
+  if (!settledCapture) return undefined;
+  return summarizePostActionEvidence(settledCapture, baseline);
+}
+
+async function resolveSettleBaseline(
+  runtime: AgentDeviceRuntime,
+  options: CommandContext,
+  resolved: ResolvedInteractionTarget,
+): Promise<SurfaceScopedNodes> {
+  const session = await runtime.sessions.get(options.session ?? 'default');
+  // A ref is authorized against the stored ref frame. Keep that visible presentation as the
+  // transition baseline: a best-effort evidence recapture can recover through private AX and see
+  // covered background controls that were not actionable when the ref was issued.
+  // Resolved-target evidence is best-effort at the contracts boundary. The session still owns the
+  // authoritative ref frame, so reuse it rather than silently turning a missing optional field
+  // into an empty transition/diff baseline. Fall back to the latest observation for point targets
+  // and pre-frame sessions.
+  return (
+    authorizedRefBaseline(resolved, session) ??
+    nonEmptyBaseline(resolved.preAction) ??
+    sessionBaseline(session)
+  );
+}
+
+function authorizedRefBaseline(
+  resolved: ResolvedInteractionTarget,
+  session: CommandSessionRecord | undefined,
+): SurfaceScopedNodes | undefined {
+  if (resolved.kind !== 'ref') return undefined;
+  return nonEmptyBaseline(surfaceScopedNodes(session?.refFrameSnapshot));
+}
+
+/**
+ * The latest stored tree, for a target no capture resolved. The diff can use its nodes, but its
+ * presented-surface fact may predate a side effect this layer cannot see, and an `absent` read
+ * taken before a sheet was presented must not rule out the confirmation owed to that sheet's
+ * dismissal (#3565).
+ */
+function sessionBaseline(session: CommandSessionRecord | undefined): SurfaceScopedNodes {
+  const { presentedSurface: _unverified, ...baseline } = surfaceScopedNodes(
+    session?.refFrameSnapshot ?? session?.snapshot,
+  );
+  return baseline;
+}
+
+function nonEmptyBaseline(
+  baseline: SurfaceScopedNodes | undefined,
+): SurfaceScopedNodes | undefined {
+  return baseline?.nodes.length ? baseline : undefined;
+}
+
+function buildSettleDiff(
+  baselineNodes: SnapshotNode[],
+  settledNodes: SnapshotNode[],
+  appBundleId: string | undefined,
+): NonNullable<SettleObservation['diff']> {
+  // Flattened compare, like `diff -i`: both sides are interactive-flavored
+  // captures and depth jitter across captures should not read as change. When
+  // the baseline came from a richer stored tree (ref targets reuse the session
+  // snapshot), extra baseline-only lines surface as removals — advisory noise,
+  // the same baseline caveat --verify's changedFromBefore already accepts.
+  const diff = buildSnapshotDiff(
+    withoutSettleChrome(baselineNodes, appBundleId),
+    withoutSettleChrome(settledNodes, appBundleId),
+    { flatten: true, withRefs: true },
+  );
+  const changed = diff.lines.filter((line) => line.kind !== 'unchanged');
+  const lines = capSettleDiffLines(changed).map((line) => ({
+    kind: line.kind as 'added' | 'removed',
+    text: line.text,
+    ...(line.ref ? { ref: line.ref } : {}),
+  }));
+  return {
+    summary: diff.summary,
+    lines,
+    ...(changed.length > lines.length ? { truncated: true as const } : {}),
+  };
+}
+
+function buildSettleDiffAndTail(
+  baselineNodes: SnapshotNode[],
+  settledNodes: SnapshotNode[],
+  actionPoint: Point | undefined,
+  appBundleId: string | undefined,
+): Pick<SettleObservation, 'diff' | 'tail' | 'tailTruncated'> {
+  const diff = buildSettleDiff(baselineNodes, settledNodes, appBundleId);
+  return { diff, ...buildSettleTail(diff, settledNodes, actionPoint, appBundleId) };
+}
+
+/**
+ * Unchanged interactive refs tail: attached ONLY when the settled diff carries
+ * zero MEANINGFUL added-line refs (a modal-dismiss/toast-only diff shows
+ * removals but nothing added, so the next actionable target is otherwise
+ * invisible). "Meaningful" excludes two ref classes that are provably not a
+ * NEW target (live-verified on the July 2026 React Navigation benchmark flow):
+ *
+ * - Keyboard chrome refs: a fill that summons the keyboard adds the keyboard
+ *   container line, but that is not a next target the caller asked for.
+ * - Self-echo refs: added lines whose settled node's rect contains the action
+ *   point are re-descriptions of the element the caller JUST acted on (a
+ *   filled field re-labels itself with its new value, and its ancestor
+ *   wrappers inherit that label), not something new to press next.
+ *
+ * Refs already present on the diff's added lines (meaningful or not) are also
+ * excluded from the tail itself so it never repeats what the diff already
+ * handed the caller.
+ */
+function buildSettleTail(
+  diff: NonNullable<SettleObservation['diff']>,
+  settledNodes: SnapshotNode[],
+  actionPoint: Point | undefined,
+  appBundleId: string | undefined,
+): Pick<SettleObservation, 'tail' | 'tailTruncated'> {
+  const addedRefs = new Set(
+    diff.lines.filter((line) => line.kind === 'added' && line.ref).map((line) => line.ref),
+  );
+  const chromeRefs = collectSettleChromeRefs(settledNodes, appBundleId);
+  const byRef = new Map(settledNodes.filter((node) => node.ref).map((node) => [node.ref, node]));
+  const hasMeaningfulAddedRef = [...addedRefs].some(
+    (ref) =>
+      ref !== undefined && !chromeRefs.has(ref) && !isSelfEchoNode(byRef.get(ref), actionPoint),
+  );
+  if (hasMeaningfulAddedRef) return {};
+  return buildSettleTailEntries(settledNodes, addedRefs, appBundleId);
+}
+
+function isSelfEchoNode(node: SnapshotNode | undefined, actionPoint: Point | undefined): boolean {
+  if (!node?.rect || !actionPoint) return false;
+  const { x, y, width, height } = node.rect;
+  return (
+    actionPoint.x >= x &&
+    actionPoint.x <= x + width &&
+    actionPoint.y >= y &&
+    actionPoint.y <= y + height
+  );
+}
+
+// Structural container roles that survive an interactive-only capture (as a
+// lone root or alongside real content) but are never a next actionable
+// target: application/window chrome, not a control. `snapshot -i` itself
+// still lists these lines, but the tail exists specifically to name pressable
+// targets, so it drops them rather than spend budget on chrome.
+const STRUCTURAL_TAIL_ROLES = new Set(['application', 'window']);
+
+/**
+ * The filtering/cap step behind `buildSettleTail`, split out so the dedup
+ * rule (excludeRefs) is unit-testable independent of the trigger condition
+ * above.
+ *
+ * Inclusion bar matches what `snapshot -i` itself would show for the same
+ * interactive-only capture: presence in `settledNodes` (already filtered to
+ * interactive content upstream) IS the interactivity bar, so this does NOT
+ * additionally require `hittable === true`. A real dismiss-animation capture
+ * routinely reports transient buttons as `hittable: false`/`undefined` right
+ * after the dismissing element leaves — requiring `hittable === true` here
+ * was stricter than `snapshot -i`'s own bar and silently dropped exactly the
+ * buttons the tail exists to surface (#1167 post-merge benchmark). Structural
+ * application/window chrome, any keyboard container/chrome subtree (iOS), and
+ * Android IME/persistent-system chrome (#1198) are excluded on top of that
+ * bar: never a next actionable target either way.
+ */
+export function buildSettleTailEntries(
+  settledNodes: SnapshotNode[],
+  excludeRefs: ReadonlySet<string | undefined>,
+  appBundleId?: string,
+): Pick<SettleObservation, 'tail' | 'tailTruncated'> {
+  const chromeRefs = collectSettleChromeRefs(settledNodes, appBundleId);
+  const candidates = settledNodes
+    .filter(
+      (node) =>
+        node.interactionBlocked !== 'covered' &&
+        !STRUCTURAL_TAIL_ROLES.has(formatRole(node.type ?? 'Element')),
+    )
+    // The tail is a list of next actionable targets, so only addressable nodes enter it.
+    .filter(hasSnapshotRef)
+    .filter((node) => !excludeRefs.has(node.ref) && !chromeRefs.has(node.ref));
+  if (candidates.length === 0) return {};
+  const tail: SettleTailEntry[] = candidates.slice(0, MAX_SETTLE_TAIL_ENTRIES).map((node) => {
+    const role = formatRole(node.type ?? 'Element');
+    const label = displayLabel(node, role);
+    return { ref: node.ref, role, ...(label ? { label } : {}) };
+  });
+  return {
+    tail,
+    ...(candidates.length > tail.length ? { tailTruncated: true as const } : {}),
+  };
+}
+
+/**
+ * Truncation policy: added lines win. They carry the settled tree's fresh
+ * refs — the actionable half of the diff — while removals only describe what
+ * left the screen (the summary still counts them). Relative order within each
+ * kind is preserved; removals fill whatever budget the additions leave.
+ */
+function capSettleDiffLines<T extends { kind: string }>(changed: T[]): T[] {
+  if (changed.length <= MAX_SETTLE_DIFF_LINES) return changed;
+  const added = changed.filter((line) => line.kind === 'added');
+  const keptAdded = new Set(added.slice(0, MAX_SETTLE_DIFF_LINES));
+  let removedBudget = MAX_SETTLE_DIFF_LINES - keptAdded.size;
+  const kept: T[] = [];
+  for (const line of changed) {
+    if (keptAdded.has(line)) {
+      kept.push(line);
+    } else if (line.kind === 'removed' && removedBudget > 0) {
+      kept.push(line);
+      removedBudget -= 1;
+    }
+  }
+  return kept;
+}
+
+/**
+ * The settled observation's hint. A surface change (#2438) is stated alongside whatever the loop
+ * itself reports rather than in place of it: the transition explains the missing diff, and the
+ * loop's own verdict (stalled, never settled, sparse, tiny tree) still explains the capture.
+ */
+function resolveSettleHint(
+  outcome: { settled: boolean; stalled: boolean },
+  stored: boolean,
+  settledNodeCount: number,
+  surfaceChange: PostActionSurfaceChange | undefined,
+): { hint?: string } {
+  const loopHint = resolveSettleLoopHint(outcome, stored, settledNodeCount).hint;
+  if (!surfaceChange) return loopHint === undefined ? {} : { hint: loopHint };
+  const surfaceHint = crossSurfaceSettleHint(surfaceChange);
+  return { hint: loopHint === undefined ? surfaceHint : `${surfaceHint} ${loopHint}` };
+}
+
+function resolveSettleLoopHint(
+  outcome: { settled: boolean; stalled: boolean },
+  stored: boolean,
+  settledNodeCount: number,
+): { hint?: string } {
+  if (outcome.stalled) return { hint: SETTLE_CAPTURE_STALLED_HINT };
+  if (!outcome.settled) return { hint: NEVER_SETTLED_HINT };
+  if (!stored) {
+    return {
+      hint: 'Settled on a sparse, unreadable tree — the diff is omitted and its refs/selectors are invalid. Use screenshot as visual truth and coordinate taps; retry snapshot after navigating.',
+    };
+  }
+  // Same weak-readiness signal wait stable reports: a settled-but-tiny tree
+  // usually means a splash/loading surface, not real content.
+  if (settledNodeCount < TINY_STABLE_TREE_NODE_COUNT) return { hint: TINY_STABLE_TREE_HINT };
+  return {};
+}
+
+// The settle loop itself captures with updateSession: false (a capture that
+// later stalls must not race a session write past the response). The FINAL
+// capture is stored so follow-up snapshots/selectors see the latest surface.
+// Only settled captures issue a diff/ref payload; an unsettled stored capture
+// replaces the observation without issuing refs — it does NOT touch the ref
+// frame. Read staleness is frame-derived: the frame expires at a side-effect
+// seam (ADR 0014), not because a fresh observation was stored here.
+// Sparse-quality captures are not stored (mirroring captureSelectorSnapshot)
+// and therefore issue no refs. The fetched session is returned alongside
+// `stored` so the caller can read `appBundleId` for settle-chrome scoping
+// (#1198) without a second `sessions.get` round trip.
+async function storeSettledSnapshot(
+  runtime: AgentDeviceRuntime,
+  options: CommandContext,
+  capture: CapturedSnapshot,
+): Promise<{ stored: boolean; session?: CommandSessionRecord }> {
+  if (isSparseSnapshotQualityVerdict(capture.snapshot.snapshotQuality)) return { stored: false };
+  const session = await runtime.sessions.get(options.session ?? 'default');
+  if (!session) return { stored: false };
+  await runtime.sessions.set({ ...session, snapshot: capture.snapshot });
+  return { stored: true, session };
+}

@@ -31,7 +31,7 @@ export async function readTextForNode(params: {
   const { device, node, flags, appBundleId, traceOutPath, surface, contextFromFlags } = params;
   const fallbackText = extractReadableText(node);
   const readTextAtPoint = params.readTextAtPoint;
-  if (!readTextAtPoint) return fallbackText;
+  if (flags?.observeOnly === true || !readTextAtPoint) return fallbackText;
   const center = resolveRectCenter(node.rect);
   if (!center) {
     return fallbackText;

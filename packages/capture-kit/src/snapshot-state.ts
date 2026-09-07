@@ -17,6 +17,7 @@ import {
   snapshotRefMinting,
   type IosTargetActivation,
   type PresentedSurface,
+  type ObserveOnlyEvidence,
   type RawSnapshotNode,
   type SnapshotBackend,
   type SnapshotCaptureProvenance,
@@ -67,6 +68,8 @@ export function buildSnapshotState(
     systemSurface?: IosSystemSurfaceProvenance;
     /** Foreground repair this capture's own command performed (#2682). */
     targetActivation?: IosTargetActivation;
+    /** Non-activating proof an observe-only capture carried; never present beside a repair. */
+    observation?: ObserveOnlyEvidence;
     /** The keyboard band the producer measured, carried to the state the tap guards read (#2660). */
     keyboard?: SnapshotKeyboardBandFact;
     /** The box the producer measured the rects in (#3182), carried to the response that reads this state. */
@@ -121,6 +124,7 @@ export function buildSnapshotState(
     ...(data.systemSurface ? { iosSystemSurfaceBundleId: data.systemSurface.bundleId } : {}),
     ...(data.presentedSurface ? { presentedSurface: data.presentedSurface } : {}),
     ...(data.targetActivation ? { targetActivation: data.targetActivation } : {}),
+    ...(data.observation ? { observation: data.observation } : {}),
     ...(data.keyboard ? { keyboard: data.keyboard } : {}),
     ...(data.viewport ? { viewport: data.viewport } : {}),
     presentationKey: buildSnapshotPresentationKey(presentation),

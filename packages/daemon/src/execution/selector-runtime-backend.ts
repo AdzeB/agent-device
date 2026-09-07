@@ -1,5 +1,6 @@
 import type { DaemonResponse } from '@agent-device/kernel/contracts';
 import type { DaemonPlatformServices } from '../core/platform-services.ts';
+import { observeOnlySessionResponse } from './observe-only-policy.ts';
 import type {
   AgentDeviceBackend,
   BackendCommandContext,
@@ -115,6 +116,8 @@ async function resolveSelectorRuntimeDevice(
   params.captureProof ??= {};
   const ref = params.sessionStore.lookup(params.sessionName);
   const session = ref?.session;
+  const invalidObservation = observeOnlySessionResponse(params.req, session);
+  if (invalidObservation) return { ok: false, response: invalidObservation };
   // Ordered before the required-session return: a named missing session answers with its own
   // typed reason. Only that branch pays the function-scoped import (ADR-0019 loading shape).
   if (!session) {
@@ -154,6 +157,7 @@ export async function createBoundSelectorRuntime(
   if (!resolved.ok) return resolved;
   const bound = await resolveBoundSelectorCapture({
     command: options.command,
+    observeOnly: params.req.flags?.observeOnly,
     device: resolved.device,
     session: resolved.session,
     inspectFacts: params.inspectFacts,
@@ -184,7 +188,8 @@ function createSelectorBackend(params: SelectorRuntimeDeviceParams): AgentDevice
     ((flags, appBundleId, traceLogPath) =>
       contextFromFlags(logPath ?? '', flags, appBundleId, traceLogPath));
   const readTextAtPoint = params.bound?.readText;
-  const boundFindText = params.bound?.findText;
+  // Observe-only answers from the fresh non-activating capture; the native text probe carries no proof.
+  const boundFindText = req.flags?.observeOnly === true ? undefined : params.bound?.findText;
   // The native reading must run in the SAME runner context as the capture it short-circuits:
   // one requestId so diagnostics land in one request file, the session's log/trace paths, and
   // the XCUITest override + runner-lease context the caller configured. Built through the one
@@ -223,6 +228,7 @@ function createSelectorBackend(params: SelectorRuntimeDeviceParams): AgentDevice
         const includeRects = options?.includeRects === true;
         const snapshotScope = options?.scope ?? req.flags?.snapshotScope;
         const needsFreshSnapshot =
+          req.flags?.observeOnly === true ||
           req.command === 'wait' ||
           req.command === 'find' ||
           isAbsentPredicateRequest(req) ||
