@@ -3,6 +3,7 @@ import {
   createOwnerScopedDeviceClaimReconciler,
   type ClaimRecoveryGatewayFactory,
 } from '@agent-device/daemon-contracts/device-claim-recovery';
+import { observeOnlyCommandResponse } from './observe-only-policy.ts';
 import { withResolveTargetDeviceCacheScope } from '@agent-device/device-selection/dispatch-resolve';
 import { withDeviceInventoryContext } from '@agent-device/device-selection/device-inventory-context';
 import type { LeaseLifecycleProvider, ProviderAppCatalog } from '@agent-device/contracts/device';
@@ -252,6 +253,8 @@ export function createRequestHandler(deps: RequestRouterDeps): DaemonInvokeFn {
       return unauthorizedResponse();
     }
     registerParameterizedFillDiagnosticValue(req);
+    const invalidObservationMode = observeOnlyCommandResponse(req);
+    if (invalidObservationMode) return invalidObservationMode;
     const invalidRecordingFlags = recordingFlagsResponse(req);
     if (invalidRecordingFlags) return invalidRecordingFlags;
     const invalidCustomActionFlags = customActionFlagsResponse(req);

@@ -18,6 +18,7 @@ import {
   type SessionSurface,
 } from '@agent-device/contracts/session';
 import { isMacOs, type DeviceInfo } from '@agent-device/kernel/device';
+import { AppError } from '@agent-device/kernel/errors';
 import { hasSimulatorBridge } from './snapshot-observability.ts';
 import type { AppleSnapshotRoute } from './snapshot-route.ts';
 
@@ -52,7 +53,8 @@ export function bindAppleSnapshotRuntime(
         captureSnapshotSignal(request.signal, input),
       );
     }
-    if (!route) return await appSnapshot.captureSnapshot(input);
+    // Observe-only proof comes from the runner's non-activating route, never an alternate source.
+    if (!route || input.options?.observeOnly) return await appSnapshot.captureSnapshot(input);
     const signal = captureSnapshotSignal(request.signal, input);
     return await route.capture(
       request.device,

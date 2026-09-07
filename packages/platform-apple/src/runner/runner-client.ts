@@ -67,6 +67,13 @@ export async function runAppleRunnerCommand(
   assertRunnerRequestActive(options.requestId);
   const runnerCommand = withRunnerCommandId(command);
   const provider = resolveAppleRunnerRuntime(device, options);
+  if (runnerCommand.observeOnly) {
+    if (provider !== LOCAL_APPLE_RUNNER_RUNTIME) {
+      const { observationUnavailable } = await import('./runner-observation.ts');
+      throw observationUnavailable('unsupported_provider');
+    }
+    return provider.runCommand(device, runnerCommand, options);
+  }
   if (!isReadOnlyRunnerCommand(runnerCommand)) {
     return provider.runCommand(device, runnerCommand, options);
   }

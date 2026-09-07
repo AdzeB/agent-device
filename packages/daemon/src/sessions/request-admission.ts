@@ -22,6 +22,7 @@ import type { SessionState } from '../core/session-state.ts';
 import { assertMacOsAppLeaseAdmitsRequest } from '../resources/macos-app-lease.ts';
 import { assertDaemonPolicyAdmitsLease } from '../core/daemon-policy.ts';
 import type { DaemonPolicy } from '@agent-device/daemon-contracts/daemon-policy-file';
+import { requireObserveOnlyLease } from './observe-only-policy.ts';
 
 export function scopeRequestSession(req: DaemonRequest): DaemonRequest {
   const isolation = resolveSessionIsolationMode(
@@ -117,6 +118,11 @@ function admitLease(
 ): DeviceLease {
   assertRequestSessionLeaseMatches(resolveLeaseScope(req), session?.lease);
   const leaseScope = resolveRequestOrSessionLeaseScope(req, session);
+  if (req.flags?.observeOnly) {
+    return requireObserveOnlyLease(
+      leaseRegistry.readActiveLease(leaseScopeToHeartbeatRequest(leaseScope)),
+    );
+  }
   leaseRegistry.assertLeaseAdmission(leaseScopeToHeartbeatRequest(leaseScope));
   // Admission renews for the window the lease already carries, or the window this request named.
   // Naming a proxy-specific default here used to shorten every lease allocated above it — a client

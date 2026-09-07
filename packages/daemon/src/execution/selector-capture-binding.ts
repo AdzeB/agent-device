@@ -53,6 +53,7 @@ export type ResolvedSelectorCapture =
 export async function resolveBoundSelectorCapture(
   params: Readonly<{
     command: SelectorCaptureCommand;
+    observeOnly?: boolean;
     device: SessionState['device'];
     session: SessionState | undefined;
     inspectFacts?: InspectDeviceRuntimeFacts;

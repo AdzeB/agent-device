@@ -18,6 +18,7 @@ import { readGesturePayload } from '@agent-device/contracts/gesture-input';
 import { GESTURE_FLAGS_BY_KIND } from '@agent-device/contracts/gesture-normalization';
 import type { CommandResultMap } from '@agent-device/command-registry/command-result';
 import {
+  OBSERVATION_FLAGS,
   REPEATED_TOUCH_FLAGS,
   SELECTOR_SNAPSHOT_FLAGS,
 } from '@agent-device/command-registry/flag-groups';
@@ -348,19 +349,26 @@ const interactionCliSchemas = {
     usageFlags: [],
     positionalArgs: ['subcommand', 'target'],
     allowsExtraPositionals: true,
-    allowedFlags: [...SELECTOR_SNAPSHOT_FLAGS, 'record'],
+    allowedFlags: [...SELECTOR_SNAPSHOT_FLAGS, ...OBSERVATION_FLAGS, 'record'],
   },
   find: {
     usageOverride: 'find <locator|text> <action> [value] [--first|--last]',
     usageFlags: [],
     positionalArgs: ['query', 'action', 'value?'],
     allowsExtraPositionals: true,
-    allowedFlags: ['snapshotDepth', 'snapshotRaw', 'findFirst', 'findLast', 'record'],
+    allowedFlags: [
+      'snapshotDepth',
+      'snapshotRaw',
+      'findFirst',
+      'findLast',
+      'record',
+      ...OBSERVATION_FLAGS,
+    ],
   },
   is: {
     positionalArgs: ['predicate', 'selector', 'value?'],
     allowsExtraPositionals: true,
-    allowedFlags: [...SELECTOR_SNAPSHOT_FLAGS, 'record'],
+    allowedFlags: [...SELECTOR_SNAPSHOT_FLAGS, ...OBSERVATION_FLAGS, 'record'],
   },
   click: {
     usageOverride: 'click <x y|@ref|selector>',
@@ -722,6 +730,7 @@ function toGetOptions(input: GetInput): GetOptions {
     ...toClientElementTarget(input.target),
     ...toSelectorSnapshotOptions(input),
     format: input.format,
+    observeOnly: input.observeOnly,
     // `--record` is scoped (ADR 0012 decision 6 amendment), so it does NOT ride
     // the common seam and each observation-capable projection forwards it
     // explicitly. `is`/`find`/`snapshot` pass their whole input through, so

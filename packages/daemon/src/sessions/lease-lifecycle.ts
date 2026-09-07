@@ -56,11 +56,13 @@ export async function releaseExpiredProviderLease(
 
 export async function cleanupExpiredLeasedSession(params: {
   env: HostEnvironment['env'];
+  observeOnly?: boolean;
   sessionName: string;
   sessionStore: SessionStore;
   leaseRegistry: LeaseRegistry;
   teardownSession: SessionTeardown;
 }): Promise<boolean> {
+  if (params.observeOnly) return false;
   const ref = params.sessionStore.lookup(params.sessionName);
   const lease = ref?.session.lease;
   if (!ref || !lease) return false;

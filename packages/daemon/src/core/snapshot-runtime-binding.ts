@@ -1,5 +1,6 @@
 import type { DaemonResponse } from '@agent-device/kernel/contracts';
 import type { DaemonPlatformServices } from './platform-services.ts';
+import { observeOnlySessionResponse, observeOnlyRuntimeFacts } from './observe-only-policy.ts';
 import type { RuntimeOperationFact } from '@agent-device/contracts/platform-runtime';
 import type { CreateDaemonCommandSurface } from '@agent-device/contracts/daemon-command-surface';
 import {
@@ -116,10 +117,15 @@ export async function admitAndBindSnapshotCapture(
     platformServices: DaemonPlatformServices;
     bindDevice?: BindDeviceRuntime;
     readiness?: boolean;
+    observeOnly?: boolean;
   }>,
 ): Promise<AdmittedSnapshotCapture> {
   const { command, device, session, plan } = params;
-  const admission = await admitRuntimePlan({ device, plan, inspectFacts: params.inspectFacts });
+  const admission = await admitRuntimePlan({
+    device,
+    plan,
+    inspectFacts: observeOnlyRuntimeFacts(params.observeOnly, params.inspectFacts),
+  });
   if (!admission.admitted) {
     return {
       ok: false,
@@ -136,7 +142,7 @@ export async function admitAndBindSnapshotCapture(
   const bound = await bindSnapshotCaptureRuntime(
     params.bindDevice,
     admission,
-    params.readiness,
+    params.observeOnly ? false : params.readiness,
     params.platformServices,
   );
   return Object.freeze({
@@ -169,26 +175,20 @@ export async function resolveBoundSnapshotCaptureRuntime(
   command: 'snapshot' | 'diff',
 ): Promise<ResolvedSnapshotCaptureRuntime> {
   const { req, sessionName, sessionStore } = params;
+  const invalidObservation = observeOnlySessionResponse(req, sessionStore.get(sessionName));
+  if (invalidObservation) return { ok: false, response: invalidObservation };
   const { ref, session, device } = await resolveSessionDevice(
     sessionStore,
     sessionName,
     req,
     params.sessionRef,
   );
-  if (
-    req.flags?.snapshotObserveOnly === true &&
-    (command !== 'snapshot' || !isHandheldAppleDevice(device) || !session?.appBundleId)
-  ) {
-    throw new AppError(
-      'UNSUPPORTED_OPERATION',
-      'observe-only snapshot requires an iOS or iPadOS app session.',
-    );
-  }
   const resolvedScope = resolveSnapshotScope(req.flags?.snapshotScope, session);
   if (!resolvedScope.ok) return { ok: false, response: resolvedScope };
 
   const bound = await admitAndBindSnapshotCapture({
     command,
+    observeOnly: req.flags?.observeOnly,
     device,
     session,
     plan: resolveSnapshotRuntimePlan({

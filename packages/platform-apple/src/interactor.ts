@@ -262,9 +262,21 @@ async function captureAppleSnapshot(
   env: Readonly<EnvMap>,
 ) {
   if (helper) {
+    if (options?.observeOnly) throw observeOnlyUnsupportedSurface();
     return await captureMacOsSurfaceSnapshot({ ...options, surface: helper }, options?.signal, env);
   }
   return await captureAppleRunnerSnapshot(device, options, runnerOpts);
+}
+
+function observeOnlyUnsupportedSurface(): AppError {
+  return new AppError('UNSUPPORTED_OPERATION', '--observe-only requires an Apple app surface.', {
+    observation: {
+      mode: 'observe-only',
+      foregroundVerified: false,
+      activationPerformed: false,
+      reason: 'unsupported_surface',
+    },
+  });
 }
 
 async function captureAppleRunnerSnapshot(
@@ -295,6 +307,7 @@ async function captureAppleRunnerSnapshot(
     backend: 'xctest' as const,
     producer: 'apple-runner' as const,
     ...(presentation.viewport ? { viewport: presentation.viewport } : {}),
+    ...(result.observation ? { observation: result.observation } : {}),
     ...(result.quality ? { quality: result.quality } : {}),
     ...(result.qualityNotes ? { qualityNotes: result.qualityNotes } : {}),
     ...(result.systemSurface ? { systemSurface: result.systemSurface } : {}),

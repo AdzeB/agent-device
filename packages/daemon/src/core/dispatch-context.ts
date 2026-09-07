@@ -35,6 +35,7 @@ export const DISPATCH_CONTEXT_FLAG_KEYS = [
   'iosXctestrunFile',
   'iosXctestDerivedDataPath',
   'iosXctestEnvDir',
+  'observeOnly',
   'snapshotInteractiveOnly',
   'snapshotPreferredBackend',
   'snapshotDepth',

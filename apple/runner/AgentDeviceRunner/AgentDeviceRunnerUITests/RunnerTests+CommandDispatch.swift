@@ -8,7 +8,10 @@ extension RunnerTests {
     commandJournal.start(command: command)
     pendingTargetActivation = nil
     do {
-      let response = try executeDispatched(command: command)
+      let response = try completeObservation(
+        command: command,
+        response: executeDispatched(command: command)
+      )
       commandJournal.finish(command: command, response: response)
       guard let fact = pendingTargetActivation else { return response }
       // Stamped after `finish`, like the uptime anchor: a journal-replayed result carries no
@@ -44,7 +47,10 @@ extension RunnerTests {
     // fresher send-time stamp on every ok response; kept so direct callers still get a value.
     Response(
       ok: true,
-      data: DataPayload(currentUptimeMs: currentUptimeMs())
+      data: DataPayload(
+        observationCapabilities: [Self.observationCapability],
+        currentUptimeMs: currentUptimeMs()
+      )
     )
   }
 
@@ -495,25 +501,8 @@ extension RunnerTests {
     command: Command,
     routeToSpringboard: Bool = false
   ) -> ActiveCommandPreparation {
-    if command.command == .snapshot, command.observeOnly == true {
-#if os(iOS)
-      guard command.appBundleId?.trimmedNonEmpty != nil else {
-        return .response(observeOnlyUnavailableResponse())
-      }
-      let observedApp = resolveAppWithoutActivation(command: command)
-      let reportedState = observedApp.state
-      guard reportedState == .runningForeground else {
-        return .response(observeOnlyUnavailableResponse())
-      }
-      return .context(ActiveCommandContext(
-        app: observedApp,
-        observation: SnapshotObservationPayload(appState: Self.applicationStateName(reportedState))
-      ))
-#else
-      return .response(Response(ok: false, error: ErrorPayload(
-        code: "UNSUPPORTED_OPERATION", message: "observe-only snapshot is supported on iOS and iPadOS only"
-      )))
-#endif
+    if command.observeOnly == true {
+      return prepareObservationContext(command: command)
     }
     if routeToSpringboard {
       return .context(ActiveCommandContext(app: springboard))

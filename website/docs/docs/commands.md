@@ -401,6 +401,8 @@ agent-device get attrs @e1
 - `--actions` lists custom accessibility actions an element merged away (iOS simulator only, rejected with `--raw`); see [Snapshots](/docs/snapshots).
 - `diff snapshot` (alias `snapshot --diff`) compares with the previous session baseline, then updates it.
 
+- Operators can use `--observe-only` to prohibit launch, activation, focus changes, and recovery during evidence acquisition. It requires an existing local Apple app session with a ready runner; other backends fail. It defaults to `false`; an unprepared target or a read requiring those changes fails instead of changing the target to obtain evidence. The same option applies to selector-based `get text/attrs`, `is`, and `find` with an explicit `exists`, `list`, `get text`, `get attrs`, or `wait` action. `get text @ref` and `get attrs @ref` are unsupported with this flag; use a selector instead. Top-level `wait`, `diff snapshot`, and `snapshot --diff` do not accept it. It is excluded from model-facing MCP/AI SDK inputs. See [Snapshots](/docs/snapshots#observation-without-changing-the-target) for the contract.
+
 ## Wait and alerts
 
 ```bash

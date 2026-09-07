@@ -105,6 +105,7 @@ export type RunnerCommand = {
   commandId?: string;
   statusCommandId?: string;
   appBundleId?: string;
+  observeOnly?: boolean;
   text?: string;
   selectorKey?: ElementSelectorKey;
   selectorValue?: string;
@@ -283,11 +284,13 @@ export const TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE = 'TEXT_INPUT_PROBE_UNAVAI
  * the scroll keyboard refusal for a surface the runner declined to swipe under the keys, and the
  * retriable `APP_NOT_RUNNING` for a read the runner refused rather than launch the session app.
  */
+export const OBSERVATION_UNAVAILABLE_RUNNER_CODE = 'OBSERVATION_UNAVAILABLE';
 const DIAGNOSTIC_ONLY_RUNNER_ERROR_CODES: ReadonlyMap<string, { retriable?: true }> = new Map([
   [RUNNER_BUSY_RUNNER_CODE, { retriable: true }],
   [MAIN_THREAD_TIMEOUT_RUNNER_CODE, {}],
   [APP_NOT_RUNNING_RUNNER_CODE, { retriable: true }],
   [ALERT_NOT_FOUND_RUNNER_CODE, {}],
+  [OBSERVATION_UNAVAILABLE_RUNNER_CODE, {}],
   [SCROLL_KEYBOARD_OCCLUDES_SURFACE_RUNNER_CODE, {}],
   ...[...RUNNER_SCREEN_CAPTURE_REFUSAL_RUNNER_CODES].map((code) => [code, {}] as const),
 ]);
@@ -325,6 +328,7 @@ const RUNNER_ERROR_CODE_DISPATCH: ReadonlyMap<string, DispatchDisclosure> = new 
   [NO_TEXT_INPUT_AT_POINT_RUNNER_CODE, 'no'],
   [TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE, 'no'],
   [ALERT_BUTTON_NOT_FOUND_RUNNER_CODE, 'no'],
+  [OBSERVATION_UNAVAILABLE_RUNNER_CODE, 'no'],
   ...[...RUNNER_SCREEN_CAPTURE_REFUSAL_RUNNER_CODES].map((code) => [code, 'no'] as const),
 ]);
 
@@ -380,7 +384,7 @@ export function classifyRunnerReportedError(
 
 export type RunnerResponsePayload = {
   ok?: unknown;
-  error?: { code?: unknown; message?: unknown; hint?: unknown };
+  error?: { code?: unknown; message?: unknown; hint?: unknown; observation?: unknown };
   data?: unknown;
 };
 
@@ -434,6 +438,7 @@ export function buildRunnerResponseError(
   return new AppError(classification.code, errorMessage ?? 'Runner error', {
     runner: payload,
     ...classification.details,
+    ...observationErrorDetails(payload.error?.observation),
     xcodebuild: {
       exitCode: 1,
       stdout: '',
@@ -442,6 +447,12 @@ export function buildRunnerResponseError(
     hint,
     logPath,
   });
+}
+
+/** The runner's observe-only refusal proof, preserved verbatim under `details.observation`. */
+function observationErrorDetails(value: unknown): { observation?: object } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return { observation: structuredClone(value) };
 }
 
 function readRunnerErrorCode(rawCode: unknown): string | undefined {

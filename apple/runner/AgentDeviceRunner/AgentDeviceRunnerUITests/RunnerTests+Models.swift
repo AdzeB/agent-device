@@ -218,6 +218,7 @@ struct Command: Codable {
   let commandId: String?
   let statusCommandId: String?
   let appBundleId: String?
+  var observeOnly: Bool? = nil
   let text: String?
   let selectorKey: String?
   let selectorValue: String?
@@ -433,6 +434,8 @@ struct TargetActivationFactPayload: Codable {
 }
 
 struct DataPayload: Codable {
+  var observation: ObservationEvidence? = nil
+  var observationCapabilities: [String]? = nil
   var message: String?
   var imageBase64: String?
   var text: String?
@@ -590,11 +593,13 @@ struct ErrorPayload: Codable {
   /// Runner-internal: read by `shouldRetryResponse` and never encoded, so the host's decoding of
   /// the error is unchanged.
   var retryableFailure: RetryableResponseFailure? = nil
+  var observation: ObservationEvidence? = nil
 
   private enum CodingKeys: String, CodingKey {
     case code
     case message
     case hint
+    case observation
   }
 
   static func targetAppUnavailable(bundleId: String?) -> ErrorPayload {

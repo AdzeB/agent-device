@@ -22,6 +22,7 @@ import {
   buildIosSnapshotPresentationKey,
 } from '@agent-device/capture-kit/ios-snapshot-planning';
 import { AppError } from '@agent-device/kernel/errors';
+import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
 import {
   isRecord,
   readPresentedSurfaceFact,
@@ -30,6 +31,7 @@ import {
 import { snapshotViewportSizeFrom } from '@agent-device/kernel/rect';
 import type {
   PresentedSurface,
+  ObserveOnlyEvidence,
   RawSnapshotNode,
   SnapshotKeyboardBandFact,
   SnapshotQualityVerdict,
@@ -47,6 +49,7 @@ import { TARGET_ACTIVATION_WIRE_KEY, readTargetActivationFact } from './target-a
 import { readSnapshotObservation, readSnapshotQualityNotes } from '@agent-device/contracts/capture';
 
 export type AppleRunnerSnapshotResult = Readonly<{
+  observation?: ObserveOnlyEvidence;
   nodes?: RawSnapshotNode[];
   truncated?: boolean;
   message?: string;
@@ -86,7 +89,9 @@ export function readAppleSnapshotResult(
   const qualityPayload = readQualityPayload(result.qualityPayload, systemSurface);
   const interpret = (node: RawSnapshotNode) =>
     interpretIosNode(node, { reactNativeValue: isHandheldAppleDevice(device) });
+  const observation = readObserveOnlyEvidence(result.observation);
   return {
+    ...(observation ? { observation } : {}),
     nodes: nodes?.map(interpret),
     truncated: typeof result.truncated === 'boolean' ? result.truncated : undefined,
     quality: readSnapshotQualityVerdict(result.snapshotQuality),

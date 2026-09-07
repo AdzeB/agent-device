@@ -10,6 +10,7 @@ type RoutedSnapshotOption = keyof Omit<BackendSnapshotOptions, 'includeRects' | 
  * no longer restated here.
  */
 const ROUTED_SNAPSHOT_OPTIONS = {
+  observeOnly: true,
   interactiveOnly: true,
   scope: true,
   depth: true,

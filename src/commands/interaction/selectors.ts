@@ -4,6 +4,8 @@ import type { CliFlags } from '@agent-device/contracts/command';
 import { AppError } from '@agent-device/kernel/errors';
 import {
   checkIsPredicate,
+  isReadOnlyFindAction,
+  parseFindArgs,
   normalizeFindActionToken,
   normalizeIsPositionals,
   UNSUPPORTED_FIND_ACTION_HINT,
@@ -68,6 +70,7 @@ function readFindOptionsFromPositionals(positionals: string[], flags: CliFlags):
     ...findSnapshotOptionsFromFlags(flags),
     ...selectionOptionsFromFlags(flags),
     ...observationRecordInputFromFlags(flags),
+    observeOnly: flags.observeOnly,
     first: flags.findFirst,
     last: flags.findLast,
   };
@@ -76,6 +79,12 @@ function readFindOptionsFromPositionals(positionals: string[], flags: CliFlags):
   const query = hasExplicitLocator ? positionals[1] : positionals[0];
   const actionOffset = hasExplicitLocator ? 2 : 1;
   const action = normalizeFindActionToken(positionals[actionOffset]);
+  if (flags.observeOnly === true && !isReadOnlyFindAction(parseFindArgs(positionals).action)) {
+    throw new AppError(
+      'INVALID_ARGS',
+      '--observe-only requires an explicit read-only find action: exists, list, get text, get attrs, or wait',
+    );
+  }
   if (action === undefined) return { ...base, locator, query: readRequiredQuery(query) };
   if (action === 'get') {
     const subcommand = positionals[actionOffset + 1];
@@ -129,6 +138,7 @@ function readIsOptionsFromPositionals(positionals: string[], flags: CliFlags): I
     ...selectorSnapshotOptionsFromFlags(flags),
     ...selectionOptionsFromFlags(flags),
     ...observationRecordInputFromFlags(flags),
+    observeOnly: flags.observeOnly,
   };
   const normalized = normalizeIsPositionals(positionals);
   const admitted = checkIsPredicate(normalized[0] ?? '');

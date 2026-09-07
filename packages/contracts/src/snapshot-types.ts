@@ -1,5 +1,6 @@
 import type {
   SnapshotNode,
+  ObserveOnlyEvidence,
   SnapshotState,
   SnapshotOptions,
   SnapshotQualityVerdict,
@@ -24,6 +25,7 @@ export type ScreenshotResultData = {
   warnings?: string[];
 };
 export type BackendSnapshotResult = {
+  observation?: ObserveOnlyEvidence;
   nodes?: SnapshotNode[];
   truncated?: boolean;
   backend?: string;

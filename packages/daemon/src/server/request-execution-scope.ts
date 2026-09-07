@@ -319,6 +319,7 @@ export async function createRequestExecutionScope(params: {
         try {
           await cleanupExpiredLeasedSession({
             env: params.host.env,
+            observeOnly: scopedReq.flags?.observeOnly,
             sessionName,
             sessionStore,
             leaseRegistry,

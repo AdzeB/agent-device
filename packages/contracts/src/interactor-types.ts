@@ -24,6 +24,7 @@ import type {
   Point,
   Rect,
   IosTargetActivation,
+  ObserveOnlyEvidence,
   SnapshotKeyboardBandFact,
   SnapshotOptions as BaseSnapshotOptions,
   SnapshotProvenance,
@@ -294,6 +295,8 @@ export type SnapshotResult = Omit<BackendSnapshotResult, 'backend' | 'nodes'> & 
    * something else held it and an earlier observation described that instead (#2682).
    */
   targetActivation?: IosTargetActivation;
+  /** Non-activating proof of an observe-only capture; mutually exclusive with `targetActivation`. */
+  observation?: ObserveOnlyEvidence;
 } & SnapshotProvenance;
 
 export type SnapshotRuntimeAcquiredResult = Readonly<{

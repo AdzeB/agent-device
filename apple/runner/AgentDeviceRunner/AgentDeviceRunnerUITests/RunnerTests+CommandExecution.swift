@@ -461,7 +461,7 @@ extension RunnerTests {
       let screenshotBundleId = command.appBundleId?.trimmedNonEmpty
       if let bundleId = screenshotBundleId {
         let targetApp = XCUIApplication(bundleIdentifier: bundleId)
-        if macAppCaptureNeedsRaise(
+        if command.observeOnly != true && macAppCaptureNeedsRaise(
           fullscreen: command.fullscreen,
           targetState: targetApp.state
         ) {

@@ -87,13 +87,17 @@ export type Point = {
   y: number;
 };
 
-export type IosSnapshotObservation = {
+export type ObserveOnlyEvidence = Readonly<{
   mode: 'observe-only';
+  capability: 'non-activating-foreground-v1';
+  foregroundVerified: true;
+  targetAppBundleId: string;
+  /** Observation never activates; a capture that needed activation is refused instead. */
   activationPerformed: false;
-  /** XCTest's report, not proof of foreground ownership (#2696). */
+  /** The target's `XCUIApplication.state` re-read after capture, by name. */
   appState: 'runningForeground';
   appStateSource: 'xcuiapplication-state';
-};
+}>;
 
 export type SnapshotOptions = {
   observeOnly?: boolean;
@@ -140,6 +144,7 @@ export type SnapshotOptions = {
 // from the published .d.ts) instead of a bundled JSDoc block.
 /** The CLI/daemon flag key for each snapshot capture option, by option name. */
 export const SNAPSHOT_OPTION_FLAGS = {
+  observeOnly: 'observeOnly',
   interactiveOnly: 'snapshotInteractiveOnly',
   depth: 'snapshotDepth',
   scope: 'snapshotScope',
@@ -737,6 +742,7 @@ export type IosTargetActivation = Readonly<{
 }>;
 
 export type SnapshotState = {
+  observation?: ObserveOnlyEvidence;
   nodes: SnapshotNode[];
   createdAt: number;
   truncated?: boolean;

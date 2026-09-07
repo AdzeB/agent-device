@@ -43,7 +43,7 @@ export async function dispatchSnapshotViaRuntime(
         publicNodes === result.nodes ? result : { ...result, nodes: publicNodes },
       );
       const session = getSession();
-      const fallbackScreenshot = await captureSparseFallbackScreenshot({
+      const fallbackScreenshot = request.flags?.observeOnly ? undefined : await captureSparseFallbackScreenshot({
         createCommandSurface: params.createCommandSurface,
         req: request,
         session,
