@@ -1,0 +1,99 @@
+import { AppError } from '@agent-device/kernel/errors';
+import type { DeviceInfo } from '@agent-device/kernel/device';
+import {
+  bindLocalScreenshotInteractor,
+  type CaptureScreenshotInput,
+  type ScreenshotRuntimeOperations,
+} from '@agent-device/contracts/screenshot-runtime';
+import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
+import { runAppleRunnerCommand } from './runner/runner-client.ts';
+import { getReadyRunnerSession } from './runner/runner-session.ts';
+import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
+
+const MAX_STREAM_BASE64_LENGTH = 16 * 1024 * 1024 - 8192;
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+/**
+ * File screenshots keep the shared interactor path. A memory-only stream is answered only by the
+ * ready runner session bound to this request's lease, through the non-activating observe route.
+ */
+export function bindAppleScreenshotRuntime(
+  host: PlatformRuntimeHost,
+  request: Readonly<{ device: DeviceInfo; signal: AbortSignal }>,
+): ScreenshotRuntimeOperations {
+  const files = bindLocalScreenshotInteractor({
+    ...request,
+    resolveInteractor: host.localInteractors.resolve,
+  });
+  return {
+    captureScreenshot: async (input) => {
+      if (!input.consumePng) return await files.captureScreenshot(input);
+      const { appBundleId, session } = requireStreamTarget(request.device, input);
+      const signal = AbortSignal.any([request.signal, AbortSignal.timeout(45_000)]);
+      try {
+        signal.throwIfAborted();
+        if (session.logicalLeaseContext?.leaseId !== input.execution?.runnerLeaseContext?.leaseId)
+          throw unavailable();
+        const data = await runAppleRunnerCommand(
+          request.device,
+          { command: 'screenshot', appBundleId, inlineScreenshot: true, observeOnly: true },
+          { ...input.execution, signal, expectedRunnerSessionId: session.sessionId },
+        );
+        signal.throwIfAborted();
+        if (getReadyRunnerSession(request.device.id) !== session) throw unavailable();
+        const { encoded, observation } = validatedPixels(data, appBundleId);
+        input.consumePng({
+          protocol: 'native-png-stream-v1',
+          mimeType: 'image/png',
+          imageBase64: encoded,
+          runnerSessionId: session.sessionId,
+          observation: { ...observation },
+        });
+      } catch {
+        throw unavailable();
+      }
+    },
+  };
+}
+
+function unavailable(): AppError {
+  return new AppError('COMMAND_FAILED', 'Session-bound memory screenshot unavailable');
+}
+
+function validatedPixels(data: Record<string, unknown>, appBundleId: string) {
+  const observation = readObserveOnlyEvidence(data.observation);
+  if (!observation || observation.targetAppBundleId !== appBundleId) throw unavailable();
+  if (data.targetActivation !== undefined) throw unavailable();
+  const encoded = data.imageBase64;
+  if (
+    typeof encoded !== 'string' ||
+    encoded.length > MAX_STREAM_BASE64_LENGTH ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)
+  )
+    throw unavailable();
+  validatePng(encoded);
+  return { encoded, observation };
+}
+
+function validatePng(encoded: string): void {
+  const bytes = Buffer.from(encoded, 'base64');
+  try {
+    if (
+      bytes.length < 24 ||
+      bytes.toString('base64') !== encoded ||
+      !bytes.subarray(0, 8).equals(PNG_SIGNATURE) ||
+      bytes.readUInt32BE(16) === 0 ||
+      bytes.readUInt32BE(20) === 0
+    )
+      throw unavailable();
+  } finally {
+    bytes.fill(0);
+  }
+}
+
+function requireStreamTarget(device: DeviceInfo, input: CaptureScreenshotInput) {
+  const appBundleId = input.options?.appBundleId;
+  const session = getReadyRunnerSession(device.id);
+  if (device.appleOs !== 'ios' || !appBundleId || !session || input.outPath) throw unavailable();
+  return { appBundleId, session };
+}
