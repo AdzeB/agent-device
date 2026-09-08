@@ -195,7 +195,6 @@ function summarizeProviderScenarioFlagCoverage(files) {
     ['verify', 'descriptor post-action evidence capture'],
     ['settle', 'descriptor post-action settled-diff observation'],
     ['settleQuietMs', 'settle quiet-window tuning'],
-    ['settleObserveOnly', 'operator non-activating post-action capture'],
   ];
   const sources = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
   return flagTargets.map(([key, reason, aliases = []]) => {
@@ -345,7 +344,7 @@ function summarizeProviderScenarioFlagExclusions() {
       name: 'native observation without launch, activation, or recovery',
       owner:
         'daemon observe-only request admission and native foreground/capture verification; provider fixtures cannot prove focus or activation preservation',
-      keys: ['observeOnly'],
+      keys: ['observeOnly', 'settleObserveOnly'],
     },
     {
       name: 'open foreground auto-resolution (RFC prototype)',
