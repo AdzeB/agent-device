@@ -56,7 +56,12 @@ export async function resolveScreenshotStream(
       if (!captured || readSessionRuntimeRevision(session) !== revision) {
         throw new AppError('COMMAND_FAILED', 'Memory screenshot session changed');
       }
-      return { ...captured, sessionName: execution.sessionName, sessionRevision: revision };
+      return {
+        ...captured,
+        appBundleId: session.appBundleId,
+        sessionName: execution.sessionName,
+        sessionRevision: revision,
+      };
     },
   };
 }
