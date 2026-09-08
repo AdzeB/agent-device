@@ -1,3 +1,4 @@
+import { readPixelResponse } from './runner-pixel-response.ts';
 import { AppError, toAppErrorCode, createRequestCanceledError } from '@agent-device/kernel/errors';
 import { ALERT_NOT_FOUND_RUNNER_CODE } from '@agent-device/contracts/alert-contract';
 import {
@@ -685,12 +686,7 @@ export async function executeRunnerCommandWithSession(
       deadline.remainingMs(),
       signal,
     );
-    const data =
-      command.command === 'screenshot' && command.inlineScreenshot === true
-        ? await (await import('./runner-pixel-response.ts')).readPixelResponse(response)
-        : await parseRunnerResponse(response, session, logPath);
-    if (getReadyRunnerSession(device.id) !== session)
-      throw observationUnavailable('runner_not_ready');
+    const data = await readObservationResponse(command, response, session, logPath);
     assertObserveOnlyRunnerResponse(command, data);
     return data;
   }
@@ -1151,4 +1147,15 @@ function normalizeRunnerLogicalLeaseContext(
 
 function readOptionalContextString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+async function readObservationResponse(
+  command: RunnerCommand,
+  response: Response,
+  session: RunnerSession,
+  logPath?: string,
+): Promise<Record<string, unknown>> {
+  if (command.command === 'screenshot' && command.inlineScreenshot === true)
+    return await readPixelResponse(response);
+  return await parseRunnerResponse(response, session, logPath);
 }

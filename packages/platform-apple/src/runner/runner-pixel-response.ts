@@ -1,3 +1,4 @@
+import { isRecord } from '@agent-device/kernel/record';
 import { AppError } from '@agent-device/kernel/errors';
 
 export async function readPixelResponse(response: Response): Promise<Record<string, unknown>> {
@@ -14,16 +15,7 @@ export async function readPixelResponse(response: Response): Promise<Record<stri
       chunks.push(next.value);
     }
     const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    if (
-      !value ||
-      typeof value !== 'object' ||
-      !('ok' in value) ||
-      value.ok !== true ||
-      !('data' in value) ||
-      !value.data ||
-      typeof value.data !== 'object'
-    )
-      throw unavailable();
+    if (!isRecord(value) || value.ok !== true || !isRecord(value.data)) throw unavailable();
     return value.data as Record<string, unknown>;
   } catch {
     throw unavailable();

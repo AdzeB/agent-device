@@ -3,6 +3,7 @@ import type { DeviceInfo } from '@agent-device/kernel/device';
 import {
   bindLocalScreenshotInteractor,
   type ScreenshotRuntimeOperations,
+  type CaptureScreenshotInput,
 } from '@agent-device/contracts/screenshot-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import { runAppleRunnerCommand } from './runner/runner-client.ts';
@@ -20,11 +21,7 @@ export function bindAppleScreenshotRuntime(
   return {
     captureScreenshot: async (input) => {
       if (!input.consumePng) return await files.captureScreenshot(input);
-      const appBundleId = input.options?.appBundleId;
-      const session = getReadyRunnerSession(request.device.id);
-      if (request.device.appleOs !== 'ios' || !appBundleId || !session || input.outPath) {
-        throw unavailable();
-      }
+      const { appBundleId, session } = requireStreamTarget(request.device, input);
       const signal = AbortSignal.any([request.signal, AbortSignal.timeout(45_000)]);
       try {
         signal.throwIfAborted();
@@ -46,26 +43,7 @@ export function bindAppleScreenshotRuntime(
         );
         signal.throwIfAborted();
         if (getReadyRunnerSession(request.device.id) !== session) throw unavailable();
-        const observation = readObserveOnlyEvidence(data.observation);
-        const encoded = data.imageBase64;
-        if (
-          !observation ||
-          observation.targetAppBundleId !== appBundleId ||
-          typeof encoded !== 'string' ||
-          encoded.length > 16 * 1024 * 1024 - 8192 ||
-          !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)
-        )
-          throw unavailable();
-        const bytes = Buffer.from(encoded, 'base64');
-        if (
-          bytes.length < 24 ||
-          bytes.toString('base64') !== encoded ||
-          !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
-          bytes.readUInt32BE(16) === 0 ||
-          bytes.readUInt32BE(20) === 0
-        )
-          throw unavailable();
-        bytes.fill(0);
+        const { encoded, observation } = validatedPixels(data, appBundleId);
         input.consumePng({
           protocol: 'native-png-stream-v1',
           mimeType: 'image/png',
@@ -82,4 +60,40 @@ export function bindAppleScreenshotRuntime(
 
 function unavailable(): AppError {
   return new AppError('COMMAND_FAILED', 'Session-bound memory screenshot unavailable');
+}
+
+function validatedPixels(data: Record<string, unknown>, appBundleId: string) {
+  const observation = readObserveOnlyEvidence(data.observation);
+  if (!observation || observation.targetAppBundleId !== appBundleId) throw unavailable();
+  const encoded = data.imageBase64;
+  if (
+    typeof encoded !== 'string' ||
+    encoded.length > 16 * 1024 * 1024 - 8192 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)
+  )
+    throw unavailable();
+  validatePng(encoded);
+  return { encoded, observation };
+}
+function validatePng(encoded: string): void {
+  const bytes = Buffer.from(encoded, 'base64');
+  try {
+    if (
+      bytes.length < 24 ||
+      bytes.toString('base64') !== encoded ||
+      !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+      bytes.readUInt32BE(16) === 0 ||
+      bytes.readUInt32BE(20) === 0
+    )
+      throw unavailable();
+  } finally {
+    bytes.fill(0);
+  }
+}
+
+function requireStreamTarget(device: DeviceInfo, input: CaptureScreenshotInput) {
+  const appBundleId = input.options?.appBundleId;
+  const session = getReadyRunnerSession(device.id);
+  if (device.appleOs !== 'ios' || !appBundleId || !session || input.outPath) throw unavailable();
+  return { appBundleId, session };
 }
