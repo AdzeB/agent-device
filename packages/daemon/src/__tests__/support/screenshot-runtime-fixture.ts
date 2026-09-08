@@ -75,7 +75,7 @@ export function screenshotRuntimeFixture(
       if (options.onCapture) {
         return (await options.onCapture(input)) ?? {};
       }
-      writeSolidPng(input.outPath);
+      writeSolidPng(input.outPath!);
       return {};
     },
   );

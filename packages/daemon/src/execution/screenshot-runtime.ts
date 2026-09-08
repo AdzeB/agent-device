@@ -1,4 +1,5 @@
 import { expandSessionPath } from '@agent-device/host-kit/session-paths';
+import { resolveScreenshotStream } from './screenshot-stream.ts';
 import type { CommandFlags } from '@agent-device/contracts/command';
 import {
   retiredScreenshotMaxSizeFlagError,
@@ -61,6 +62,7 @@ export async function resolveScreenshotGenericExecution(
     ScreenshotRuntimeBindings,
 ): Promise<ResolvedGenericExecution> {
   const { req, session } = params;
+  if (req.flags?.screenshotStream === true) return await resolveScreenshotStream(params);
   const retiredMaxSize = retiredScreenshotMaxSizeFlagError('screenshot', req.flags);
   if (retiredMaxSize) throw new AppError('INVALID_ARGS', retiredMaxSize);
   assertSupportedScreenshotPixelDensity(session.device, req.flags?.screenshotPixelDensity);

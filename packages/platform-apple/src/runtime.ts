@@ -1,3 +1,4 @@
+import { bindAppleScreenshotRuntime } from './runtime-screenshot.ts';
 import {
   type DeviceBinding,
   type RuntimeOperationFact,
@@ -405,10 +406,9 @@ export function createApplePlatformRuntime(host: PlatformRuntimeHost): PlatformR
           ),
         ),
         ...whenAdmitted(facts.operations.captureScreenshot, () =>
-          bindLocalScreenshotInteractor({
+          bindAppleScreenshotRuntime(host, {
             device: request.device,
             signal: request.scope.signal,
-            resolveInteractor: host.localInteractors.resolve,
           }),
         ),
         ...whenAdmitted(facts.operations.focusPoint, () =>

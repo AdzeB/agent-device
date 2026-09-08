@@ -182,6 +182,7 @@ export async function canConnect(
   probeTimeoutMs?: number,
 ): Promise<boolean> {
   const deadline = Date.now() + (probeTimeoutMs ?? Number.POSITIVE_INFINITY);
+    return await sendPixelRequest(info, req, statePaths, timeoutMs, transport);
   const transport = chooseTransport(info, preference);
   const fallback = chooseAutoFallbackTransport(info, preference, transport);
   const firstBudget = (deadline - Date.now()) / (fallback ? 2 : 1);
@@ -409,6 +410,246 @@ async function sendRequestWithFallback(
 ): Promise<DaemonResponse> {
   const transport = chooseTransport(info, preference);
   const deadline = typeof timeoutMs === 'number' ? performance.now() + timeoutMs : undefined;
+  // A canceled caller must not open a connection just to lose it, and a fallback or instance retry
+  // that begins after the abort must not send either — every attempt starts behind this check.
+  refuseAbortedRequest(options.signal, req.meta?.requestId);
+  const { hasOutgoingPrivateFieldComparison } =
+    await import('@agent-device/daemon-contracts/private-field-comparison');
+  if (hasOutgoingPrivateFieldComparison()) {
+    const { sanitizePrivateFieldResponse } = await import('@agent-device/daemon-contracts/private-field-response');
+    if (transport !== 'socket' || info.baseUrl) {
+      throw new AppError('INVALID_ARGS', 'Private comparison requires the local socket transport');
+    }
+    try {
+      const { requirePrivateFieldDaemonIdentity } =
+        await import('./private-field-daemon-identity.ts');
+      await requirePrivateFieldDaemonIdentity(info);
+      return sanitizePrivateFieldResponse(
+        await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
+          onProgress: () => {},
+        }),
+      );
+    } catch {
+      return {
+        ok: true,
+        data: {
+          protocol: 'android-private-input-v1',
+          status: 'unknown',
+          reason: 'private-comparison-transport-failed',
+        },
+      };
+    }
+  }
+
+  try {
+    return await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, options);
+  } catch (error) {
+    if (info.baseUrl && isRemoteInstanceMismatch(error)) {
+      return await retryAfterRemoteInstanceMismatch(
+        info,
+        req,
+        statePaths,
+        timeoutMs,
+        deadline,
+        transport,
+        options,
+      );
+    }
+    if (isRemoteTransportFailure(error)) invalidateRemoteDaemonHealth(info);
+    const fallback = chooseAutoFallbackTransport(info, preference, transport);
+    if (!fallback || !isSafeAutoTransportFallbackError(error, transport)) throw error;
+    return await sendRequestWithTransport(info, req, statePaths, timeoutMs, fallback, options);
+  }
+}
+
+async function retryAfterRemoteInstanceMismatch(
+  info: DaemonInfo,
+  req: DaemonWireRequest,
+  statePaths: DaemonPaths,
+  timeoutMs: number | undefined,
+  deadline: number | undefined,
+  transport: ResolvedDaemonTransport,
+  options: SendRequestOptions,
+): Promise<DaemonResponse> {
+  invalidateRemoteDaemonHealth(info);
+  const probeTimeoutMs = remainingRemoteRequestTimeoutMs(req, timeoutMs, deadline);
+  const health = await readRemoteDaemonHealth(info, probeTimeoutMs, options.signal);
+  refuseAbortedRequest(options.signal, req.meta?.requestId);
+  const remainingMs = remainingRemoteRequestTimeoutMs(
+    req,
+    timeoutMs,
+    deadline,
+    health.timedOut ? probeTimeoutMs : undefined,
+  );
+  if (!health.reachable) {
+    throw new AppError('COMMAND_FAILED', 'Remote daemon is unavailable', {
+      daemonBaseUrl: info.baseUrl,
+    });
+  }
+  info.remoteInstanceId = health.instanceId;
+  info.remoteUpstreamInstanceId = health.upstream?.instanceId;
+  cacheRemoteDaemonHealth(info, health);
+  try {
+    return await sendRequestWithTransport(info, req, statePaths, remainingMs, transport, options);
+  } catch (error) {
+    if (isRemoteTransportFailure(error)) invalidateRemoteDaemonHealth(info);
+    throw error;
+  }
+}
+
+function remainingRemoteRequestTimeoutMs(
+  req: DaemonWireRequest,
+  timeoutMs: number | undefined,
+  deadline: number | undefined,
+  timedOutProbeMs?: number,
+): number | undefined {
+  if (deadline === undefined || timeoutMs === undefined) return undefined;
+  const remainingMs = deadline - performance.now();
+  // A probe capped by the request can expire before the monotonic clock catches up to its timer.
+  if (
+    remainingMs > 0 &&
+    (timedOutProbeMs === undefined || timedOutProbeMs > REMOTE_DAEMON_HEALTHCHECK_TIMEOUT_MS)
+  )
+    return remainingMs;
+  throw requestTimeoutError(timeoutMs, req.meta?.requestId);
+}
+
+function isRemoteInstanceMismatch(error: unknown): boolean {
+  return error instanceof AppError && error.details?.reason === 'remote_instance_mismatch';
+}
+
+function isRemoteTransportFailure(error: unknown): boolean {
+  return (
+    error instanceof AppError &&
+    (error.details?.reason === 'daemon_transport_failure' ||
+      error.details?.reason === 'daemon_transport_timeout' ||
+      error.details?.reason === 'daemon_response_read_failure')
+  );
+}
+
+async function sendRequestWithTransport(
+  info: DaemonInfo,
+  req: DaemonWireRequest,
+  statePaths: DaemonPaths,
+  timeoutMs: number | undefined,
+  transport: ResolvedDaemonTransport,
+  options: SendRequestOptions,
+): Promise<DaemonResponse> {
+  return transport === 'http'
+    ? await sendHttpRequest(info, req, statePaths, timeoutMs, options)
+    : await sendSocketRequest(info, req, timeoutMs, options);
+}
+
+function chooseTransport(
+  info: DaemonInfo,
+  preference: DaemonTransportPreference,
+): ResolvedDaemonTransport {
+  if (info.baseUrl) {
+    // Defensive guard: resolveClientSettings rejects this earlier for normal CLI flow.
+    if (preference === 'socket') {
+      throw new AppError('COMMAND_FAILED', 'Remote daemon endpoint only supports HTTP transport', {
+        daemonBaseUrl: info.baseUrl,
+      });
+    }
+    return 'http';
+  }
+  if (preference === 'http' || preference === 'socket') {
+    return requireDaemonTransport(info, preference);
+  }
+  const autoOrder: ResolvedDaemonTransport[] =
+    info.transport === 'socket' || info.transport === 'dual'
+      ? ['socket', 'http']
+      : ['http', 'socket'];
+  const available = autoOrder.find((transport) => hasDaemonTransport(info, transport));
+  if (available) return available;
+  throw new AppError('COMMAND_FAILED', 'Daemon metadata has no reachable transport');
+}
+
+function hasDaemonTransport(info: DaemonInfo, transport: ResolvedDaemonTransport): boolean {
+  return transport === 'http' ? Boolean(info.httpPort) : Boolean(info.port);
+}
+
+function chooseAutoFallbackTransport(
+  info: DaemonInfo,
+  preference: DaemonTransportPreference,
+  attempted: ResolvedDaemonTransport,
+): ResolvedDaemonTransport | null {
+  if (preference !== 'auto' || info.baseUrl) return null;
+  const fallback = attempted === 'socket' ? 'http' : 'socket';
+  return hasDaemonTransport(info, fallback) ? fallback : null;
+}
+
+function isSafeAutoTransportFallbackError(
+  error: unknown,
+  attempted: ResolvedDaemonTransport,
+): boolean {
+  return (
+    attempted === 'socket' &&
+    error instanceof AppError &&
+    error.code === 'COMMAND_FAILED' &&
+    error.message === 'Failed to communicate with daemon' &&
+    error.details?.daemonSocketRequestWritten === false
+  );
+}
+
+function requireDaemonTransport(
+  info: DaemonInfo,
+  transport: ResolvedDaemonTransport,
+): ResolvedDaemonTransport {
+  if (hasDaemonTransport(info, transport)) return transport;
+  throw daemonEndpointUnavailableError(transport);
+}
+
+function handleTransportError(
+  err: unknown,
+  requestId: string | undefined,
+  remote: boolean,
+  details: Record<string, unknown> = {},
+): AppError {
+  emitDiagnostic({
+    level: 'error',
+    phase: 'daemon_request_socket_error',
+    data: {
+      requestId,
+      message: err instanceof Error ? (err as Error).message : String(err),
+    },
+  });
+  return new AppError(
+    'COMMAND_FAILED',
+    'Failed to communicate with daemon',
+    {
+      ...details,
+      reason: 'daemon_transport_failure',
+      requestId,
+      hint: remote
+        ? 'Retry command. If this persists, verify the remote daemon URL, auth token, and remote host reachability.'
+        : 'Retry command. If this persists, clean stale daemon metadata and start a fresh session.',
+    },
+    err instanceof Error ? err : undefined,
+  );
+}
+
+async function sendSocketRequest(
+  info: DaemonInfo,
+  req: DaemonWireRequest,
+  timeoutMs: number | undefined,
+  options: SendRequestOptions,
+): Promise<DaemonResponse> {
+  const { serializePrivateSocketRequest } = await import('@agent-device/daemon-contracts/private-field-comparison');
+  const port = info.port;
+  if (!port) throw daemonEndpointUnavailableError('socket');
+  const callerSignal = options.signal;
+  refuseAbortedRequest(callerSignal, req.meta?.requestId);
+  return new Promise((resolve, reject) => {
+    let requestWritten = false;
+    let settled = false;
+    const socket = net.createConnection({ host: '127.0.0.1', port }, () => {
+      // An abort that landed while the connection was still opening must not write the request.
+      if (callerSignal?.aborted) {
+        settled = true;
+        rejectAborted(callerSignal);
+        return;
+      }
       try {
         const wire = serializePrivateSocketRequest(req);
         requestWritten = true;
@@ -417,3 +658,338 @@ async function sendRequestWithFallback(
         socket.destroy();
         reject(new AppError('INVALID_ARGS', 'Private comparison request expired'));
       }
+    });
+    const timeoutHandle =
+      typeof timeoutMs === 'number'
+        ? setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            detachCallerAbort();
+            reject(requestTimeoutError(timeoutMs, req.meta?.requestId));
+            socket.destroy();
+          }, timeoutMs)
+        : undefined;
+    // Destroying the connection is what makes the daemon mark the request canceled. The timeout
+    // timer is cleared here because an abort is never a timeout: nothing may run the timeout's
+    // runner sweep or daemon reset after the caller canceled.
+    const rejectAborted = (signal: AbortSignal): void => {
+      detachCallerAbort();
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      socket.destroy();
+      reject(abortedRequestError(signal, requestWritten ? 'unknown' : 'no', req.meta?.requestId));
+    };
+    const onCallerAbort = (): void => {
+      if (settled) return;
+      settled = true;
+      rejectAborted(callerSignal!);
+    };
+    const detachCallerAbort = (): void => {
+      if (callerSignal) callerSignal.removeEventListener('abort', onCallerAbort);
+    };
+    if (callerSignal) {
+      callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+    }
+
+    readDaemonSocketProgressResponse(socket, {
+      req,
+      onProgress: options.onProgress,
+      isSettled: () => settled,
+      clearTimeout: () => {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      },
+      resolve: (response) => {
+        settled = true;
+        detachCallerAbort();
+        resolve(response);
+      },
+      reject: (error) => {
+        settled = true;
+        detachCallerAbort();
+        reject(error);
+      },
+    });
+
+    socket.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      detachCallerAbort();
+      reject(
+        handleTransportError(err, req.meta?.requestId, false, {
+          daemonSocketRequestWritten: requestWritten,
+        }),
+      );
+    });
+  });
+}
+
+function requestTimeoutError(timeoutMs: number, requestId: string | undefined): AppError {
+  return new AppError('COMMAND_FAILED', 'Daemon request timed out', {
+    reason: 'daemon_transport_timeout',
+    timeoutMs,
+    requestId,
+  });
+}
+
+// The fields a timed-out request is described by, read once so a socket and an HTTP timeout cannot
+// describe the same request differently.
+type TimeoutRequestFields = Omit<
+  Parameters<typeof handleRequestTimeout>[0],
+  'info' | 'statePaths' | 'retireUnresponsive'
+>;
+
+function timeoutRequestContext(
+  req: DaemonWireRequest,
+  remote: boolean,
+  timeoutMs: number,
+): TimeoutRequestFields {
+  return {
+    remote,
+    timeoutMs,
+    requestId: req.meta?.requestId,
+    command: req.command,
+    platform: req.flags?.platform,
+    session: req.session,
+    action: req.positionals?.[0],
+  };
+}
+
+function buildRemoteInstancePreconditionHeaders(info: DaemonInfo): Record<string, string> {
+  return {
+    ...(info.remoteInstanceId ? { [DAEMON_HTTP_INSTANCE_HEADER]: info.remoteInstanceId } : {}),
+    ...(info.remoteUpstreamInstanceId
+      ? { [DAEMON_HTTP_UPSTREAM_INSTANCE_HEADER]: info.remoteUpstreamInstanceId }
+      : {}),
+  };
+}
+
+function isRemoteInstanceMismatchResponse(
+  statusCode: number | undefined,
+  headers: Record<string, string | string[] | undefined>,
+): boolean {
+  return statusCode === 409 && headers[DAEMON_HTTP_INSTANCE_MISMATCH_HEADER] === 'true';
+}
+
+async function sendHttpRequest(
+  info: DaemonInfo,
+  req: DaemonWireRequest,
+  statePaths: DaemonPaths,
+  timeoutMs: number | undefined,
+  options: SendRequestOptions,
+): Promise<DaemonResponse> {
+  const rpcEndpoint = daemonHttpEndpoint(info, 'rpc');
+  if (!rpcEndpoint) throw daemonEndpointUnavailableError('http');
+  const rpcUrl = new URL(rpcEndpoint);
+  const rpcPayload = JSON.stringify(buildHttpRpcPayload(req, { includeTokenParam: !info.baseUrl }));
+  const headers: Record<string, string | number> = {
+    'content-type': 'application/json',
+    'content-length': Buffer.byteLength(rpcPayload),
+  };
+  if (info.baseUrl) {
+    Object.assign(headers, buildDaemonHttpAuthHeaders(info.token));
+    Object.assign(headers, buildRemoteInstancePreconditionHeaders(info));
+  }
+  const transport = await loadNodeHttpRequester(rpcUrl.protocol);
+  const callerSignal = options.signal;
+  refuseAbortedRequest(callerSignal, req.meta?.requestId);
+
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    let requestEnded = false;
+    const detachCallerAbort = (): void => {
+      if (callerSignal) callerSignal.removeEventListener('abort', onCallerAbort);
+    };
+    const resolveOnce = (response: DaemonResponse | PromiseLike<DaemonResponse>): void => {
+      if (settled) return;
+      settled = true;
+      detachCallerAbort();
+      resolve(response);
+    };
+    const rejectOnce = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      detachCallerAbort();
+      reject(error);
+    };
+    const handleBody = (body: string): void => {
+      handleDaemonHttpResponseBody(body, {
+        info,
+        req,
+        stateDir: statePaths.baseDir,
+        host: options.host,
+        resolve: resolveOnce,
+        reject: rejectOnce,
+      });
+    };
+    const request = transport.request(
+      {
+        protocol: rpcUrl.protocol,
+        host: rpcUrl.hostname,
+        port: rpcUrl.port,
+        method: 'POST',
+        path: rpcUrl.pathname + rpcUrl.search,
+        headers,
+      },
+      (res) => {
+        if (isRemoteInstanceMismatchResponse(res.statusCode, res.headers ?? {})) {
+          res.resume();
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+          rejectOnce(
+            new AppError('COMMAND_FAILED', 'Remote daemon instance changed', {
+              reason: 'remote_instance_mismatch',
+              daemonBaseUrl: info.baseUrl,
+            }),
+          );
+          return;
+        }
+        if (shouldReadDaemonProgressStream(req, res.headers?.['content-type'])) {
+          readDaemonHttpProgressResponse(res, {
+            req,
+            onProgress: options.onProgress,
+            reject: rejectOnce,
+            clearTimeout: () => {
+              if (timeoutHandle) clearTimeout(timeoutHandle);
+            },
+            handleResponseBody: handleBody,
+          });
+          return;
+        }
+        const responseBody = readNodeHttpResponseBody(res).catch((error: unknown) => {
+          throw new AppError(
+            'COMMAND_FAILED',
+            'Failed to read daemon response',
+            { requestId: req.meta?.requestId, reason: 'daemon_response_read_failure' },
+            error instanceof Error ? error : undefined,
+          );
+        });
+        void responseBody
+          .then((body) => {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            handleBody(body);
+          })
+          .catch((error: unknown) => {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            rejectOnce(error);
+          });
+      },
+    );
+
+    const remote = isRemoteDaemon(info);
+    const timeoutHandle =
+      typeof timeoutMs === 'number'
+        ? setTimeout(() => {
+            rejectOnce(requestTimeoutError(timeoutMs, req.meta?.requestId));
+            request.destroy();
+          }, timeoutMs)
+        : undefined;
+
+    // Destroying the request closes this one connection, which is what makes the daemon mark the
+    // request canceled. The timeout timer is cleared because an abort is never a timeout: nothing
+    // may run the timeout's runner sweep or daemon reset after the caller canceled. The settle goes
+    // first so the `error` the destroy surfaces arrives after `settled` and cannot rewrite the
+    // typed cancellation into a transport failure.
+    const onCallerAbort = (): void => {
+      if (settled) return;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      rejectOnce(
+        abortedRequestError(callerSignal!, requestEnded ? 'unknown' : 'no', req.meta?.requestId),
+      );
+      request.destroy();
+    };
+    if (callerSignal) {
+      callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+    }
+
+    request.on('error', (err) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      // `request.destroy()` surfaces an `error` after an intentional abort or timeout has already
+      // settled this promise. Returning before `handleTransportError` keeps that expected teardown
+      // from emitting a `daemon_request_socket_error` diagnostic; a genuine transport error still
+      // arrives before the settle and rejects.
+      if (settled) return;
+      rejectOnce(handleTransportError(err, req.meta?.requestId, remote));
+    });
+
+    request.write(rpcPayload);
+    request.end();
+    requestEnded = true;
+  });
+}
+
+type RemoteHealthCacheEntry = {
+  baseUrl: string;
+  token: string;
+  pid: number;
+  health: Promise<RemoteDaemonHealth>;
+};
+
+let remoteHealthCache: RemoteHealthCacheEntry | undefined;
+
+function matchesRemoteIdentity(entry: RemoteHealthCacheEntry, info: DaemonInfo): boolean {
+  return entry.baseUrl === info.baseUrl && entry.token === info.token && entry.pid === info.pid;
+}
+
+function cacheRemoteDaemonHealth(info: DaemonInfo, health: RemoteDaemonHealth): void {
+  if (!health.instanceId || (health.upstream && !health.upstream.instanceId)) return;
+  remoteHealthCache = {
+    baseUrl: info.baseUrl ?? '',
+    token: info.token,
+    pid: info.pid,
+    health: Promise.resolve(health),
+  };
+}
+
+function invalidateRemoteDaemonHealth(info: DaemonInfo): void {
+  if (remoteHealthCache && matchesRemoteIdentity(remoteHealthCache, info)) {
+    remoteHealthCache = undefined;
+  }
+}
+
+export async function cachedRemoteDaemonHealth(info: DaemonInfo): Promise<RemoteDaemonHealth> {
+  if (remoteHealthCache && matchesRemoteIdentity(remoteHealthCache, info)) {
+    return await remoteHealthCache.health;
+  }
+  const entry: RemoteHealthCacheEntry = {
+    baseUrl: info.baseUrl ?? '',
+    token: info.token,
+    pid: info.pid,
+    health: readRemoteDaemonHealth(info),
+  };
+  remoteHealthCache = entry;
+  try {
+    const health = await entry.health;
+    if (
+      (!health.reachable ||
+        !health.instanceId ||
+        (health.upstream && !health.upstream.instanceId)) &&
+      remoteHealthCache === entry
+    ) {
+      remoteHealthCache = undefined;
+    }
+    return health;
+  } catch (error) {
+    if (remoteHealthCache === entry) remoteHealthCache = undefined;
+    throw error;
+  }
+}
+
+async function sendPixelRequest(
+  info: DaemonInfo,
+  req: DaemonRequest,
+  statePaths: DaemonPaths,
+  timeoutMs: number | undefined,
+  transport: ResolvedDaemonTransport,
+): Promise<DaemonResponse> {
+  if (transport !== 'socket' || info.baseUrl)
+    throw new AppError('INVALID_ARGS', 'Memory screenshot requires the local socket transport');
+  try {
+    const { requirePrivateFieldDaemonIdentity } =
+      await import('./private-field-daemon-identity.ts');
+    await requirePrivateFieldDaemonIdentity(info);
+    return await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
+      onProgress: () => {},
+    });
+  } catch {
+    throw new AppError('COMMAND_FAILED', 'Memory screenshot transport unavailable');
+  }
+}

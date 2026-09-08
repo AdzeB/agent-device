@@ -18,6 +18,7 @@ export const screenshotCommand: ClientCommandHandler = async ({
   client,
   host,
 }) => {
+  if (flags.screenshotStream && !flags.json) throw new AppError('INVALID_ARGS', '--stream requires --json');
   const result = (await runCliCommand({
     client,
     command: 'screenshot',
@@ -28,7 +29,7 @@ export const screenshotCommand: ClientCommandHandler = async ({
   // A non-default responseLevel returns a leveled (digest) payload — overlayCount,
   // artifacts, leveled overlayRefs. Rebuilding the default { path, overlayRefs }
   // shape would drop those, so emit the leveled payload verbatim.
-  if (isNonDefaultResponseLevel(flags.responseLevel)) {
+  if (flags.screenshotStream || isNonDefaultResponseLevel(flags.responseLevel)) {
     await writeCommandOutput(flags, result, () => JSON.stringify(result, null, 2));
     return true;
   }
