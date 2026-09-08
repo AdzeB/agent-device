@@ -37,6 +37,7 @@ export type RepeatedPressOptions = {
  */
 export type SettleCommandOptions = {
   settle?: boolean;
+  settleObserveOnly?: boolean;
   settleQuietMs?: number;
   timeoutMs?: number;
 };

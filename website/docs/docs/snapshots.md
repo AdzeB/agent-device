@@ -147,6 +147,11 @@ driver can measure the display. These dimensions use the same coordinates as nod
 are refreshed for each capture, including after rotation. Opening the keyboard can shrink the app's
 content without shrinking the display viewport. An empty or sparse tree can still have a viewport;
 when the measurements disagree or either measurement is unavailable, `viewport` is absent.
+For post-action evidence, operators can use `press <target> --settle --settle-observe-only`
+(and other commands supporting `--settle`). The action retains its normal authorization; only
+its subsequent settle captures require the non-activating local Apple observer. If capture
+becomes unavailable, the action result remains intact and retained response frames accompany
+the settle failure. The flag defaults to false and requires `--settle`.
 
 ## Structured node fields (`--json`)
 

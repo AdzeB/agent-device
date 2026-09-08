@@ -9,6 +9,7 @@ import {
   type AppErrorDetails,
   type DispatchDisclosure,
 } from '@agent-device/kernel/errors';
+import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
 import type {
   SnapshotNode,
   SnapshotPreferredBackend,
@@ -36,7 +37,7 @@ export type CapturedSnapshot = {
   snapshot: SnapshotState;
 };
 
-export type SelectorSnapshotOptions = SelectorSnapshotInput;
+export type SelectorSnapshotOptions = SelectorSnapshotInput & { observeOnly?: boolean };
 
 /**
  * Resolve the snapshot a `@ref` READ binds against. ADR 0014: a ref resolves
@@ -82,6 +83,7 @@ export async function captureSelectorSnapshot(
   const sessionName = options.session ?? 'default';
   const session = await runtime.sessions.get(sessionName);
   const result = await captureSnapshot(toBackendContext(runtime, options), {
+    ...(options.observeOnly ? { observeOnly: true } : {}),
     interactiveOnly: captureOptions.interactiveOnly ?? false,
     depth: options.depth,
     scope: captureOptions.scope ?? options.scope,
@@ -95,6 +97,11 @@ export async function captureSelectorSnapshot(
       : {}),
   });
   const snapshot = result.snapshot;
+  if (options.observeOnly && !readObserveOnlyEvidence(snapshot.observation)) {
+    throw new AppError('COMMAND_FAILED', 'Non-activating snapshot proof is unavailable.', {
+      observation: { reason: 'observation_contract_mismatch' },
+    });
+  }
   (options.signal ?? runtime.signal)?.throwIfAborted();
   if (
     captureOptions.updateSession &&

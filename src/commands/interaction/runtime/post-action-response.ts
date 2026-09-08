@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { SnapshotNode } from '@agent-device/kernel/snapshot';
+import type { ObserveOnlyEvidence, SnapshotNode } from '@agent-device/kernel/snapshot';
 import type {
   PostActionResponse,
   PostActionResponseFrame,
@@ -15,10 +15,15 @@ type ResponseNode = PostActionResponseFrame['snapshot']['nodes'][number];
 export function createPostActionResponseCollector() {
   const response: PostActionResponse = { frames: [], omittedFrames: 0 };
   let previousDigest: string | undefined;
+  let latestFrame: PostActionResponseFrame | undefined;
   return {
     response,
-    capture(nodes: SnapshotNode[], capturedAt: number) {
-      const { frame, digest } = projectResponseFrame(nodes, capturedAt);
+    get latestFrame() {
+      return latestFrame;
+    },
+    capture(nodes: SnapshotNode[], capturedAt: number, observation?: ObserveOnlyEvidence) {
+      const { frame, digest } = projectResponseFrame(nodes, capturedAt, observation);
+      latestFrame = frame;
       if (digest === previousDigest) return;
       previousDigest = digest;
       if (response.frames.length >= MAX_FRAMES) {
@@ -30,9 +35,14 @@ export function createPostActionResponseCollector() {
   };
 }
 
-function projectResponseFrame(nodes: SnapshotNode[], capturedAt: number) {
+function projectResponseFrame(
+  nodes: SnapshotNode[],
+  capturedAt: number,
+  observation?: ObserveOnlyEvidence,
+) {
   const hiddenLabels = privateLabelIndexes(nodes);
   const frame: PostActionResponseFrame = { capturedAt, snapshot: { nodes: [] }, truncated: false };
+  if (observation) frame.snapshot.observation = structuredClone(observation);
   let bytes = Buffer.byteLength(JSON.stringify(frame));
   const digest = createHash('sha256');
   for (const node of nodes) {
