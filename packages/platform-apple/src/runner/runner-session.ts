@@ -1,4 +1,3 @@
-import { readPixelResponse } from './runner-pixel-response.ts';
 import { AppError, toAppErrorCode, createRequestCanceledError } from '@agent-device/kernel/errors';
 import { ALERT_NOT_FOUND_RUNNER_CODE } from '@agent-device/contracts/alert-contract';
 import {
@@ -1155,7 +1154,9 @@ async function readObservationResponse(
   session: RunnerSession,
   logPath?: string,
 ): Promise<Record<string, unknown>> {
-  if (command.command === 'screenshot' && command.inlineScreenshot === true)
+  if (command.command === 'screenshot' && command.inlineScreenshot === true) {
+    const { readPixelResponse } = await import('./runner-pixel-response.ts');
     return await readPixelResponse(response);
+  }
   return await parseRunnerResponse(response, session, logPath);
 }
