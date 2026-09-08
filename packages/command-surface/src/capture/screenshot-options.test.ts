@@ -129,6 +129,7 @@ test('screenshot script flags use the shared recorded flag contract', () => {
     '--normalize-status-bar',
   ]);
   assert.deepEqual(SCREENSHOT_ACTION_FLAG_KEYS, [
+    'screenshotStream',
     'screenshotCropOn',
     'screenshotPixelDensity',
     'screenshotFullscreen',
