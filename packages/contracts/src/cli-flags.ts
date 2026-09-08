@@ -125,6 +125,7 @@ export type CliFlags = CloudProviderProfileFields &
     doubleTap?: boolean;
     verify?: boolean;
     settle?: boolean;
+    settleObserveOnly?: boolean;
     settleQuietMs?: number;
     clickButton?: ClickButton;
     backMode?: BackMode;
