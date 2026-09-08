@@ -295,7 +295,7 @@ const COMMON_SAFE_FLAG_SPEC = {
 // per-command spec — a settle-capable command that forgot its entries would
 // otherwise record the flag but never display it.
 const SETTLE_SAFE_FLAG_SPEC = {
-  booleans: [{ source: 'settle' }],
+  booleans: [{ source: 'settle' }, { source: 'settleObserveOnly' }],
   numbers: [{ source: 'settleQuietMs' }],
 } as const satisfies SafeFlagSpec;
 

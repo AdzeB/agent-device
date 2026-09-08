@@ -56,11 +56,13 @@ export type RefSnapshotFlagGuardResponse = (
 
 export type InteractionSessionView = Readonly<{
   device: DeviceInfo;
+  surface?: SessionState['surface'];
   appBundleId?: string;
   trace?: SessionState['trace'];
 }>;
 
 export type InteractionSnapshotOptions = {
+  observeOnly?: boolean;
   interactiveOnly: boolean;
   preferredBackend?: SnapshotPreferredBackend;
   androidFreshnessMode?: 'ref-refresh';

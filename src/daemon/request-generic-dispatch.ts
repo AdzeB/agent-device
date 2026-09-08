@@ -257,7 +257,11 @@ async function planGenericSettleObservation(params: {
 
 /** Any settle flag at all — `--settle-quiet` alone still owes the caller its rejection. */
 function usesSettleFlags(flags: CommandFlags | undefined): boolean {
-  return flags?.settle === true || flags?.settleQuietMs !== undefined;
+  return (
+    flags?.settle === true ||
+    flags?.settleObserveOnly === true ||
+    flags?.settleQuietMs !== undefined
+  );
 }
 
 type AndroidDialogReadiness =

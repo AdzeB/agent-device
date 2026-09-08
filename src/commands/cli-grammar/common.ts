@@ -146,6 +146,7 @@ export function selectorSnapshotOptionsFromFlags(flags: CliFlags): SelectorSnaps
 export function settleInputFromFlags(flags: CliFlags): Record<string, unknown> {
   return compactRecord({
     settle: flags.settle,
+    settleObserveOnly: flags.settleObserveOnly,
     settleQuietMs: flags.settleQuietMs,
     timeoutMs: flags.timeoutMs,
   });

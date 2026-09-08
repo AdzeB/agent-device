@@ -1,4 +1,5 @@
 import type { Point, SnapshotNode } from '@agent-device/kernel/snapshot';
+import { asAppError } from '@agent-device/kernel/errors';
 import type {
   AgentDeviceRuntime,
   CommandContext,
@@ -128,24 +129,49 @@ async function settleAfterAction(
     const { createPostActionResponseCollector } = await import('./post-action-response.ts');
     const collector = createPostActionResponseCollector();
     base.response = collector.response;
-    const outcome = await runStableCaptureLoop(runtime, options, {
-      quietMs,
-      timeoutMs,
-      resetBudgetOnPrivateAxRecovery: true,
-      broadTransitionBaselineNodes: params.baselineNodes,
-      onCapture: (capture, capturedAt) => collector.capture(capture.snapshot.nodes, capturedAt),
-    });
-    return await readSettledOutcome(runtime, options, params, base, outcome);
+    const outcome = await runStableCaptureLoop(
+      runtime,
+      { ...options, observeOnly: params.observeOnly },
+      {
+        quietMs,
+        timeoutMs,
+        resetBudgetOnPrivateAxRecovery: true,
+        broadTransitionBaselineNodes: params.baselineNodes,
+        onCapture: (capture, capturedAt) =>
+          collector.capture(capture.snapshot.nodes, capturedAt, capture.snapshot.observation),
+      },
+    );
+    const result = await readSettledOutcome(runtime, options, params, base, outcome);
+    if (params.observeOnly && collector.latestFrame && !outcome.stalled) {
+      result.observation.snapshot = {
+        ...structuredClone(collector.latestFrame.snapshot),
+        truncated: collector.latestFrame.truncated,
+      };
+    }
+    if (outcome.stalled)
+      result.observation.captureError = { code: 'COMMAND_TIMEOUT', reason: 'capture_timeout' };
+    return result;
   } catch (error) {
     // Never fail the action over the observation: report that settling itself
     // broke and let the caller fall back to an explicit snapshot.
     return {
       observation: {
         ...base,
+        captureError: settleCaptureError(error),
         hint: `Settle observation unavailable (${error instanceof Error ? error.message : String(error)}). The action itself succeeded; take a snapshot to observe the result.`,
       },
     };
   }
+}
+
+function settleCaptureError(error: unknown): NonNullable<SettleObservation['captureError']> {
+  const failure = asAppError(error, 'COMMAND_FAILED');
+  const observation = failure.details?.observation;
+  const reason =
+    observation && typeof observation === 'object'
+      ? (observation as Record<string, unknown>).reason
+      : undefined;
+  return { code: failure.code, reason: typeof reason === 'string' ? reason : 'capture_failed' };
 }
 
 /** Turns a finished stable-capture loop into the settled observation payload. */

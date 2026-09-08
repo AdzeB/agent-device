@@ -5,6 +5,7 @@ import type {
 } from '../../../runtime-contract.ts';
 import type { BackendSnapshotResult } from '../../../backend.ts';
 import { AppError } from '@agent-device/kernel/errors';
+import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
 import type {
   SnapshotNode,
   SnapshotPreferredBackend,
@@ -23,7 +24,7 @@ export type CapturedSnapshot = {
   snapshot: SnapshotState;
 };
 
-export type SelectorSnapshotOptions = SelectorSnapshotInput;
+export type SelectorSnapshotOptions = SelectorSnapshotInput & { observeOnly?: boolean };
 
 /**
  * Resolve the snapshot a `@ref` READ binds against. ADR 0014: a ref resolves
@@ -69,6 +70,7 @@ export async function captureSelectorSnapshot(
   const sessionName = options.session ?? 'default';
   const session = await runtime.sessions.get(sessionName);
   const result = await captureSnapshot(toBackendContext(runtime, options), {
+    ...(options.observeOnly ? { observeOnly: true } : {}),
     interactiveOnly: captureOptions.interactiveOnly ?? false,
     depth: options.depth,
     scope: captureOptions.scope ?? options.scope,
@@ -82,6 +84,11 @@ export async function captureSelectorSnapshot(
       : {}),
   });
   const snapshot = snapshotStateFromResult(result, runtime);
+  if (options.observeOnly && !readObserveOnlyEvidence(snapshot.observation)) {
+    throw new AppError('COMMAND_FAILED', 'Non-activating snapshot proof is unavailable.', {
+      observation: { reason: 'observation_contract_mismatch' },
+    });
+  }
   (options.signal ?? runtime.signal)?.throwIfAborted();
   if (
     captureOptions.updateSession &&
@@ -102,6 +109,7 @@ function snapshotStateFromResult(
     nodes: result.nodes ?? [],
     truncated: result.truncated,
     backend: result.backend as SnapshotState['backend'],
+    ...(result.observation ? { observation: result.observation } : {}),
     ...(result.quality ? { snapshotQuality: result.quality } : {}),
     createdAt: now(runtime),
   } satisfies SnapshotState;
@@ -112,6 +120,7 @@ function mergeSnapshotAnnotations(
   result: BackendSnapshotResult,
 ): SnapshotState {
   const merged = { ...snapshot };
+  if (result.observation) merged.observation = result.observation;
   if (result.truncated === true || merged.truncated === true) merged.truncated = true;
   else if (result.truncated !== undefined) merged.truncated = result.truncated;
   if (result.quality && merged.snapshotQuality === undefined) {

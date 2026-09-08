@@ -47,6 +47,7 @@ export type CommandExecutionOptions = Partial<ScreenshotRequestFlags> &
     doubleTap?: boolean;
     verify?: boolean;
     settle?: boolean;
+    settleObserveOnly?: boolean;
     settleQuietMs?: number;
     clickButton?: ClickButton;
     pauseMs?: number;

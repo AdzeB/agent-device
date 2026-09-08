@@ -269,10 +269,8 @@ function assignReplayMetadataValue<Key extends keyof ReplayScriptMetadata>(
 function parseReplayScriptLine(line: string): SessionAction | null {
   const trimmed = line.trim();
   if (trimmed.length === 0 || trimmed.startsWith('#')) return null;
-  const observeOnly = /\s--observe-only$/.test(trimmed);
-  const tokens = tokenizeReplayLine(
-    observeOnly ? trimmed.replace(/\s--observe-only$/, '') : trimmed,
-  );
+  const observation = readTrailingObservationFlags(trimmed);
+  const tokens = tokenizeReplayLine(observation.line);
   const [command, ...args] = tokens;
   if (command === undefined) return null;
   if (command === 'context') return null;
@@ -281,7 +279,7 @@ function parseReplayScriptLine(line: string): SessionAction | null {
     ts: Date.now(),
     command,
     positionals: [],
-    flags: observeOnly ? { observeOnly: true } : {},
+    flags: observation.flags,
   };
 
   if (command === 'snapshot') {
@@ -482,6 +480,21 @@ function hasFillTargetAndText(positionals: string[]): positionals is [string, st
 function isNumericToken(token: string | undefined): token is string {
   if (!token) return false;
   return !Number.isNaN(Number(token));
+}
+
+function readTrailingObservationFlags(line: string): {
+  line: string;
+  flags: SessionAction['flags'];
+} {
+  const flags: SessionAction['flags'] = {};
+  let match: RegExpMatchArray | null;
+  while ((match = line.match(/\s(--observe-only|--settle-observe-only|--settle)$/))) {
+    if (match[1] === '--observe-only') flags.observeOnly = true;
+    if (match[1] === '--settle-observe-only') flags.settleObserveOnly = true;
+    if (match[1] === '--settle') flags.settle = true;
+    line = line.slice(0, match.index);
+  }
+  return { line, flags };
 }
 
 function tokenizeReplayLine(line: string): string[] {

@@ -91,6 +91,7 @@ function buildFlags(options: InternalRequestOptions): CommandFlags {
     doubleTap: options.doubleTap,
     verify: options.verify,
     settle: options.settle,
+    settleObserveOnly: options.settleObserveOnly,
     settleQuietMs: options.settleQuietMs,
     clickButton: options.clickButton,
     pauseMs: options.pauseMs,

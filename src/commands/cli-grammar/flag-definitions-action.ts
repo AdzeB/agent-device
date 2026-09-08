@@ -139,6 +139,14 @@ export const ACTION_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
       'After the action, wait for the UI to go quiet and return the settled diff vs the pre-action tree in the same response (best-effort; never fails the action)',
   },
   {
+    key: 'settleObserveOnly',
+    names: ['--settle-observe-only'],
+    type: 'boolean',
+    usageLabel: '--settle-observe-only',
+    usageDescription:
+      'Settle: require non-activating foreground captures from a ready local Apple runner; requires --settle. The authorized action is unchanged.',
+  },
+  {
     key: 'settleQuietMs',
     names: ['--settle-quiet'],
     type: 'int',

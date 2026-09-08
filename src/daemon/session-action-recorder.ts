@@ -368,6 +368,8 @@ const SANITIZED_FLAG_KEYS = [
   'bundleUrl',
   'launchUrl',
   'observeOnly',
+  'settle',
+  'settleObserveOnly',
   'snapshotInteractiveOnly',
   'snapshotDepth',
   'snapshotScope',

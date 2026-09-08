@@ -127,6 +127,7 @@ function createInteractionBackend(params: InteractionRuntimeInput): AgentDeviceB
     platform: publicPlatformString(session.device),
     captureSnapshot: async (context, options): Promise<BackendSnapshotResult> => ({
       snapshot: await params.captureSnapshot(flags, {
+        observeOnly: options?.observeOnly,
         interactiveOnly: options?.interactiveOnly === true,
         preferredBackend: options?.preferredBackend,
         includeRects: options?.includeRects === true,

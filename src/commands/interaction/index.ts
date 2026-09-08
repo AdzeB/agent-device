@@ -486,11 +486,13 @@ function toHoverOptions(input: HoverInput): HoverOptions {
 
 function toSettleOptions(input: {
   settle?: boolean;
+  settleObserveOnly?: boolean;
   settleQuietMs?: number;
   timeoutMs?: number;
-}): Pick<PressOptions, 'settle' | 'settleQuietMs' | 'timeoutMs'> {
+}): Pick<PressOptions, 'settle' | 'settleObserveOnly' | 'settleQuietMs' | 'timeoutMs'> {
   return {
     settle: input.settle,
+    settleObserveOnly: input.settleObserveOnly,
     settleQuietMs: input.settleQuietMs,
     timeoutMs: input.timeoutMs,
   };

@@ -44,7 +44,7 @@ export const REPEATED_TOUCH_FLAGS = flagKeys(
 // these flags for `--settle` (#1101). --timeout doubles as the settle deadline
 // (flag-sourced budget on the interaction descriptors, mirroring wait's
 // positional budget).
-export const SETTLE_FLAGS = flagKeys('settle', 'settleQuietMs', 'timeoutMs');
+export const SETTLE_FLAGS = flagKeys('settle', 'settleObserveOnly', 'settleQuietMs', 'timeoutMs');
 export const REPLAY_FLAGS = flagKeys('replayUpdate', 'replayEnv');
 
 // Which flags the CLI PARSER accepts on every command — a different axis from

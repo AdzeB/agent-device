@@ -122,6 +122,12 @@ agent-device snapshot -i
 # [off-screen below] 2 interactive items: "All Contacts", "New List"
 ```
 
+For post-action evidence, operators can use `press <target> --settle --settle-observe-only`
+(and other commands supporting `--settle`). The action retains its normal authorization; only
+its subsequent settle captures require the non-activating local Apple observer. If capture
+becomes unavailable, the action result remains intact and retained response frames accompany
+the settle failure. The flag defaults to false and requires `--settle`.
+
 ## iOS capture behavior
 
 Capture tiers are internal. There is no flag that selects a backend; `--raw` chooses a strategy, and
