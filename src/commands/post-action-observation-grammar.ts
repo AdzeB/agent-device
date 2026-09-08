@@ -7,7 +7,7 @@ import {
 import { settleInputFromFlags } from './cli-grammar/common.ts';
 import { SETTLE_FLAGS } from '@agent-device/command-registry/flag-groups';
 import type { FlagKey } from '@agent-device/command-registry/flag-types';
-import { booleanField, integerField } from './command-input.ts';
+import { booleanField, integerField, operatorField } from './command-input.ts';
 
 /**
  * The caller-facing surfaces a command's post-action observation trait
@@ -32,6 +32,15 @@ const verifyField = () =>
 const settleFields = () => ({
   settle: booleanField(
     'After the action, wait for the UI to go quiet and return the settled diff vs the pre-action tree. JSON also retains up to four early content frames (16 KiB/256 nodes each), without refs or editable labels. Best-effort; never fails the action.',
+  ),
+  settleObserveOnly: operatorField(
+    booleanField(
+      'Require non-activating foreground captures during --settle. Local Apple runner only; defaults to false.',
+    ),
+    {
+      operatorPath:
+        'Pass settleObserveOnly directly as CLI/Node.js command input; it is not exposed to model-facing tools.',
+    },
   ),
   settleQuietMs: integerField('Settle: quiet window in milliseconds (default 500).', { min: 0 }),
   timeoutMs: integerField('Settle: wait deadline in milliseconds (default 10000).', { min: 1 }),

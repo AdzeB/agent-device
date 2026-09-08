@@ -190,6 +190,16 @@ export const ACTION_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
     recorded: false,
   },
   {
+    key: 'settleObserveOnly',
+    names: ['--settle-observe-only'],
+    type: 'boolean',
+    usageLabel: '--settle-observe-only',
+    usageDescription:
+      'Settle: require non-activating foreground captures from a ready local Apple runner; requires --settle. The authorized action is unchanged.',
+    projectConfig: false,
+    recorded: true,
+  },
+  {
     key: 'settleQuietMs',
     names: ['--settle-quiet'],
     type: 'int',

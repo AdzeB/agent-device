@@ -1,3 +1,5 @@
+import { AppError } from '@agent-device/kernel/errors';
+import { isActiveProviderDevice } from '../../../provider-device-runtime.ts';
 import type { CommandFlags } from '@agent-device/contracts/command';
 import type { SnapshotState } from '@agent-device/kernel/snapshot';
 import type { DaemonCommandContext } from '../../context.ts';
@@ -24,6 +26,7 @@ export async function captureInteractionSnapshot(params: {
   publishSnapshot: (snapshot: SnapshotState) => void;
 }): Promise<SnapshotState> {
   const { session, flags, contextFromFlags, options } = params;
+  if (options.observeOnly === true) assertGuardedInteractionCapture(session);
   const effectiveFlags = {
     ...(flags ?? {}),
     ...snapshotOptionsToFlags(options),
@@ -40,4 +43,30 @@ export async function captureInteractionSnapshot(params: {
   });
   if (!isSparseSnapshotQualityVerdict(snapshot.snapshotQuality)) params.publishSnapshot(snapshot);
   return snapshot;
+}
+
+function assertGuardedInteractionCapture(session: InteractionSessionView): void {
+  const unsupported =
+    session.device.platform !== 'apple' ||
+    session.device.appleOs === 'watchos' ||
+    isActiveProviderDevice(session.device);
+  if (unsupported) throw guardedCaptureError('unsupported_runtime');
+  if (!session.appBundleId?.trim()) throw guardedCaptureError('target_identity_missing');
+  if (session.surface !== undefined && session.surface !== 'app')
+    throw guardedCaptureError('unsupported_surface');
+}
+
+function guardedCaptureError(reason: string): AppError {
+  return new AppError(
+    'UNSUPPORTED_OPERATION',
+    'Guarded settle capture requires a ready local Apple app session.',
+    {
+      observation: {
+        mode: 'observe-only',
+        capability: 'non-activating-foreground-v1',
+        foregroundVerified: false,
+        reason,
+      },
+    },
+  );
 }

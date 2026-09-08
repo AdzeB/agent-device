@@ -116,6 +116,12 @@ agent-device snapshot -i
 # [off-screen below] 2 interactive items: "All Contacts", "New List"
 ```
 
+For post-action evidence, operators can use `press <target> --settle --settle-observe-only`
+(and other commands supporting `--settle`). The action retains its normal authorization; only
+its subsequent settle captures require the non-activating local Apple observer. If capture
+becomes unavailable, the action result remains intact and retained response frames accompany
+the settle failure. The flag defaults to false and requires `--settle`.
+
 ## Structured node fields (`--json`)
 
 Every node in `snapshot --json` output carries `kind`, next to `type` when the platform reports one:

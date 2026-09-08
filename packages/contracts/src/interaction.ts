@@ -1,4 +1,9 @@
-import type { Point, SnapshotKeyboardBandFact, SnapshotNode } from '@agent-device/kernel/snapshot';
+import type {
+  ObserveOnlyEvidence,
+  Point,
+  SnapshotKeyboardBandFact,
+  SnapshotNode,
+} from '@agent-device/kernel/snapshot';
 import type { ResponseCost } from '@agent-device/kernel/contracts';
 import type { ClickButton } from './click-button.ts';
 import type { FillUnconfirmedVerification } from './fill-evidence.ts';
@@ -272,6 +277,7 @@ export type SettleTailEntry = {
  */
 /** Tuning for the settle wait; defaults live with the loop (stable-capture.ts). */
 export type SettleParams = {
+  observeOnly?: boolean;
   quietMs?: number;
   timeoutMs?: number;
 };
@@ -292,7 +298,10 @@ export type PostActionResponseFrame = {
   /** Capture completion on the runtime clock, in epoch milliseconds. */
   capturedAt: number;
   /** Historical content only: never grants refs or target coordinates. */
-  snapshot: { nodes: Array<{ type?: string; label?: string; identifier?: string }> };
+  snapshot: {
+    nodes: Array<{ type?: string; label?: string; identifier?: string }>;
+    observation?: ObserveOnlyEvidence;
+  };
   truncated: boolean;
 };
 
@@ -310,6 +319,9 @@ export type SettleObservation = {
   timeoutMs: number;
   /** Bounded early observations from the same action, separate from the final ref frame. */
   response?: PostActionResponse;
+  /** Privacy-projected final content; never grants refs or field readback authority. */
+  snapshot?: PostActionResponseFrame['snapshot'] & { truncated?: boolean };
+  captureError?: { code: string; reason: string };
   /**
    * The session's snapshot generation after the settled tree became the stored
    * snapshot (#1076 versioned refs). Attached by the daemon response layer

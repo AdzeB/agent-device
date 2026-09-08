@@ -9,6 +9,7 @@ export function settleFlagGuardResponse(
 ): DaemonResponse | null {
   if (!flags || flags.settle === true) return null;
   const orphaned: string[] = [];
+  if (flags.settleObserveOnly === true) orphaned.push('--settle-observe-only');
   if (flags.settleQuietMs !== undefined) orphaned.push('--settle-quiet');
   if (orphaned.length === 0) return null;
   return interactionErrorResponse(
@@ -20,6 +21,7 @@ export function settleFlagGuardResponse(
 export function readSettleRequest(flags: CommandFlags | undefined): SettleParams | undefined {
   if (flags?.settle !== true) return undefined;
   return {
+    ...(flags.settleObserveOnly === true ? { observeOnly: true } : {}),
     ...(flags.settleQuietMs !== undefined ? { quietMs: flags.settleQuietMs } : {}),
     ...(flags.timeoutMs !== undefined ? { timeoutMs: flags.timeoutMs } : {}),
   };
