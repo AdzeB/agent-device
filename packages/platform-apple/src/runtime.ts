@@ -1,3 +1,4 @@
+import { bindAppleScreenshotRuntime } from './runtime-screenshot.ts';
 import {
   type DeviceBinding,
   type RuntimeOperationFact,
@@ -24,10 +25,7 @@ import {
 } from '@agent-device/contracts/focus-runtime';
 import { bindLocalGestureInteractor } from '@agent-device/contracts/gesture-runtime';
 import { bindLocalScrollInteractor } from '@agent-device/contracts/scroll-runtime';
-import {
-  bindLocalScreenshotInteractor,
-  screenshotRuntimeOperationFacts,
-} from '@agent-device/contracts/screenshot-runtime';
+import { screenshotRuntimeOperationFacts } from '@agent-device/contracts/screenshot-runtime';
 import { selectorObservationRuntimeOperationFacts } from '@agent-device/contracts/selector-observation-runtime';
 import { snapshotRuntimeOperationFacts } from '@agent-device/contracts/snapshot-runtime';
 import {
@@ -381,10 +379,9 @@ export function createApplePlatformRuntime(host: PlatformRuntimeHost): PlatformR
           }),
         ),
         ...whenAdmitted(facts.operations.captureScreenshot, () =>
-          bindLocalScreenshotInteractor({
+          bindAppleScreenshotRuntime(host, {
             device: request.device,
             signal: request.scope.signal,
-            resolveInteractor: host.localInteractors.resolve,
           }),
         ),
         ...whenAdmitted(facts.operations.focusPoint, () =>

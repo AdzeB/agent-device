@@ -685,7 +685,12 @@ export async function executeRunnerCommandWithSession(
       deadline.remainingMs(),
       signal,
     );
-    const data = await parseRunnerResponse(response, session, logPath);
+    const data =
+      command.command === 'screenshot' && command.inlineScreenshot === true
+        ? await (await import('./runner-pixel-response.ts')).readPixelResponse(response)
+        : await parseRunnerResponse(response, session, logPath);
+    if (getReadyRunnerSession(device.id) !== session)
+      throw observationUnavailable('runner_not_ready');
     assertObserveOnlyRunnerResponse(command, data);
     return data;
   }

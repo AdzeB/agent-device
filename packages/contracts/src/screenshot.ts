@@ -68,6 +68,8 @@ export type ScreenshotCropReason =
   (typeof SCREENSHOT_CROP_REASONS)[keyof typeof SCREENSHOT_CROP_REASONS];
 
 export const SCREENSHOT_COMMAND_FLAG_KEYS = [
+  'screenshotStream',
+  'observeOnly',
   'out',
   'overlayRefs',
   'screenshotCropOn',
@@ -79,6 +81,7 @@ export const SCREENSHOT_COMMAND_FLAG_KEYS = [
 ] as const;
 
 export const SCREENSHOT_ACTION_FLAG_KEYS = [
+  'screenshotStream',
   'screenshotCropOn',
   'screenshotPixelDensity',
   'screenshotFullscreen',
@@ -100,6 +103,14 @@ type ScreenshotSpecificFlagDefinition = {
 };
 
 export const SCREENSHOT_SPECIFIC_FLAG_DEFINITIONS: readonly ScreenshotSpecificFlagDefinition[] = [
+  {
+    key: 'screenshotStream',
+    names: ['--stream'],
+    type: 'boolean',
+    usageLabel: '--stream',
+    usageDescription:
+      'Screenshot: memory-only PNG JSON; requires --observe-only and a local iOS app session',
+  },
   {
     key: 'screenshotCropOn',
     names: ['--crop-on'],
@@ -186,6 +197,7 @@ const SCREENSHOT_SCRIPT_STRING_FLAGS = [
 ] as const;
 
 export type ScreenshotRequestFlags = {
+  screenshotStream?: boolean;
   out?: string;
   overlayRefs?: boolean;
   screenshotCropOn?: string;
@@ -215,6 +227,7 @@ export type ScreenshotRuntimeFlags = Pick<
 >;
 
 export type ScreenshotPublicOptions = {
+  stream?: boolean;
   overlayRefs?: boolean;
   cropOn?: string;
   pixelDensity?: number;
@@ -252,6 +265,7 @@ export function screenshotFlagsFromOptions(
   options: ScreenshotPublicOptions & Partial<ScreenshotRequestFlags> = {},
 ): Partial<ScreenshotRequestFlags> {
   return stripUndefined({
+    screenshotStream: options.screenshotStream ?? options.stream,
     overlayRefs: options.overlayRefs,
     screenshotCropOn: options.screenshotCropOn ?? options.cropOn,
     screenshotPixelDensity: options.screenshotPixelDensity ?? options.pixelDensity,

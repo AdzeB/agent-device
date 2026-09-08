@@ -12,6 +12,7 @@ import {
 } from '@agent-device/contracts/capture';
 import {
   booleanField,
+  operatorField,
   enumField,
   integerField,
   numberField,
@@ -34,6 +35,11 @@ const screenshotCommandMetadata = defineFieldCommandMetadata(
   screenshotCommandDescription,
   {
     path: stringField('Output path.'),
+    stream: operatorField(
+      booleanField('Return bounded memory-only PNG JSON with native foreground proof.'),
+      { operatorConfig: true },
+    ),
+    observeOnly: operatorField(booleanField(), { operatorConfig: true }),
     cropOn: stringField(
       'Selector expression; the capture is cropped to the frame the selector resolves on the same screen.',
     ),
@@ -63,6 +69,8 @@ const screenshotCliSchema = {
 export const screenshotCliReader: CliReader = (positionals, flags) => ({
   ...commonInputFromFlags(flags),
   path: positionals[0] ?? flags.out,
+  stream: flags.screenshotStream,
+  observeOnly: flags.observeOnly,
   ...screenshotOptionsFromFlags(flags),
 });
 
@@ -71,6 +79,7 @@ export const screenshotDaemonWriter: DaemonWriter = (input) => {
   validateScreenshotScale(input as CaptureScreenshotOptions);
   return request(PUBLIC_COMMANDS.screenshot, optionalString(input.path), {
     ...input,
+    screenshotStream: input.stream === true,
     ...screenshotFlagsFromPublicOptions(input as CaptureScreenshotOptions),
   });
 };

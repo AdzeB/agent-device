@@ -69,7 +69,7 @@ export function screenshotRuntimeFixture(
       await options.onCapture(input);
       return;
     }
-    writeSolidPng(input.outPath);
+    writeSolidPng(input.outPath!);
   });
   const captureSnapshot = vi.fn(
     async (input: CaptureSnapshotInput): Promise<SnapshotResult> =>

@@ -73,7 +73,7 @@ export function snapshotRuntimeFixture(requestId?: string): Readonly<{
       await dispatchFixtureSnapshot(device, input, requestSignal);
     const captureScreenshot = async (input: CaptureScreenshotInput) => {
       fixtureScreenshotCaptures.push(input);
-      writeSolidPng(input.outPath);
+      writeSolidPng(input.outPath!);
     };
     const setSetting = async (input: SetSettingInput) => {
       fixtureSettingsMutations.push(input);

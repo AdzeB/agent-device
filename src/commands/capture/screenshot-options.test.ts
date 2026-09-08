@@ -141,6 +141,8 @@ test('screenshot script flags use the shared recorded flag contract', () => {
     SCREENSHOT_ACTION_FLAG_KEYS,
   );
   assert.deepEqual(SCREENSHOT_COMMAND_FLAG_KEYS, [
+    'screenshotStream',
+    'observeOnly',
     'out',
     'overlayRefs',
     'screenshotCropOn',

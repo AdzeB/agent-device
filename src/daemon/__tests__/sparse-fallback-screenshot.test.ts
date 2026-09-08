@@ -31,7 +31,8 @@ async function scenario() {
  * verdict, and the screenshot leg is the fallback under test. */
 function seed(
   verdict: SnapshotQualityVerdict,
-  onCapture: ScreenshotRuntimeFixtureOptions['onCapture'] = (input) => writeSolidPng(input.outPath),
+  onCapture: ScreenshotRuntimeFixtureOptions['onCapture'] = (input) =>
+    writeSolidPng(input.outPath!),
 ): ScreenshotRuntimeFixture {
   return screenshotRuntimeFixture({
     onCapture,

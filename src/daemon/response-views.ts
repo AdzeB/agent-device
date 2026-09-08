@@ -73,6 +73,7 @@ const SCREENSHOT_DIGEST_NUMBER_FIELDS = [
  * richer is computed yet).
  */
 function screenshotView(data: DaemonResponseData, level: ResponseLevel): DaemonResponseData {
+  if (data.protocol === 'native-png-stream-v1') return data;
   if (level !== 'digest') return data;
   const overlays = Array.isArray(data.overlayRefs)
     ? (data.overlayRefs as ScreenshotOverlayRef[])

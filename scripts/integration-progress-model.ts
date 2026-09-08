@@ -344,7 +344,7 @@ function summarizeProviderScenarioFlagExclusions() {
       name: 'native observation without launch, activation, or recovery',
       owner:
         'daemon observe-only request admission and native foreground/capture verification; provider fixtures cannot prove focus or activation preservation',
-      keys: ['observeOnly', 'settleObserveOnly'],
+      keys: ['observeOnly', 'settleObserveOnly', 'screenshotStream'],
     },
     {
       name: 'open foreground auto-resolution (RFC prototype)',

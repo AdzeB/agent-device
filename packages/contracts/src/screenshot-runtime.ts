@@ -1,3 +1,4 @@
+import { AppError } from '@agent-device/kernel/errors';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import {
   localInteractorSource,
@@ -19,9 +20,18 @@ export type ScreenshotRuntimeExecution = Readonly<Omit<RunnerContext, 'appBundle
  * authority.
  */
 export type CaptureScreenshotInput = Readonly<{
-  outPath: string;
+  outPath?: string;
+  consumePng?: (image: NativePngStream) => void;
   options?: Readonly<ScreenshotOptions>;
   execution?: ScreenshotRuntimeExecution;
+}>;
+
+export type NativePngStream = Readonly<{
+  protocol: 'native-png-stream-v1';
+  mimeType: 'image/png';
+  imageBase64: string;
+  runnerSessionId: string;
+  observation: Record<string, unknown>;
 }>;
 
 export type ScreenshotRuntimeOperations = Readonly<{
@@ -50,6 +60,12 @@ function bindScreenshotCapture(
 ): ScreenshotRuntimeOperations {
   return Object.freeze({
     captureScreenshot: async (input: CaptureScreenshotInput) => {
+      if (input.consumePng || !input.outPath) {
+        throw new AppError(
+          'UNSUPPORTED_OPERATION',
+          'Memory-only screenshot unavailable for this runtime',
+        );
+      }
       const interactor = await resolveInteractor({
         ...input.execution,
         appBundleId: input.options?.appBundleId,

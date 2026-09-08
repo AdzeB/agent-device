@@ -21,6 +21,7 @@ export function requireObserveOnlyLease(lease: DeviceLease | undefined): DeviceL
 export function observeOnlyCommandResponse(req: DaemonRequest): DaemonResponse | undefined {
   if (req.flags?.observeOnly !== true) return undefined;
   const allowed =
+    (req.command === 'screenshot' && req.flags?.screenshotStream === true) ||
     req.command === 'snapshot' ||
     req.command === 'get' ||
     req.command === 'is' ||

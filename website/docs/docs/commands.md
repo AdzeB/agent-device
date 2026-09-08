@@ -1161,3 +1161,5 @@ For CLI-discoverable workflow guidance, run `agent-device help ios-system-ui`.
 - The full widget add/edit/remove flow is selector-driven from a fresh `snapshot -i`, except two coordinate-based steps: the empty-space long-press that enters edit mode, and (until fixed) the widget-gallery search-result rows, which currently return unlabeled accessibility nodes.
 - SpringBoard labels vary by iOS version and locale; discover them from the current snapshot rather than hard-coding strings like `Edit` or `Add Widget`.
 - Reopen the app bundle under test to return to normal app automation after a SpringBoard step.
+
+Local iOS app sessions support `screenshot --stream --observe-only --json`: a bounded memory-only PNG response with native foreground and runner-session proof. The caller must consume and redact the response privately; file output, postprocessing, active tracing, and unsupported runtimes are refused.

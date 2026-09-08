@@ -149,6 +149,15 @@ export function readDaemonSocketProgressResponse(
   socket.setEncoding('utf8');
   socket.on('data', (chunk) => {
     if (isSettled()) return;
+    if (
+      req.flags?.screenshotStream &&
+      Buffer.byteLength(buffer) + Buffer.byteLength(chunk) > 16 * 1024 * 1024
+    ) {
+      clearTimeout();
+      socket.destroy();
+      reject(new AppError('COMMAND_FAILED', 'Memory screenshot exceeded size limit'));
+      return;
+    }
     const parsed = consumeTextLines(buffer, chunk);
     buffer = parsed.buffer;
     for (const line of parsed.lines) {

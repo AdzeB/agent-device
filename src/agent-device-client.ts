@@ -366,6 +366,7 @@ export function createAgentDeviceClient(
       screenshot: async (options: CaptureScreenshotOptions = {}) => {
         const session = resolveRequestSession(options);
         const data = await executeCommand<Record<string, unknown>>('screenshot', options);
+        if (options.stream === true) return data as unknown as CaptureScreenshotResult;
         // A non-default responseLevel returns a leveled (digest) screenshot shape
         // — `overlayCount`, leveled `overlayRefs`, `artifacts` — that the default
         // normalizer below would drop. Pass the leveled payload through verbatim.

@@ -67,6 +67,8 @@ export type CaptureSnapshotResult = {
 } & PublicSnapshotCaptureAnnotations;
 
 export type CaptureScreenshotOptions = AgentDeviceRequestOverrides & {
+  stream?: boolean;
+  observeOnly?: boolean;
   path?: string;
   overlayRefs?: boolean;
   /** Crop the capture to the frame of the selector resolved on the same screen. */
