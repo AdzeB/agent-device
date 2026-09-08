@@ -224,7 +224,7 @@ test('router serializes concurrent commands for the same device across sessions'
 
   const runtime = screenshotRuntimeFixture({
     onCapture: async (input) => {
-      writeSolidPng(input.outPath);
+      writeSolidPng(input.outPath!);
       enter('screenshot');
       await screenshotGate;
       exit('screenshot');
@@ -290,7 +290,7 @@ test('iOS simulator screenshot response includes output dimensions and logical d
     `agent-device-ios-meta-${Date.now()}.png`,
   );
   const { handler } = screenshotRouter(makeIosSession('default'), {
-    onCapture: (input) => writeSolidPng(input.outPath, 402, 874),
+    onCapture: (input) => writeSolidPng(input.outPath!, 402, 874),
   });
 
   const response = await handler({
@@ -320,7 +320,7 @@ test('non-iOS screenshot response tolerates malformed PNG metadata', async () =>
     `agent-device-android-truncated-${Date.now()}.png`,
   );
   const { handler } = screenshotRouter(makeSession('default'), {
-    onCapture: (input) => fs.writeFileSync(input.outPath, Buffer.alloc(0)),
+    onCapture: (input) => fs.writeFileSync(input.outPath!, Buffer.alloc(0)),
   });
 
   const response = await handler({
@@ -345,7 +345,7 @@ test('iOS simulator screenshot omits logical density metadata after --scale down
     `agent-device-ios-scale-${Date.now()}.png`,
   );
   const { handler } = screenshotRouter(makeIosSession('default'), {
-    onCapture: (input) => writeSolidPng(input.outPath, 804, 1748),
+    onCapture: (input) => writeSolidPng(input.outPath!, 804, 1748),
   });
 
   const response = await handler({
@@ -414,7 +414,7 @@ test('screenshot --overlay-refs captures a fresh snapshot when the session has n
   const { handler, runtime } = screenshotRouter(makeSession('default'), {
     onCapture: (input) => {
       order.push('screenshot');
-      writeSolidPng(input.outPath);
+      writeSolidPng(input.outPath!);
     },
     snapshotResult: () => {
       order.push('snapshot');
@@ -466,7 +466,7 @@ test('screenshot --overlay-refs uses presented iOS runner rows for overlay refs'
     `agent-device-overlay-ios-${Date.now()}.png`,
   );
   const { handler, sessionStore, runtime } = screenshotRouter(makeIosSession('default'), {
-    onCapture: (input) => writeSolidPng(input.outPath, 402, 874),
+    onCapture: (input) => writeSolidPng(input.outPath!, 402, 874),
     snapshotResult: () => ({
       backend: 'xctest',
       producer: 'apple-runner',
@@ -615,7 +615,7 @@ test('screenshot --pixel-density keeps overlay refs aligned to scaled iOS simula
     `agent-device-overlay-2x-${Date.now()}.png`,
   );
   const { handler } = screenshotRouter(makeIosSession('default'), {
-    onCapture: (input) => writeSolidPng(input.outPath, 804, 1748),
+    onCapture: (input) => writeSolidPng(input.outPath!, 804, 1748),
     snapshotResult: () => ({
       backend: 'xctest',
       producer: 'apple-runner',

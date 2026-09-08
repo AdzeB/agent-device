@@ -100,15 +100,41 @@ export async function executeObserveOnlyRunnerExchange(params: {
   );
   assertObserveOnlyRunnerCapability(capability);
   if (!params.isCurrentReadySession()) throw observationUnavailable('runner_not_ready');
-  const data = await executeRunnerExchange(
-    device,
-    session,
-    command,
-    params.logPath,
-    deadline.remainingMs(),
-    params.invalidateFatalSession,
-    signal,
-  );
+  const data = isInlineScreenshot(command)
+    ? await readInlineScreenshot(device, session, command, deadline, signal)
+    : await executeRunnerExchange(
+        device,
+        session,
+        command,
+        params.logPath,
+        deadline.remainingMs(),
+        params.invalidateFatalSession,
+        signal,
+      );
+  if (!params.isCurrentReadySession()) throw observationUnavailable('runner_not_ready');
   assertObserveOnlyRunnerResponse(command, data);
   return data;
+}
+
+function isInlineScreenshot(command: RunnerCommand): boolean {
+  return command.command === 'screenshot' && command.inlineScreenshot === true;
+}
+
+/** Memory-only pixels bypass the text parser: the body is read under a byte ceiling and zeroed. */
+async function readInlineScreenshot(
+  device: DeviceInfo,
+  session: RunnerSession,
+  command: RunnerCommand,
+  deadline: Deadline,
+  signal: AbortSignal | undefined,
+): Promise<Record<string, unknown>> {
+  const response = await sendRunnerCommandOnce(
+    device,
+    session.port,
+    withRunnerCommandId(command),
+    deadline.remainingMs(),
+    signal,
+  );
+  const { readPixelResponse } = await import('./runner-pixel-response.ts');
+  return await readPixelResponse(response);
 }

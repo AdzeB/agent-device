@@ -239,6 +239,8 @@ export async function sendRequest(
   options: SendRequestOptions = {},
 ): Promise<DaemonResponse> {
   const transport = chooseTransport(info, preference);
+  if (req.flags?.screenshotStream === true)
+    return await sendPixelRequest(info, req, statePaths, timeoutMs, transport);
   const deadline = typeof timeoutMs === 'number' ? performance.now() + timeoutMs : undefined;
   const { hasOutgoingPrivateFieldComparison } =
     await import('../daemon/private-field-comparison.ts');
@@ -745,5 +747,27 @@ export async function cachedRemoteDaemonHealth(info: DaemonInfo): Promise<Remote
   } catch (error) {
     if (remoteHealthCache === entry) remoteHealthCache = undefined;
     throw error;
+  }
+}
+
+/** Memory-only screenshots travel only over the identity-verified local socket. */
+async function sendPixelRequest(
+  info: DaemonInfo,
+  req: DaemonRequest,
+  statePaths: DaemonPaths,
+  timeoutMs: number | undefined,
+  transport: ResolvedDaemonTransport,
+): Promise<DaemonResponse> {
+  if (transport !== 'socket' || info.baseUrl)
+    throw new AppError('INVALID_ARGS', 'Memory screenshot requires the local socket transport');
+  try {
+    const { requirePrivateFieldDaemonIdentity } =
+      await import('./private-field-daemon-identity.ts');
+    await requirePrivateFieldDaemonIdentity(info);
+    return await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
+      onProgress: () => {},
+    });
+  } catch {
+    throw new AppError('COMMAND_FAILED', 'Memory screenshot transport unavailable');
   }
 }
