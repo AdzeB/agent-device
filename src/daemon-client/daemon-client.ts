@@ -103,7 +103,7 @@ export async function sendToDaemon(
             settings.transportPreference,
             settings.paths,
             requestTimeoutMs,
-            options.onProgress ? { onProgress: options.onProgress } : undefined,
+            { onProgress: options.onProgress },
           ),
         { requestId, command: req.command },
       );
