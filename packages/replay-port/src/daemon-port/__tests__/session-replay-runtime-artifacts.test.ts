@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'vitest';
 import { collectReplayActionArtifactPaths } from '../session-replay-runtime-artifacts.ts';
-import { mkdtempForTestSync } from '../../../../__tests__/test-utils/tmp-dir.ts';
+import { mkdtempForTestSync } from '../../tmp-dir.fixtures.ts';
 
 test('collectReplayActionArtifactPaths includes existing failed action artifacts', () => {
   const root = mkdtempForTestSync('agent-device-replay-artifacts-');
