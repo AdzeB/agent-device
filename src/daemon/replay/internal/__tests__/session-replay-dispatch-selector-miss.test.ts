@@ -45,7 +45,7 @@ import {
 import {
   bottomTabsRealCaptureFixture,
   recordArticleEvidence,
-} from './session-replay-target-classification-fixtures.ts';
+} from '@agent-device/replay-port/target-classification-fixtures';
 import {
   captureSnapshotThroughLegacyDispatchFixture,
   legacyDispatchCapture,
@@ -108,7 +108,7 @@ function assertDivergenceShape(
 test('(a) an ANNOTATED press whose dispatch throws a selector-miss yields REPLAY_DIVERGENCE, not COMMAND_FAILED', async () => {
   const root = mkdtempForTestSync('agent-device-replay-dispatch-miss-annotated-');
   const { sessionStore, sessionName } = setupSession(root);
-  const evidence = recordArticleEvidence();
+  const evidence = await recordArticleEvidence();
   const filePath = writeReplayFile(root, [
     `# agent-device:target-v1 ${JSON.stringify(evidence)}`,
     'click id="article"',
