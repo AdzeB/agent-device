@@ -87,6 +87,31 @@ agent-device snapshot -i
 # [off-screen below] 2 interactive items: "All Contacts", "New List"
 ```
 
+## Structured node fields (`--json`)
+
+Every node in `snapshot --json` output carries `kind`, next to `type` when the platform reports one:
+
+- `type` is the raw platform class, verbatim: `Button` / `StaticText` from XCUI, `android.widget.Button`
+  from the Android hierarchy. It differs by platform for the same UI role.
+- `kind` is the platform-neutral classification shown in brackets on the text line above
+  (`button`, `text-field`, `text`, `switch`, `link`, …), computed by the same function on every
+  platform, backend, and projection (`snapshot` and `snapshot -i` alike) — so text and JSON never
+  disagree about a node's role.
+
+```json
+{ "ref": "e4", "type": "android.widget.Button", "kind": "button", "label": "Send code" }
+{ "ref": "e40", "type": "Button", "role": "UIButton", "kind": "button", "label": "Continue to catalog" }
+```
+
+On iOS, `role` (when present) is the native AX class (`UIButton`) — a different fact carried only
+on iOS nodes; `kind` is the cross-platform one, present on every node on every platform.
+
+`role=` selectors (and `find role=...`) do not share `kind`'s vocabulary yet: they match a raw,
+leaf-only normalization of `type` (`statictext`, `edittext`), not `kind` values like `text` or
+`text-field`. Reconciling the two is tracked separately
+([#3021](https://github.com/callstack/agent-device/issues/3021)) because it would change matching
+for selectors already in use.
+
 ## iOS capture behavior
 
 Capture tiers are internal. There is no flag that selects a backend; `--raw` chooses a strategy, and

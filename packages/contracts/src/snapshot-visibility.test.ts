@@ -1,9 +1,14 @@
 import { expect, test } from 'vitest';
 import type { SnapshotNode } from '@agent-device/kernel/snapshot';
 import { createSnapshotVisibility } from './snapshot-visibility.ts';
+import { formatRole } from '@agent-device/kernel/snapshot';
 
-function snapshotNodes(nodes: Array<Omit<SnapshotNode, 'ref'>>): SnapshotNode[] {
-  return nodes.map((node) => ({ ref: `@e${node.index}`, ...node }));
+function snapshotNodes(nodes: Array<Omit<SnapshotNode, 'ref' | 'kind'>>): SnapshotNode[] {
+  return nodes.map((node) => ({
+    ref: `@e${node.index}`,
+    ...node,
+    kind: formatRole(node.type ?? 'Element'),
+  }));
 }
 
 test('rootless effective visibility never resolves a target-dependent containing rectangle', () => {
