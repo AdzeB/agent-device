@@ -4,6 +4,11 @@ import type { DeviceInventoryRequest } from './device-inventory.ts';
 export type EnsureReadyInput = Readonly<{
   serial?: string;
   androidSerialAllowlist?: readonly string[];
+  /**
+   * Absolute deadline (epoch ms), from `boot --timeout`, already validated finite and positive.
+   * Bounds a cold Simulator boot wait; the Apple runtime is the only current consumer.
+   */
+  deadlineAtMs?: number;
 }>;
 
 export type DeviceReadinessRuntimeOperations = Readonly<{

@@ -522,6 +522,54 @@ test('readiness and boot keep the Apple automation helper warm inside the platfo
   expect(keepHot).toHaveBeenNthCalledWith(3, device);
 });
 
+test('bootTarget forwards a --timeout budget as the Simulator boot deadline (#3004)', async () => {
+  const host = platformRuntimeHostFixture();
+  let state = 'Shutdown';
+  const calls: Array<{ args: readonly string[]; timeoutMs?: number }> = [];
+  const runtime = createApplePlatformRuntime({
+    ...host,
+    appleTools: {
+      ...host.appleTools,
+      run: vi.fn(async (request) => {
+        calls.push({ args: request.args, timeoutMs: request.timeoutMs });
+        if (request.args.includes('list')) {
+          return {
+            stdout: JSON.stringify({ devices: { ios: [{ udid: 'apple-fact', state }] } }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (request.args.includes('boot')) state = 'Booted';
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }),
+    },
+  });
+  const device = appleDevice({ booted: false });
+  const binding = await runtime.bind({
+    device,
+    intent: { kind: 'ordinary' },
+    scope: {
+      signal: new AbortController().signal,
+      diagnostics: { emit: () => {} },
+      progress: { report: () => {} },
+    },
+  });
+
+  const deadlineAtMs = Date.now() + 45_000;
+  await binding.operations.bootTarget?.({ deadlineAtMs });
+
+  // The startup budget reaches the boot wait, same as open/prepare (#2325): every simctl call the
+  // wait issues runs under the caller's --timeout budget until the absolute deadline, not a fixed
+  // default. Both `boot` and `bootstatus` derive their timeout from the same deadline, so both
+  // must sit within a tight window of the 45s budget - a fixed default like 10s or 30s would fail.
+  const bootCall = calls.find((call) => call.args.includes('boot'));
+  const bootstatusCall = calls.find((call) => call.args.includes('bootstatus'));
+  expect(bootCall?.timeoutMs).toBeGreaterThan(44_900);
+  expect(bootCall?.timeoutMs).toBeLessThanOrEqual(45_000);
+  expect(bootstatusCall?.timeoutMs).toBeGreaterThan(44_900);
+  expect(bootstatusCall?.timeoutMs).toBeLessThanOrEqual(45_000);
+});
+
 test('macOS readiness is a no-op while boot remains unavailable', async () => {
   const host = platformRuntimeHostFixture();
   const ensureConnected = vi.fn(host.deviceReadiness.applePhysical.ensureConnected);
