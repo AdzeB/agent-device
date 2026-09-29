@@ -205,6 +205,19 @@ extension RunnerTests {
     }
   }
 
+  /// The reason a capture's verdict carries. Once an XCTest-backed tier ran behind a deferred plan,
+  /// it ran on the bounded probe's short slice, so the capture reports that constraint ('budget')
+  /// whether the tier recovered it or the plan ended sparse, rather than the pre-selection
+  /// ('deferred') the plan was seeded with.
+  static func planVerdictReason(
+    xCTestTierRan: Bool,
+    state: SnapshotXCTestChannelPlanState,
+    firstFailure: (reason: String, code: String)?
+  ) -> (reason: String, code: String)? {
+    guard xCTestTierRan, state == .deferredToIndependentBackend else { return firstFailure }
+    return xcTestChannelStateFirstFailure(.boundedXCTestProbe)
+  }
+
   /// Pure gate: a capture is planned as penalized when the channel penalty is
   /// active OR the daemon pinned the private-AX backend (same-backend evidence
   /// probe) — both mean "do not enter XCTest tree work first, and stamp the
@@ -251,10 +264,14 @@ extension RunnerTests {
     let availablePlan = plan.filter { availableBackends.contains($0) }
     let recoveryPlan = availablePlan.filter { !$0.usesXCTestAccessibilityChannel }
     if !recoveryPlan.isEmpty {
+      // The independent backend reads only the app it can match as the active AX application, so
+      // an out-of-process surface over the app (the Save Password sheet) leaves it empty for the
+      // whole penalty. The tree, on the bounded probe's short slice, stays behind it; the query
+      // sweep does not, since its grind is what the penalty keeps off the main thread.
       return EffectiveSnapshotCapturePlan(
-        plan: recoveryPlan,
+        plan: recoveryPlan + availablePlan.filter { $0 == .recursiveTree },
         xCTestChannelState: .deferredToIndependentBackend,
-        treeCaptureSliceBudgetOverride: nil,
+        treeCaptureSliceBudgetOverride: Self.penalizedXCTestProbeTreeSliceBudget,
         preferredBackend: nil
       )
     }
@@ -285,6 +302,7 @@ extension RunnerTests {
     // A caller may share the pre-plan system-modal probe's deadline; otherwise own the full budget (#1244).
     let deadline = deadline ?? Date().addingTimeInterval(Self.snapshotPlanBudget)
     let suppressXCTestPenalty = snapshotXCTestPenaltyWarmupExemption.consume()
+    var xCTestTierRan = false
 
     // Reorder is iOS-only because hostile screens can make XCTest tree/query work grind while
     // the app remains visually responsive. Simulators can avoid that channel through private AX;
@@ -344,6 +362,7 @@ extension RunnerTests {
         }
         continue
       }
+      if kind.usesXCTestAccessibilityChannel { xCTestTierRan = true }
       let attempt = try captureWithBackend(
         kind,
         target: target,
@@ -391,18 +410,23 @@ extension RunnerTests {
       }
 
       let recovered = kind != effectivePlan.first || effective.xCTestChannelState != .normal
+      let verdictReason = Self.planVerdictReason(
+        xCTestTierRan: kind.usesXCTestAccessibilityChannel,
+        state: effective.xCTestChannelState,
+        firstFailure: firstFailure
+      )
       if recovered {
         NSLog(
           "AGENT_DEVICE_RUNNER_SNAPSHOT_RECOVERED backend=%@ reason=%@",
           kind.rawValue,
-          firstFailure?.reason ?? "sparse tree"
+          verdictReason?.reason ?? "sparse tree"
         )
       }
       return stampedSnapshotPayload(
         capture,
         backend: kind,
         state: recovered ? .recovered : .healthy,
-        reason: recovered || firstFailure?.code == "requested-backend" ? firstFailure : nil
+        reason: recovered || firstFailure?.code == "requested-backend" ? verdictReason : nil
       )
     }
 
@@ -425,13 +449,18 @@ extension RunnerTests {
       }
     }
 
+    let terminalReason = Self.planVerdictReason(
+      xCTestTierRan: xCTestTierRan,
+      state: effective.xCTestChannelState,
+      firstFailure: firstFailure
+    )
     let fallbackPayload =
-      best.map { stampedSnapshotPayload($0.capture, backend: $0.kind, state: .sparse, reason: firstFailure) }
+      best.map { stampedSnapshotPayload($0.capture, backend: $0.kind, state: .sparse, reason: terminalReason) }
       ?? stampedSnapshotPayload(
         SnapshotBackendCapture(payload: sparseTruncatedSnapshotPayload(), effectiveDepth: nil),
         backend: effectivePlan.last ?? plan.last ?? .recursiveTree,
         state: .sparse,
-        reason: firstFailure
+        reason: terminalReason
       )
     return fallbackPayload
   }
@@ -491,6 +520,11 @@ extension RunnerTests {
           }
           return (sweep.acquisition, sweep.outcome)
         case .privateAX:
+          #if AGENT_DEVICE_RUNNER_UNIT_TESTS
+          if let override = self.privateAXAcquisitionOverrideForTesting {
+            return (override(), .completed)
+          }
+          #endif
           return (
             self.privateAXSnapshotAcquisition(
               target: target,
