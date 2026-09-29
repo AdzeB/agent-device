@@ -1,4 +1,5 @@
 import type { DeviceIdentity, DeviceInfo } from '@agent-device/kernel/device';
+import type { ResourceDiagnostic } from '@agent-device/host-kit/diagnostics';
 import type { OwnedProcessRecordStore } from '@agent-device/host-kit/process';
 
 /** Predicate answering whether this process currently holds an active claim on the device. */
@@ -21,11 +22,16 @@ export type LegacyAppLogMarkerRecoveryOutcome = Readonly<{
  * this surface. No generic hook bag — every phase this daemon relies on is named here.
  */
 export type PlatformOwnerLifecycle = Readonly<{
-  /** Publishes the daemon-owned lease-owner state dir and claim-authority probe. */
+  /**
+   * Startup, before servers open: publishes the daemon-owned lease-owner state dir and
+   * claim-authority probe, and puts back the host's own `XCTestDevices` where an older agent-device
+   * left it redirected into a scoped simulator set.
+   */
   configureForDaemonLock(
     input: Readonly<{
       stateDir: string;
       hasDeviceClaimAuthority: DeviceClaimAuthorityProbe;
+      onDiagnostic: (diagnostic: ResourceDiagnostic) => void;
     }>,
   ): Promise<void>;
   /** Clears the configuration above: on a failed lock acquisition, and on shutdown. */
@@ -40,11 +46,6 @@ export type PlatformOwnerLifecycle = Readonly<{
       ownedProcessRecords?: OwnedProcessRecordStore;
     }>,
   ): Promise<void>;
-  /**
-   * Startup, after daemon.log publication: puts back the host's own `XCTestDevices` directory where
-   * an older agent-device left it redirected into a scoped simulator set.
-   */
-  restoreLegacyXctestDeviceSetRedirect(): Promise<void>;
   /** Shutdown: resets Android snapshot-helper runtime sessions. */
   resetAndroidSnapshotHelper(): Promise<void>;
 }>;
