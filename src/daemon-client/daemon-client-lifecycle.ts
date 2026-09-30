@@ -8,7 +8,7 @@ import type { DaemonRequest, DaemonResponse } from '../daemon/daemon-request.ts'
 import { runCmdDetachedMonitored, type ExecDetachedExit } from '@agent-device/host-kit/command';
 import { shellQuoteIfNeeded } from '@agent-device/kernel/device-shell';
 import { emitDiagnostic } from '@agent-device/host-kit/diagnostics';
-import { readProcessStartTime } from '@agent-device/host-kit/process';
+import { isProcessAlive, readProcessStartTime } from '@agent-device/host-kit/process';
 import { sleep } from '@agent-device/host-kit/retry';
 
 import { findUnrecoveredRepairCommitFailure } from '../session-repair-tombstone.ts';
@@ -76,6 +76,8 @@ type DaemonStartupWaitResult =
   | { kind: 'timeout' };
 
 const DAEMON_STARTUP_TIMEOUT_MS = 15_000;
+const LIVE_DAEMON_PROBE_RETRIES = 3;
+const LIVE_DAEMON_PROBE_RETRY_DELAY_MS = 200;
 const DAEMON_STARTUP_ATTEMPTS = 2;
 const DAEMON_STARTUP_LOG_TAIL_BYTES = 64_000;
 const LOOPBACK_BLOCK_LIST = new net.BlockList();
@@ -199,11 +201,9 @@ async function readReusableLocalDaemon(settings: DaemonClientSettings): Promise<
   const existing = readDaemonInfo(settings.paths.infoPath);
   if (!existing) return null;
 
-  const viaClientTransport = await canConnectReusableDaemon(existing, settings.transportPreference);
   const decision = await resolveDaemonTakeover(existing, {
-    viaClientTransport,
-    onAnyAdvertisedTransport: async () =>
-      viaClientTransport || (await canConnectReusableDaemon(existing, 'auto')),
+    onClientTransport: () => canReachReusableDaemon(existing, settings.transportPreference),
+    onAnyAdvertisedTransport: () => canReachReusableDaemon(existing, 'auto'),
   });
   if (decision.kind === 'reuse') return existing;
   if (decision.kind === 'refuseNewer') {
@@ -214,6 +214,34 @@ async function readReusableLocalDaemon(settings: DaemonClientSettings): Promise<
   await stopDaemonProcessForTakeover(existing);
   removeDaemonInfo(settings.paths.infoPath);
   return null;
+}
+
+/**
+ * A daemon whose pid is still alive is probed again before it can be judged unreachable. A probe's
+ * budget is wall-clock time on this client's event loop, so a client that stalls past it (a large
+ * synchronous parse, a GC pause on a loaded host) reads a listening daemon as unreachable, and
+ * replacing it ends every session the daemon holds. Liveness is the signal-0 check, not the `ps`
+ * identity read: under the load that stalls the probe, `ps` misses its deadline too, and the
+ * takeover still proves identity before it signals anything.
+ */
+async function canReachReusableDaemon(
+  info: DaemonInfo,
+  preference: DaemonTransportPreference,
+): Promise<boolean> {
+  if (await canConnectReusableDaemon(info, preference)) return true;
+  for (let retry = 1; retry <= LIVE_DAEMON_PROBE_RETRIES; retry += 1) {
+    if (!isProcessAlive(info.pid)) return false;
+    await sleep(LIVE_DAEMON_PROBE_RETRY_DELAY_MS);
+    if (await canConnectReusableDaemon(info, preference)) {
+      emitDiagnostic({
+        level: 'warn',
+        phase: 'daemon_probe_recovered',
+        data: { pid: info.pid, retry },
+      });
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
