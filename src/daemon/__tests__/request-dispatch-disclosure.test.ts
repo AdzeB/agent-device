@@ -12,6 +12,7 @@ vi.mock('@agent-device/platform-apple/runner/operations', async (importOriginal)
 vi.mock('../device/device-ready.ts', () => ({ ensureDeviceReady: vi.fn(async () => {}) }));
 
 import { AppError } from '@agent-device/kernel/errors';
+import { resolveCommandRecordingEffect } from '@agent-device/command-registry/registry';
 import type { AndroidObservationAdapter } from '@agent-device/contracts/android-observation';
 import type { DeviceRuntimeGateway, RuntimeFacts } from '@agent-device/contracts/platform-runtime';
 import type { PlatformRuntimeOperations } from '@agent-device/contracts/platform-runtime-operations';
@@ -29,6 +30,8 @@ import {
 import { makeSessionStore } from '../../__tests__/test-utils/store-factory.ts';
 import { mkdtempForTestSync } from '../../__tests__/test-utils/tmp-dir.ts';
 import type { DaemonRequest } from '../daemon-request.ts';
+import { discloseRequestDispatch } from '../request-dispatch-disclosure.ts';
+import { createRequestDispatchLedger } from '../request-dispatch-ledger.ts';
 import { LeaseRegistry } from '../lease-registry.ts';
 import type { SessionState } from '../session-state.ts';
 import { clearAndroidObservationFixture } from './android-observation-fixture.ts';
@@ -355,3 +358,15 @@ for (const row of ROWS) {
     });
   });
 }
+
+test('a command without a declared recording effect rethrows its failure unnormalized', async () => {
+  const req: DaemonRequest = { token: 't', session: SESSION, command: 'devices', positionals: [] };
+  assert.equal(resolveCommandRecordingEffect(req), undefined);
+  const thrown = { reason: 'not an Error' };
+  await assert.rejects(
+    discloseRequestDispatch(req, createRequestDispatchLedger(), async () => {
+      throw thrown;
+    }),
+    (error: unknown) => error === thrown,
+  );
+});

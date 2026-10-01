@@ -3,8 +3,6 @@ import {
   asAppError,
   detailsAfterDispatchedSteps,
   discloseDispatch,
-  discloseDispatchAfterSteps,
-  discloseUnclassifiedDispatch,
   type ErrorWireDetails,
 } from '@agent-device/kernel/errors';
 import { resolveCommandRecordingEffect } from '@agent-device/command-registry/registry';
@@ -35,13 +33,10 @@ export async function discloseRequestDispatch<Response extends DaemonResponse | 
     return { ...response, error: { ...response.error, details } };
   } catch (error) {
     const failure = asAppError(error);
-    if (ledger.dispatchedSteps > 0) {
-      discloseDispatchAfterSteps(failure, ledger.dispatchedSteps);
-      throw failure;
-    }
-    if (effect === undefined) throw error;
-    if (effect === 'observes-app') throw discloseDispatch(failure, 'no');
-    throw discloseUnclassifiedDispatch(failure, 'unknown');
+    const details = disclosedDetails(effect, failure.details, ledger);
+    if (details === failure.details) throw error;
+    failure.details = details;
+    throw failure;
   }
 }
 
