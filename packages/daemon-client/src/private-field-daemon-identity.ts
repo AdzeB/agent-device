@@ -1,13 +1,19 @@
 import { AppError } from '@agent-device/kernel/errors';
 import { readVersion } from '@agent-device/host-kit/version';
 import type { DaemonInfo } from './daemon-client-metadata.ts';
-import { resolveLocalDaemonCodeSignature } from './daemon-launch-spec.ts';
+import { resolveLocalDaemonCodeIdentity } from './daemon-launch-spec.ts';
 
+/**
+ * Private reads go only to a daemon running this client's own code: the same version, the same
+ * code origin, and — for a source checkout, whose code moves under a fixed version — the same
+ * code signature. An installed tree is identified by its version, as daemon reuse does.
+ */
 export async function requirePrivateFieldDaemonIdentity(info: DaemonInfo): Promise<void> {
   if (info.version !== readVersion()) throw unverified();
-  if (!info.codeSignature || info.codeSignature === 'unknown') throw unverified();
-  const signature = await resolveLocalDaemonCodeSignature();
-  if (signature === 'unknown' || signature !== info.codeSignature) throw unverified();
+  const local = await resolveLocalDaemonCodeIdentity();
+  if (info.codeOrigin !== undefined && info.codeOrigin !== local.origin) throw unverified();
+  if (local.origin === 'installed') return;
+  if (!info.codeSignature || info.codeSignature !== local.codeSignature) throw unverified();
 }
 
 function unverified(): AppError {

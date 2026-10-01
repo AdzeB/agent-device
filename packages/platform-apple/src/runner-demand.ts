@@ -77,6 +77,8 @@ const APPLE_SIMULATOR_OPERATION_HOSTS: Readonly<
   findText: 'runner',
   querySelector: 'runner',
   readTextAtPoint: 'runner',
+  // Android-only private field comparison; the Apple runtime never admits it.
+  comparePrivateField: 'simulator',
   // Every interaction and runner-driven capture.
   tapPoint: 'runner',
   tapRef: 'runner',

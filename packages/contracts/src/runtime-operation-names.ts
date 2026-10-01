@@ -30,6 +30,7 @@ export const RUNTIME_OPERATION_NAMES = [
   'captureSnapshotWithoutActiveApp',
   'clearRuntimeHints',
   'closeApplication',
+  'comparePrivateField',
   'configureProviderPortReverse',
   'deployApp',
   'deployMaterializedApp',
