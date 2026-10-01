@@ -90,12 +90,18 @@ extension RunnerTests {
     }
   }
 
+  /// Refusal proof. The target's state is measured whenever its identity is known (`state` never
+  /// activates), so a refusal reports what it found rather than only that it declined.
+  @MainActor
   private func observationUnavailable(
     command: Command,
     reason: String,
-    targetState: XCUIApplication.State? = nil
+    targetState measuredState: XCUIApplication.State? = nil
   ) -> Response {
-    Response(ok: false, error: ErrorPayload(
+    let targetState = measuredState ?? command.appBundleId?.trimmedNonEmpty.map {
+      XCUIApplication(bundleIdentifier: $0).state
+    }
+    return Response(ok: false, error: ErrorPayload(
       code: "OBSERVATION_UNAVAILABLE",
       message: "Observation-only capture cannot establish the requested foreground target.",
       hint: "Use an explicitly authorized action to establish the target, then retry observation.",
