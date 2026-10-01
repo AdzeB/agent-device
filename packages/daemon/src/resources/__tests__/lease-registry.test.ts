@@ -955,3 +955,25 @@ test('a tenant heartbeat cannot stretch a host-allocated lease past the window t
   now = 4_000;
   assert.equal(registry.heartbeatLease({ ...scope, leaseId, ttlMs: 600_000 }).expiresAt, 124_000);
 });
+
+test('F8: readActiveLease answers without renewing, and refuses an expired lease without sweeping it', () => {
+  let now = 1_000;
+  const expired: string[] = [];
+  const registry = new LeaseRegistry({
+    now: () => now,
+    defaultLeaseTtlMs: 10_000,
+    onLeaseExpired: (lease) => expired.push(lease.leaseId),
+  });
+  const lease = registry.allocateLease({ tenantId: 'tenant-a', runId: 'run-1' });
+  now = 5_000;
+  const read = registry.readActiveLease({ leaseId: lease.leaseId, tenantId: 'tenant-a' });
+  assert.equal(read?.heartbeatAt, lease.heartbeatAt);
+  assert.equal(read?.expiresAt, lease.expiresAt);
+  assert.throws(
+    () => registry.readActiveLease({ leaseId: lease.leaseId, tenantId: 'tenant-b' }),
+    /Lease does not match tenant\/run scope/,
+  );
+  now = 20_000;
+  assert.equal(registry.readActiveLease({ leaseId: lease.leaseId }), undefined);
+  assert.deepEqual(expired, []);
+});
