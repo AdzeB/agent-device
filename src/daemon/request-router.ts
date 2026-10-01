@@ -79,6 +79,8 @@ import {
 } from '@agent-device/capture-kit/screen-recording-admission-ledger';
 import type { HostDiagnostics } from '@agent-device/contracts/host-diagnostics';
 import { resolveGenericRuntimeExecution } from './generic-runtime-execution.ts';
+import { discloseRequestDispatch, refusedBeforeDispatch } from './request-dispatch-disclosure.ts';
+import { recordNestedRequests } from './request-dispatch-ledger.ts';
 import type { AndroidObservationAdapter } from '@agent-device/contracts/android-observation';
 import type { PlatformResourceCleanup } from './platform-resource-cleanup.ts';
 import { restrictDeviceInventoryToDaemonPolicy } from './daemon-policy.ts';
@@ -303,6 +305,20 @@ export function createRequestHandler(deps: RequestRouterDeps): DaemonInvokeFn {
     allowReplayActions: boolean;
   }): Promise<DaemonResponse> {
     const { lockedScope, providerScope, allowReplayActions } = params;
+    return await discloseRequestDispatch(
+      lockedScope.req,
+      lockedScope.dispatchLedger,
+      async () => await routeLockedRequest({ lockedScope, providerScope, allowReplayActions }),
+    );
+  }
+
+  async function routeLockedRequest(params: {
+    lockedScope: LockedRequestScope;
+    providerScope: RequestPlatformProviderScope;
+    allowReplayActions: boolean;
+  }): Promise<DaemonResponse> {
+    const { lockedScope, providerScope, allowReplayActions } = params;
+    const { dispatchLedger } = lockedScope;
     const requestScope = createPlatformRequestScope(lockedScope.req);
     const handlerResponse = await runRequestHandlerChain({
       req: lockedScope.req,
@@ -315,9 +331,12 @@ export function createRequestHandler(deps: RequestRouterDeps): DaemonInvokeFn {
       providerRuntimeRequiredIds,
       cloudArtifactProvider,
       providerAppCatalog,
-      invoke: handleRequest,
+      invoke: recordNestedRequests(handleRequest, dispatchLedger),
       invokeReplayAction: allowReplayActions
-        ? createReplayScopedActionInvoker(lockedScope, providerScope)
+        ? recordNestedRequests(
+            createReplayScopedActionInvoker(lockedScope, providerScope),
+            dispatchLedger,
+          )
         : undefined,
       providerScope,
       androidObservation,
@@ -488,7 +507,7 @@ async function dispatchGenericForLockedScope(params: {
     inspectFacts: lockedScope.inspectFacts,
     bindDevice: lockedScope.bindDevice,
   });
-  if (!runtimeExecution.ok) return runtimeExecution.response;
+  if (!runtimeExecution.ok) return refusedBeforeDispatch(runtimeExecution.response);
 
   const { dispatchGenericCommand } = await loadGenericRequestHandlerModule();
   const dispatchResponse = await dispatchGenericCommand({
