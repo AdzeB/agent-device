@@ -234,6 +234,7 @@ export function buildInteractionResponseData(params: {
     visualization.warning = warning;
     responseData.warning = warning;
   }
+  if ('readiness' in result && result.readiness) responseData.readiness = result.readiness;
   return { result: visualization, responseData, ...recordedTargetCapture(result) };
 }
 
