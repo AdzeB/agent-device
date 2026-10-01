@@ -1,3 +1,4 @@
+import { observeOnlyRefusal } from '@agent-device/contracts/capture';
 import {
   type CaptureSnapshotInput,
   bindLocalSnapshotInteractor,
@@ -34,14 +35,7 @@ export function bindAppleSnapshotRuntime(
         throw new AppError(
           'UNSUPPORTED_OPERATION',
           '--observe-only requires an Apple app surface.',
-          {
-            observation: {
-              mode: 'observe-only',
-              foregroundVerified: false,
-              activationPerformed: false,
-              reason: 'unsupported_surface',
-            },
-          },
+          { observation: observeOnlyRefusal('unsupported_surface') },
         );
       }
       return await host.snapshot.captureSurface(

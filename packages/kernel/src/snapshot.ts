@@ -93,6 +93,22 @@ export type ObserveOnlyEvidence = Readonly<{
   appStateSource: 'xcuiapplication-state';
 }>;
 
+/**
+ * The refusal block an observe-only read carries under `error.details.observation`. A refusal
+ * performed no activation; `appState` is present only when the runner measured the target.
+ */
+export type ObserveOnlyRefusal = Readonly<{
+  mode: 'observe-only';
+  capability: 'non-activating-foreground-v1';
+  foregroundVerified: false;
+  activationPerformed: false;
+  reason: string;
+  targetAppBundleId?: string;
+  appState?: string;
+  appStateSource?: 'xcuiapplication-state';
+  targetState?: number;
+}>;
+
 export type SnapshotOptions = {
   observeOnly?: boolean;
   interactiveOnly?: boolean;

@@ -1,5 +1,5 @@
 import { AppError } from '@agent-device/kernel/errors';
-import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
+import { observeOnlyRefusal, readObserveOnlyEvidence } from '@agent-device/contracts/capture';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { Deadline } from './host.ts';
 import { withRunnerCommandId, type RunnerCommand } from './runner-contract.ts';
@@ -25,13 +25,7 @@ type ObservationUnavailableReason =
 
 export function observationUnavailable(reason: ObservationUnavailableReason): AppError {
   return new AppError('COMMAND_FAILED', 'Non-activating foreground observation is unavailable', {
-    observation: {
-      mode: 'observe-only',
-      capability: 'non-activating-foreground-v1',
-      foregroundVerified: false,
-      activationPerformed: false,
-      reason,
-    },
+    observation: observeOnlyRefusal(reason),
   });
 }
 

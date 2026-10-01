@@ -1,6 +1,7 @@
 import type {
   IosTargetActivation,
   ObserveOnlyEvidence,
+  ObserveOnlyRefusal,
   SnapshotCaptureBackend,
   SnapshotQualityState,
   SnapshotQualityVerdict,
@@ -23,6 +24,17 @@ const DECLARED_BACKENDS: Record<SnapshotCaptureBackend, true> = {
   'private-ax': true,
   'android-helper': true,
 };
+
+/** The refusal block for a read declined before anything could be measured or activated. */
+export function observeOnlyRefusal(reason: string): ObserveOnlyRefusal {
+  return {
+    mode: 'observe-only',
+    capability: 'non-activating-foreground-v1',
+    foregroundVerified: false,
+    activationPerformed: false,
+    reason,
+  };
+}
 
 /** Accepts only the complete non-activating proof; anything partial is no proof at all. */
 export function readObserveOnlyEvidence(value: unknown): ObserveOnlyEvidence | undefined {

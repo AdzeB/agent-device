@@ -1,3 +1,4 @@
+import { observeOnlyRefusal } from '@agent-device/contracts/capture';
 import { AppError } from '@agent-device/kernel/errors';
 import { errorResponse } from '@agent-device/kernel/contracts';
 import { checkFindArgs, isReadOnlyFindAction } from '@agent-device/selectors';
@@ -7,15 +8,7 @@ import type { SessionState } from './session-state.ts';
 import type { InspectDeviceRuntimeFacts } from './request-runtime-binding.ts';
 
 function observationRefusal(reason: string) {
-  return {
-    observation: {
-      mode: 'observe-only',
-      capability: 'non-activating-foreground-v1',
-      foregroundVerified: false,
-      activationPerformed: false,
-      reason,
-    },
-  };
+  return { observation: observeOnlyRefusal(reason) };
 }
 
 export function requireObserveOnlyLease(lease: DeviceLease | undefined): DeviceLease {
@@ -36,12 +29,12 @@ export function observeOnlyCommandResponse(req: DaemonRequest): DaemonResponse |
     req.command === 'is' ||
     (req.command === 'find' && readOnlyFind(req));
   if (!allowed)
-    return observeOnlyRefusal(
+    return refusalResponse(
       'unsupported_command',
       '--observe-only requires snapshot, get, is, or an explicit read-only find action.',
     );
   if (req.command === 'get' && req.positionals?.[1]?.startsWith('@')) {
-    return observeOnlyRefusal(
+    return refusalResponse(
       'cached_ref_unsupported',
       '--observe-only get requires a selector; capture a fresh snapshot and read with its selector instead of a cached ref.',
     );
@@ -57,19 +50,19 @@ export function observeOnlySessionResponse(
   const invalidCommand = observeOnlyCommandResponse(req);
   if (invalidCommand) return invalidCommand;
   if (!session?.appBundleId?.trim()) {
-    return observeOnlyRefusal(
+    return refusalResponse(
       'target_identity_missing',
       '--observe-only requires an existing app session with an explicit target identity.',
     );
   }
   if (session.device.platform !== 'apple' || session.device.appleOs === 'watchos') {
-    return observeOnlyRefusal(
+    return refusalResponse(
       'unsupported_platform',
       '--observe-only is supported only by the local Apple runner.',
     );
   }
   if (session.surface !== undefined && session.surface !== 'app') {
-    return observeOnlyRefusal('unsupported_surface', '--observe-only requires an app surface.');
+    return refusalResponse('unsupported_surface', '--observe-only requires an app surface.');
   }
   return undefined;
 }
@@ -97,6 +90,6 @@ function readOnlyFind(req: DaemonRequest): boolean {
   return checked.ok && isReadOnlyFindAction(checked.parsed.action);
 }
 
-function observeOnlyRefusal(reason: string, message: string): DaemonResponse {
+function refusalResponse(reason: string, message: string): DaemonResponse {
   return errorResponse('INVALID_ARGS', message, observationRefusal(reason));
 }

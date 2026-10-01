@@ -1,3 +1,4 @@
+import { observeOnlyRefusal } from '@agent-device/contracts/capture';
 import { AppError } from '@agent-device/kernel/errors';
 import { isActiveProviderDevice } from '../../../provider-device-runtime.ts';
 import type { CommandFlags } from '@agent-device/contracts/command';
@@ -60,13 +61,6 @@ function guardedCaptureError(reason: string): AppError {
   return new AppError(
     'UNSUPPORTED_OPERATION',
     'Guarded settle capture requires a ready local Apple app session.',
-    {
-      observation: {
-        mode: 'observe-only',
-        capability: 'non-activating-foreground-v1',
-        foregroundVerified: false,
-        reason,
-      },
-    },
+    { observation: observeOnlyRefusal(reason) },
   );
 }
