@@ -2,7 +2,8 @@ import { expect, test, vi } from 'vitest';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { platformRuntimeHostFixture } from './runtime.fixtures.ts';
-import { bindAppleFindTextRuntime } from './runtime-snapshot.ts';
+import { bindAppleFindTextRuntime, bindAppleSnapshotRuntime } from './runtime-snapshot.ts';
+import type { AppleSnapshotRoute } from './snapshot-route.ts';
 
 const ios = {
   platform: 'apple',
@@ -129,4 +130,44 @@ test('findText on a physical iOS device resolves the runner regardless of sessio
     operation.findText({ text: 'Settings', options: { appBundleId: 'com.example.app' } }),
   ).resolves.toEqual({ found: true });
   expect(resolve).toHaveBeenCalledOnce();
+});
+
+// F6: observe-only proof only comes from the runner's non-activating route.
+test('observe-only snapshots bypass the alternate Apple snapshot route', async () => {
+  const snapshot = vi.fn(async () => ({ nodes: [], backend: 'xctest' }) as never);
+  const resolve = vi.fn(async () => ({ snapshot }) as never);
+  const capture = vi.fn(async () => ({ nodes: [] }) as never);
+  const route = { capture } as unknown as AppleSnapshotRoute;
+  const operation = bindAppleSnapshotRuntime(
+    { ...platformRuntimeHostFixture(), localInteractors: { resolve } },
+    { device: ios, signal: new AbortController().signal },
+    route,
+  );
+
+  await operation.captureSnapshot({
+    options: { appBundleId: 'com.example.app', observeOnly: true },
+  });
+  expect(capture).not.toHaveBeenCalled();
+  expect(snapshot).toHaveBeenCalledWith(expect.objectContaining({ observeOnly: true }));
+
+  await operation.captureSnapshot({ options: { appBundleId: 'com.example.app' } });
+  expect(capture).toHaveBeenCalledOnce();
+});
+
+test('observe-only refuses a macOS helper surface without capturing', async () => {
+  const captureSurface = vi.fn();
+  const base = platformRuntimeHostFixture();
+  const operation = bindAppleSnapshotRuntime(
+    { ...base, snapshot: { ...base.snapshot, captureSurface } },
+    {
+      device: { ...ios, appleOs: 'macos', kind: 'device', target: 'desktop' },
+      signal: new AbortController().signal,
+    },
+  );
+  await expect(
+    operation.captureSnapshot({ options: { surface: 'desktop', observeOnly: true } }),
+  ).rejects.toMatchObject({
+    details: { observation: { foregroundVerified: false, activationPerformed: false } },
+  });
+  expect(captureSurface).not.toHaveBeenCalled();
 });

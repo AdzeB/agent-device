@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { SNAPSHOT_QUALITY_STATES } from '@agent-device/kernel/snapshot';
 import { readResponseWarnings } from '@agent-device/kernel/success-text';
-import { readSerializedSnapshotCaptureAnnotations } from './snapshot-capture-annotations.ts';
+import {
+  observeOnlyRefusal,
+  readObserveOnlyEvidence,
+  readSerializedSnapshotCaptureAnnotations,
+} from './snapshot-capture-annotations.ts';
 
 test('the annotations filter and the shared warnings parser agree on adversarial arrays', () => {
   for (const warnings of [
@@ -86,4 +90,52 @@ test('an undeclared backend drops the serialized verdict', () => {
     });
     assert.equal(annotations.snapshotQuality, undefined, JSON.stringify(backend));
   }
+});
+
+// F3/F13: observe-only proof is all-or-nothing; refusals keep foregroundVerified:false and say no
+// activation happened.
+const OBSERVE_ONLY_PROOF = {
+  mode: 'observe-only',
+  capability: 'non-activating-foreground-v1',
+  foregroundVerified: true,
+  targetAppBundleId: 'com.example.app',
+  activationPerformed: false,
+  appState: 'runningForeground',
+  appStateSource: 'xcuiapplication-state',
+} as const;
+
+test('complete non-activating proof survives the serialized annotations', () => {
+  assert.deepEqual(
+    readSerializedSnapshotCaptureAnnotations({ observation: OBSERVE_ONLY_PROOF }).observation,
+    OBSERVE_ONLY_PROOF,
+  );
+  assert.deepEqual(
+    readObserveOnlyEvidence({ ...OBSERVE_ONLY_PROOF, extra: 1 }),
+    OBSERVE_ONLY_PROOF,
+  );
+});
+
+test('partial, activating, or refused proof is no proof', () => {
+  for (const patch of [
+    { foregroundVerified: false },
+    { activationPerformed: true },
+    { activationPerformed: undefined },
+    { appState: 'runningBackground' },
+    { appState: undefined },
+    { appStateSource: 'guess' },
+    { targetAppBundleId: ' ' },
+    { capability: 'v0' },
+  ]) {
+    assert.equal(readObserveOnlyEvidence({ ...OBSERVE_ONLY_PROOF, ...patch }), undefined);
+  }
+});
+
+test('a pre-send refusal states no activation and measures no state it did not read', () => {
+  assert.deepEqual(observeOnlyRefusal('runner_not_ready'), {
+    mode: 'observe-only',
+    capability: 'non-activating-foreground-v1',
+    foregroundVerified: false,
+    activationPerformed: false,
+    reason: 'runner_not_ready',
+  });
 });
