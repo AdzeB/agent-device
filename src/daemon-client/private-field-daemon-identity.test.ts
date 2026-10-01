@@ -2,12 +2,15 @@ import { expect, it, vi } from 'vitest';
 import { requirePrivateFieldDaemonIdentity } from './private-field-daemon-identity.ts';
 import { sendRequest } from './daemon-client-transport.ts';
 import { withOutgoingPrivateFieldComparison } from '../daemon/private-field-comparison.ts';
-import { resolveDaemonPaths } from '../config.ts';
-import { resolveLocalDaemonCodeSignature } from './daemon-launch-spec.ts';
+import { resolveDaemonPaths } from '../daemon-resolution.ts';
+import { resolveLocalDaemonCodeIdentity } from './daemon-launch-spec.ts';
 
 vi.mock('@agent-device/host-kit/version', () => ({ readVersion: () => '0.20.11-a1' }));
 vi.mock('./daemon-launch-spec.ts', () => ({
-  resolveLocalDaemonCodeSignature: vi.fn(async () => 'graph:1:fixture'),
+  resolveLocalDaemonCodeIdentity: vi.fn(async () => ({
+    origin: 'checkout',
+    codeSignature: 'graph:1:fixture',
+  })),
 }));
 const connection = vi.hoisted(() => vi.fn());
 vi.mock('node:net', () => ({ default: { createConnection: connection } }));
@@ -32,8 +35,18 @@ it('accepts matching current identity and rejects older or unverified daemon met
       'verified current daemon',
     );
   }
-  vi.mocked(resolveLocalDaemonCodeSignature).mockResolvedValueOnce('unknown');
-  await expect(requirePrivateFieldDaemonIdentity(valid)).rejects.toThrow('verified current daemon');
+  vi.mocked(resolveLocalDaemonCodeIdentity).mockResolvedValueOnce({ origin: 'installed' });
+  await expect(
+    requirePrivateFieldDaemonIdentity({ ...valid, codeOrigin: 'checkout' }),
+  ).rejects.toThrow('verified current daemon');
+  vi.mocked(resolveLocalDaemonCodeIdentity).mockResolvedValueOnce({ origin: 'installed' });
+  await expect(
+    requirePrivateFieldDaemonIdentity({
+      ...valid,
+      codeOrigin: 'installed',
+      codeSignature: undefined,
+    }),
+  ).resolves.toBeUndefined();
 });
 
 it('does not connect or serialize private input when startup returns stale metadata', async () => {

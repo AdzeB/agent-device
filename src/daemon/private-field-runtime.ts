@@ -5,9 +5,10 @@ import {
   type SnapshotNode,
 } from '@agent-device/kernel/snapshot';
 import type { SelectorRuntimeParams } from './selector-runtime-backend.ts';
-import type { DaemonResponse, SessionState } from './types.ts';
+import type { DaemonResponse } from './daemon-request.ts';
+import type { SessionState } from './session-state.ts';
 import { parseVersionedRefPositional } from './ref-positionals.ts';
-import { readRefMutationFrame, readSessionRuntimeRevision } from './ref-frame.ts';
+import { readRefMutationFrame, readSessionRuntimeRevision, refFrameTree } from './ref-frame.ts';
 import { resolveBoundSelectorCapture } from './selector-capture-binding.ts';
 
 export async function dispatchPrivateFieldComparison(
@@ -67,7 +68,7 @@ function resolveOwnedTarget(session: SessionState, originalRef: string) {
     mintedGeneration: parsed.generation,
   });
   if (!frame.admission.admitted || frame.scope !== 'all') return undefined;
-  const tree = session.refFrameTree;
+  const tree = refFrameTree(session);
   if (!isCompleteNativeFrame(tree)) return undefined;
   const target = findNodeByRef(tree.nodes, normalizeRef(parsed.ref) ?? '');
   const appId = session.appBundleId;

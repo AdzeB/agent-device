@@ -37,6 +37,7 @@ export const RUNTIME_OPERATION_EFFECTS: Readonly<
   captureSnapshotWithoutActiveApp: 'repeatable',
   clearRuntimeHints: 'mutates',
   closeApplication: 'mutates',
+  comparePrivateField: 'repeatable',
   configureProviderPortReverse: 'repeatable',
   deployApp: 'mutates',
   deployMaterializedApp: 'mutates',

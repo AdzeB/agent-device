@@ -8,6 +8,12 @@ for (const version of ['0.20.11', '0.20.11-a2', '0.20.11-alpha.2+build.7', '0.20
   });
 }
 
+for (const version of ['0.21.19', '0.21.19-a1']) {
+  test(`helper version ${version} keeps code 21019, never the prerelease ordinal`, () => {
+    assert.equal(androidHelperVersionCode(version), 21019);
+  });
+}
+
 for (const version of [
   '',
   'dev',

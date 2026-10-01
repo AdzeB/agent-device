@@ -13,7 +13,7 @@ const bound = {
 };
 
 function transport(status: 'match' | 'mismatch', changed = false) {
-  const argsSeen: string[][] = [];
+  const argsSeen: (readonly string[])[] = [];
   const adb: AndroidAdbExecutor = async (args, options) => {
     argsSeen.push(args);
     if (options?.stdin) {
@@ -73,7 +73,7 @@ test('acquisition validates connection provenance', async () => {
 });
 
 test('scope acquisition uses one metadata-only broadcast and forwards its deadline', async () => {
-  const calls: { args: string[]; options: unknown }[] = [];
+  const calls: { args: readonly string[]; options: unknown }[] = [];
   const signal = new AbortController().signal;
   const delegate = transport('match').adb;
   const adb: AndroidAdbExecutor = async (args, options) => {
