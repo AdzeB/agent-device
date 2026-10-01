@@ -1,3 +1,4 @@
+import { observeOnlyRefusal } from '@agent-device/contracts/capture';
 import {
   type CaptureSnapshotInput,
   bindLocalSnapshotInteractor,

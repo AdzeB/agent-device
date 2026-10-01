@@ -14,7 +14,7 @@ import {
   type RunnerCommand,
 } from './runner/index.ts';
 import { toAppleTvRemoteButton } from '@agent-device/contracts/tv-remote';
-import { SCREENSHOT_FULLSCREEN_REASONS } from '@agent-device/contracts/capture';
+import { observeOnlyRefusal, SCREENSHOT_FULLSCREEN_REASONS } from '@agent-device/contracts/capture';
 import {
   macOsHelperSurface,
   type MacOsHelperSurface,
@@ -270,12 +270,7 @@ async function captureAppleSnapshot(
 
 function observeOnlyUnsupportedSurface(): AppError {
   return new AppError('UNSUPPORTED_OPERATION', '--observe-only requires an Apple app surface.', {
-    observation: {
-      mode: 'observe-only',
-      foregroundVerified: false,
-      activationPerformed: false,
-      reason: 'unsupported_surface',
-    },
+    observation: observeOnlyRefusal('unsupported_surface'),
   });
 }
 
