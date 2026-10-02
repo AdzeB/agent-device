@@ -1,5 +1,4 @@
 import { expect, test, vi } from 'vitest';
-import { ALERT_NOT_FOUND_RUNNER_CODE } from '@agent-device/contracts/alert-contract';
 import type { Interactor } from '@agent-device/contracts/interactor-types';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { emitDiagnostic } from '@agent-device/host-kit/diagnostics';
@@ -16,6 +15,7 @@ import {
   type LaunchConfirmationPort,
   URL_OWNER_LOOKUP_TIMEOUT_MS,
 } from './launch-confirmation.ts';
+import { alertNotFound, CONFIRMATION } from './launch-confirmation.fixtures.ts';
 
 vi.mock('@agent-device/host-kit/diagnostics', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@agent-device/host-kit/diagnostics')>();
@@ -40,19 +40,10 @@ const simulator: DeviceInfo = {
   booted: true,
 };
 
-/** The runner's typed absence: `alert get` looked once and found no alert. */
-function alertNotFound(): AppError {
-  return new AppError('COMMAND_FAILED', 'alert not found', {
-    runnerErrorCode: ALERT_NOT_FOUND_RUNNER_CODE,
-  });
-}
-
 /** How `exec.ts` rejects a spawn that outlives its timeout; `allowFailure` does not absorb it. */
 function spawnTimeout(): AppError {
   return new AppError('COMMAND_FAILED', 'xcrun timed out', { timeoutMs: 10_000 });
 }
-
-const CONFIRMATION = { message: 'Open in “Example App”?', items: ['Cancel', 'Open'] };
 
 function port(
   readAlert: () => Promise<Record<string, unknown> | undefined>,
@@ -84,7 +75,7 @@ test.each([
       items: ['Cancel', 'Open'],
     }));
 
-    await expect(answerLaunchConfirmation(device)).resolves.toBe('accepted');
+    await expect(answerLaunchConfirmation(device)).resolves.toEqual({ outcome: 'accepted' });
     expect(device.readAlert).toHaveBeenCalledOnce();
     expect(acceptAlert).toHaveBeenCalledOnce();
   },
@@ -110,7 +101,7 @@ test('a confirmation for a URL another app owns is never accepted, whatever name
 test('no alert costs one read and answers nothing', async () => {
   const { port: device, acceptAlert, resolveUrlOwner } = port(async () => undefined);
 
-  await expect(answerLaunchConfirmation(device)).resolves.toBeUndefined();
+  await expect(answerLaunchConfirmation(device)).resolves.toEqual({ outcome: 'absent' });
   expect(device.readAlert).toHaveBeenCalledOnce();
   expect(resolveUrlOwner).not.toHaveBeenCalled();
   expect(acceptAlert).not.toHaveBeenCalled();
@@ -126,7 +117,10 @@ test('an alert that is not a launch confirmation is left for the caller and repo
     items: ['Allow Once', 'Don’t Allow'],
   }));
 
-  await expect(answerLaunchConfirmation(device)).resolves.toBeUndefined();
+  await expect(answerLaunchConfirmation(device)).resolves.toEqual({
+    outcome: 'unanswered',
+    reason: 'alert-unrecognized',
+  });
   expect(resolveUrlOwner).not.toHaveBeenCalled();
   expect(acceptAlert).not.toHaveBeenCalled();
   expect(emitDiagnostic).toHaveBeenCalledWith({
@@ -146,7 +140,10 @@ test('a launch confirmation in another language is left on screen and reported',
     items: ['Abbrechen', 'Öffnen'],
   }));
 
-  await expect(answerLaunchConfirmation(device)).resolves.toBeUndefined();
+  await expect(answerLaunchConfirmation(device)).resolves.toEqual({
+    outcome: 'unanswered',
+    reason: 'alert-unrecognized',
+  });
   expect(acceptAlert).not.toHaveBeenCalled();
   expect(emitDiagnostic).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -163,7 +160,10 @@ test('a URL no single installed app owns is neither accepted nor reported as for
     resolveUrlOwner: async () => undefined,
   });
 
-  await expect(answerLaunchConfirmation(device)).resolves.toBeUndefined();
+  await expect(answerLaunchConfirmation(device)).resolves.toEqual({
+    outcome: 'unanswered',
+    reason: 'url-owner-unresolved',
+  });
   expect(acceptAlert).not.toHaveBeenCalled();
 });
 
@@ -173,6 +173,7 @@ test.each([
     port(async () => {
       throw new AppError('COMMAND_FAILED', 'runner unavailable', { reason: 'runner-start-failed' });
     }),
+    { outcome: 'unreadable', step: 'alert-read' },
   ],
   [
     'the URL owner lookup rejects',
@@ -181,6 +182,7 @@ test.each([
         throw spawnTimeout();
       },
     }),
+    { outcome: 'unreadable', step: 'url-owner' },
   ],
   [
     'the accept rejects',
@@ -189,9 +191,10 @@ test.each([
         throw spawnTimeout();
       },
     }),
+    { outcome: 'unreadable', step: 'alert-accept' },
   ],
-])('the open is left unanswered when %s', async (_case, { port: device }) => {
-  await expect(answerLaunchConfirmation(device)).resolves.toBeUndefined();
+])('an answer attempt where %s reports %j', async (_case, { port: device }, expected) => {
+  await expect(answerLaunchConfirmation(device)).resolves.toEqual(expected);
 });
 
 /**
@@ -282,7 +285,7 @@ test.each([
 
       await untilSpawned(coreSimulator, 2);
       await vi.advanceTimersByTimeAsync(URL_OWNER_LOOKUP_TIMEOUT_MS + 1);
-      expect(answered).toBeUndefined();
+      expect(answered).toEqual({ outcome: 'unreadable', step: 'url-owner' });
       await answer;
       expect(acceptAlert).not.toHaveBeenCalled();
       expect(emitDiagnostic).toHaveBeenCalledWith(
@@ -317,7 +320,7 @@ test('a hung URL owner lookup leaves the open unanswered within the launch budge
     );
 
     await vi.advanceTimersByTimeAsync(IOS_APP_LAUNCH_TIMEOUT_MS - 1);
-    expect(answered).toBeUndefined();
+    expect(answered).toEqual({ outcome: 'unreadable', step: 'url-owner' });
     await answer;
     expect(acceptAlert).not.toHaveBeenCalled();
   } finally {
@@ -346,7 +349,7 @@ test.each([
   await vi.waitFor(() => expect(coreSimulator.spawns()).toBe(1));
   if (!abortedBeforeLookup) open.abort(canceled);
 
-  await expect(answer).resolves.toBeUndefined();
+  await expect(answer).resolves.toEqual({ outcome: 'unreadable', step: 'url-owner' });
   expect(acceptAlert).not.toHaveBeenCalled();
 });
 
@@ -399,7 +402,7 @@ test('the port reads a typed absence as no alert and keeps any other failure', a
   await expect(device.readAlert()).rejects.toBe(runnerDown);
 });
 
-test('a runner that cannot be resolved leaves the open unanswered', async () => {
+test('a runner that cannot be resolved reports an unreadable attempt', async () => {
   await expect(
     answerSimulatorLaunchConfirmation(
       simulator,
@@ -407,5 +410,5 @@ test('a runner that cannot be resolved leaves the open unanswered', async () => 
       Promise.reject(new AppError('COMMAND_FAILED', 'xcrun timed out', { timeoutMs: 10_000 })),
       new AbortController().signal,
     ),
-  ).resolves.toBeUndefined();
+  ).resolves.toEqual({ outcome: 'unreadable', step: 'runner' });
 });
