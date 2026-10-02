@@ -10,6 +10,7 @@ import {
   retriableForErrorCode,
   type DaemonError,
 } from '@agent-device/kernel/errors';
+import { withRequestCommandEnv } from '@agent-device/host-kit/command';
 import { timingSafeStringEqual } from '@agent-device/host-kit/transport';
 import {
   type ResponseCost,
@@ -188,7 +189,10 @@ export function createRequestHandler(deps: RequestRouterDeps): DaemonInvokeFn {
         logPath,
       },
       async () => {
-        const response = await runRequestWithinScope(req);
+        const response = await withRequestCommandEnv(
+          requestCommandEnv(req),
+          async () => await runRequestWithinScope(req),
+        );
         if (!response.ok) {
           // ADR 0012 decision 6, R7 (C5a): a command that finds no session but
           // hits a live repair tombstone gets `REPAIR_SESSION_EXPIRED` with
@@ -402,6 +406,11 @@ export function createRequestHandler(deps: RequestRouterDeps): DaemonInvokeFn {
   }
 
   return handleRequest;
+}
+
+function requestCommandEnv(req: DaemonRequest): NodeJS.ProcessEnv | undefined {
+  const developerDir = req.meta?.developerDir;
+  return typeof developerDir === 'string' ? { DEVELOPER_DIR: developerDir } : undefined;
 }
 
 const EMPTY_REQUEST_PLATFORM_PROVIDERS: RequestPlatformProviders = Object.freeze({

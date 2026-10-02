@@ -2,6 +2,7 @@ import { beforeEach, test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { IOS_SIMULATOR } from './device-fixtures.ts';
 import {
+  makeRunnerArtifact,
   createTestRequestCancellation,
   makeRunnerSession,
   runnerConnectFailure,
@@ -10,7 +11,6 @@ import {
 import { AppError } from '@agent-device/kernel/errors';
 import { Deadline } from '../host.ts';
 import { appleRunnerTestHost } from '../test-host.ts';
-
 const {
   mockEnsureRunnerSession,
   mockExecuteRunnerCommandWithSession,
@@ -51,7 +51,6 @@ vi.mock('../runner-xctestrun.ts', async () => {
 import { prepareIosRunner, runAppleRunnerCommand } from '../runner-client.ts';
 import { resetRunnerRecycleLedgerForTests } from '../runner-recycle-ledger.ts';
 import { RUNNER_REPLY_LOST_REASON } from '../runner-error-classification.ts';
-import type { RunnerXctestrunArtifact } from '../runner-xctestrun.ts';
 
 const requestCancellation = createTestRequestCancellation();
 const { markRequestCanceled, clearRequestCanceled, isRequestCanceled } = requestCancellation;
@@ -1112,20 +1111,6 @@ function assertDiagnosticDecision(expected: {
     }),
     `missing invalidation decision diagnostic ${JSON.stringify(expected)}`,
   );
-}
-
-function makeRunnerArtifact(
-  overrides: Partial<RunnerXctestrunArtifact> = {},
-): RunnerXctestrunArtifact {
-  return {
-    xctestrunPath: '/tmp/runner.xctestrun',
-    derived: '/tmp/derived',
-    cache: 'exact',
-    artifact: 'valid',
-    buildMs: 0,
-    xctestrunPathSource: 'manifest',
-    ...overrides,
-  };
 }
 
 async function captureDiagnostics(callback: () => Promise<void>): Promise<string> {

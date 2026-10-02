@@ -138,8 +138,11 @@ function restrictRemoteHttpRequest(
       'Invalid params: path install sources are disabled on the remote HTTP surface',
     );
   }
+  // A developer dir is a host path whose tools the daemon would run, so only local callers set it.
+  const { developerDir: _developerDir, ...meta } = request.meta ?? {};
   return {
     ...request,
+    ...(request.meta ? { meta } : {}),
     internal: { ...request.internal, publicNetworkOnly: true },
   };
 }

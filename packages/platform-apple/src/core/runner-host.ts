@@ -2,6 +2,7 @@ import type { AppleRunnerHost } from '../runner/index.ts';
 import { publishFileSync, acquireProcessLock, withProcessLock } from '@agent-device/host-kit/file';
 
 import {
+  commandDeveloperDir,
   isCommandTimeoutError,
   requireExecSuccess,
   runCmdBackground,
@@ -64,6 +65,7 @@ export const appleRunnerHost: AppleRunnerHost = {
   runCmdBackground,
   requireExecSuccess,
   isCommandTimeoutError,
+  commandDeveloperDir,
   shellQuote,
   emitDiagnostic,
   withDiagnosticTimer,
