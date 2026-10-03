@@ -12,7 +12,7 @@ import {
   noteInstallArtifactArchiveDepth,
 } from './install-artifact-archive-context.ts';
 import { approveDownloadSourceUrl } from './install-source-network.ts';
-import { downloadInstallSource } from './install-source-download.ts';
+import { downloadInstallSource, invalidSourceUrlError } from './install-source-download.ts';
 
 type MaterializeLocalSourceResult = {
   localPath: string;
@@ -158,7 +158,8 @@ export async function validateDownloadSourceUrl(parsedUrl: URL): Promise<void> {
  * whether a URL names a GitHub Actions or EAS artifact, which says nothing about who built it.
  */
 export function isTrustedInstallSourceUrl(sourceUrl: string | URL): boolean {
-  const parsed = sourceUrl instanceof URL ? sourceUrl : new URL(sourceUrl);
+  const parsed = sourceUrl instanceof URL ? sourceUrl : URL.parse(sourceUrl);
+  if (!parsed) throw invalidSourceUrlError();
   const hostname = parsed.hostname.toLowerCase();
   if (!hostname) return false;
   const pathname = parsed.pathname;

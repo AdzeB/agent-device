@@ -24,6 +24,7 @@ import {
   withAppleToolProvider,
 } from '@agent-device/platform-apple/tool-provider';
 import { prepareIosInstallArtifact } from '@agent-device/platform-apple/install-artifact';
+import { AppError } from '@agent-device/kernel/errors';
 import { ANDROID_INSTALL_SOURCE_CONTRACT_EVIDENCE } from './install-source.coverage.ts';
 import { mkdtempForTest } from './test-utils/tmp-dir.ts';
 import * as networkTransport from '@agent-device/provision-kit/install-source-network-transport';
@@ -104,6 +105,13 @@ test('isTrustedInstallSourceUrl recognizes supported artifact services', () => {
     false,
   );
   assert.equal(isTrustedInstallSourceUrl('https://expo.dev/pricing'), false);
+  assert.throws(
+    () => isTrustedInstallSourceUrl('/abs/path/app.zip'),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === 'INVALID_ARGS' &&
+      error.message === 'Invalid source URL',
+  );
 });
 
 test.sequential('materializeInstallablePath extracts zip archives without ditto', async () => {
