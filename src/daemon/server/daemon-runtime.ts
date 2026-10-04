@@ -35,7 +35,7 @@ import { finalizeDaemonSessionApplicationLifecycle } from '../application-lifecy
 import { runtimeHintValues } from '../session-runtime.ts';
 import { closeDaemonServers } from './server-shutdown.ts';
 import type { DaemonInvokeFn } from '../daemon-request.ts';
-import type { SessionState } from '../session-state.ts';
+import type { SessionRef, SessionState } from '../session-state.ts';
 import { createDaemonIdleReap } from './daemon-idle-reap.ts';
 import { createSessionIdleExpiry } from './daemon-session-idle-expiry.ts';
 import { resolveSessionIdleExpiryMs } from '../session-idle-expiry.ts';
@@ -133,7 +133,7 @@ async function settleDaemonTeardownStep(params: {
  * silently swallowed.
  */
 export async function teardownDaemonSessionForShutdown(params: {
-  session: SessionState;
+  ref: SessionRef;
   sessionStore: SessionStore;
   stateDir?: string;
   stderr: WritableOutput;
@@ -142,7 +142,7 @@ export async function teardownDaemonSessionForShutdown(params: {
   afterSuccessfulTeardown?: (session: SessionState) => Promise<void>;
 }): Promise<void> {
   const {
-    session,
+    ref,
     sessionStore,
     stateDir,
     stderr,
@@ -150,7 +150,7 @@ export async function teardownDaemonSessionForShutdown(params: {
     beforeDelete,
     afterSuccessfulTeardown,
   } = params;
-  const sessionName = sessionStore.resolveStoredSessionName(session);
+  const session = sessionStore.resolveCurrent(ref) ?? ref.session;
   const timeoutMs = resolveDaemonSessionTeardownTimeoutMs(session);
   // The ownership-fenced app-log side effect must settle while this process
   // still owns the daemon lock. It is intentionally outside the generic
@@ -160,9 +160,9 @@ export async function teardownDaemonSessionForShutdown(params: {
     session,
     stderr,
     resource: 'app-log',
-    teardown: async () => await stopSessionAppLog({ session, sessionName, sessionStore }),
+    teardown: async () => await stopSessionAppLog({ ref, sessionStore }),
   });
-  const sessionAfterAppLog = sessionStore.get(sessionName) ?? session;
+  const sessionAfterAppLog = sessionStore.resolveCurrent(ref) ?? session;
   const teardown = (async () => {
     const genericTeardownSucceeded = await settleDaemonTeardownStep({
       session,
@@ -171,8 +171,7 @@ export async function teardownDaemonSessionForShutdown(params: {
       teardown: async () =>
         await teardownSessionResources({
           appLog: 'already-settled',
-          session: sessionAfterAppLog,
-          sessionName,
+          ref,
           sessionStore,
           stateDir,
           platformCleanup: platformResourceCleanup,
@@ -202,7 +201,7 @@ export async function teardownDaemonSessionForShutdown(params: {
   sessionStore.finalizeRepairTeardown(session);
   await beforeDelete?.(session);
   if (teardownSucceeded) await afterSuccessfulTeardown?.(session);
-  sessionStore.delete(sessionName);
+  sessionStore.retire(ref);
 }
 
 export type DaemonRuntimeOptions = {
@@ -471,10 +470,11 @@ export async function startDaemonRuntime(
 
   const shutdownClaimLedger = createDaemonShutdownClaimLedger();
 
-  const teardownDaemonSession = async (session: SessionState): Promise<void> => {
+  const teardownDaemonSession = async (ref: SessionRef): Promise<void> => {
+    const session = sessionStore.resolveCurrent(ref) ?? ref.session;
     try {
       await teardownDaemonSessionForShutdown({
-        session,
+        ref,
         sessionStore,
         stderr,
         finalizeApplicationLifecycle: async (sessionToFinalize) =>
@@ -501,7 +501,8 @@ export async function startDaemonRuntime(
   };
 
   const teardownDaemonSessions = async (): Promise<void> => {
-    const sessionsToStop = sessionStore.toArray();
+    sessionStore.closeAdmission();
+    const sessionsToStop = sessionStore.listRefs();
     await Promise.all(sessionsToStop.map(teardownDaemonSession));
   };
 
@@ -517,10 +518,11 @@ export async function startDaemonRuntime(
     session: SessionState,
     sessionName: string,
   ): Promise<void> => {
+    const ref = sessionStore.lookup(sessionName);
+    if (!ref) return;
     await teardownSessionResources({
       appLog: 'run',
-      session,
-      sessionName,
+      ref,
       sessionStore,
       stateDir: baseDir,
       platformCleanup: platformResourceCleanup,
@@ -576,10 +578,11 @@ export async function startDaemonRuntime(
   // in-flight requests, no active recording) past AGENT_DEVICE_DAEMON_IDLE_TIMEOUT_MS.
   // `shutdown` is defined below but only invoked asynchronously by the timer,
   // well after this closure captures it.
-  let inFlightRequestCount = 0;
+  let shuttingDown = false;
+  const inFlightRequests = new Set<ReturnType<DaemonInvokeFn>>();
   const idleReap = createDaemonIdleReap({
     sessionStore,
-    getInFlightRequestCount: () => inFlightRequestCount,
+    getInFlightRequestCount: () => inFlightRequests.size,
     onIdleReap: () => {
       void shutdown();
     },
@@ -587,12 +590,22 @@ export async function startDaemonRuntime(
   });
 
   const handleRequest: DaemonInvokeFn = async (req) => {
-    inFlightRequestCount++;
+    if (shuttingDown)
+      return {
+        ok: false,
+        error: {
+          code: 'COMMAND_FAILED',
+          message: 'Daemon is shutting down.',
+          details: { reason: 'daemon_shutting_down' },
+        },
+      };
     idleReap.cancel();
+    const dispatch = dispatchRequest(req);
+    inFlightRequests.add(dispatch);
     try {
-      return await dispatchRequest(req);
+      return await dispatch;
     } finally {
-      inFlightRequestCount--;
+      inFlightRequests.delete(dispatch);
       idleReap.noteActivity();
       // One hook covers every way a deadline changes: an `open` has added one, a `close` has removed
       // one, and any other command has just re-stamped the session it ran on. Reading the session set
@@ -763,7 +776,6 @@ export async function startDaemonRuntime(
   // cannot start, PNG processing falls back to the in-process sync path.
   prewarmPngWorker();
 
-  let shuttingDown = false;
   const shutdown = async (shutdownOptions: { exitCode?: number; cause?: unknown } = {}) => {
     idleReap.cancel();
     sessionIdleExpiry.cancel();
@@ -774,6 +786,7 @@ export async function startDaemonRuntime(
       await emitFatalDiagnostic(shutdownOptions.cause);
     }
     await closeDaemonServers(servers);
+    await Promise.allSettled(inFlightRequests);
     // Hand healthy runners off before durable session teardown. The lifecycle gateway later
     // terminates only still-owned generations once all resources have finalized.
     //
