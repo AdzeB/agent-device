@@ -1,7 +1,7 @@
 import { resolveTargetDevice } from '@agent-device/device-selection/dispatch-resolve';
 import type { PlatformResourceCleanup } from './platform-resource-cleanup.ts';
 import type { DaemonRequest } from './daemon-request.ts';
-import type { SessionState } from './session-state.ts';
+import type { SessionRef, SessionState } from './session-state.ts';
 import type { SessionScope } from '@agent-device/contracts/session';
 import { isActiveProviderDevice } from './provider-device-admission.ts';
 import { SessionStore } from './session-store.ts';
@@ -10,9 +10,10 @@ export async function resolveSessionDevice(
   sessionStore: SessionStore,
   sessionName: string,
   flags: DaemonRequest['flags'],
+  boundRef?: SessionRef,
 ) {
-  const ref = sessionStore.lookup(sessionName);
-  const session = ref?.session;
+  const ref = boundRef ?? sessionStore.lookup(sessionName);
+  const session = ref ? sessionStore.requireCurrent(ref) : undefined;
   const device = session?.device ?? (await resolveTargetDevice(flags ?? {}));
   return { ref, session, device };
 }
@@ -36,21 +37,6 @@ export async function withSessionlessRunnerCleanup<T>(
       await platformCleanup!.cleanupSessionlessExecutionHost(device);
     }
   }
-}
-
-export function recordIfSession(
-  sessionStore: SessionStore,
-  session: SessionState | undefined,
-  req: DaemonRequest,
-  result: Record<string, unknown>,
-): void {
-  if (!session) return;
-  sessionStore.recordAction(session, {
-    command: req.command,
-    positionals: req.positionals ?? [],
-    flags: req.flags ?? {},
-    result,
-  });
 }
 
 export function createSnapshotSession(params: {
