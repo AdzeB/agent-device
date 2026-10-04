@@ -28,7 +28,7 @@ import {
   type DaemonClientSettings,
   type EnsuredDaemon,
 } from './daemon-client-lifecycle.ts';
-import { sendRequest } from './daemon-client-transport.ts';
+import { createRequestGuard, sendRequest } from './daemon-client-transport.ts';
 import { isRemoteDaemon, type DaemonInfo } from './daemon-client-metadata.ts';
 import { leaseScopeFromRequest } from '@agent-device/contracts/lease-scope';
 
@@ -60,16 +60,25 @@ export async function sendToDaemon(
     resolveCommandTimeoutPolicy(requestWithoutAuthFlag.command),
     requestWithoutAuthFlag,
   );
-  const daemon = await withDiagnosticTimer(
-    'daemon_startup',
-    async () => await ensureDaemon(settings),
-    { requestId, session: req.session },
-  );
+  // The caller's signal covers every phase of this one request, and the guard turns any phase's
+  // cancellation into the typed canceled-request error — so an abort never borrows a timeout's shape.
+  const cancellation = createRequestGuard({ signal: options.signal, requestId });
+  cancellation.refuseIfAborted();
+  const daemon = await cancellation.guard(async () => {
+    return await withDiagnosticTimer('daemon_startup', async () => await ensureDaemon(settings), {
+      requestId,
+      session: req.session,
+    });
+  });
   const info = daemon.info;
-  const preparedRemoteRequest = await protectArtifactUploadWithLeaseBeats(
-    info,
-    settings,
-    requestWithoutAuthFlag,
+  const preparedRemoteRequest = await cancellation.guard(
+    async () =>
+      await protectArtifactUploadWithLeaseBeats(
+        info,
+        settings,
+        requestWithoutAuthFlag,
+        options.signal,
+      ),
   );
   writeInstallInProgressNotice(requestWithoutAuthFlag.command);
 
@@ -103,7 +112,7 @@ export async function sendToDaemon(
             settings.transportPreference,
             settings.paths,
             requestTimeoutMs,
-            { onProgress: options.onProgress },
+            { onProgress: options.onProgress, signal: options.signal },
           ),
         { requestId, command: req.command },
       );
@@ -316,15 +325,28 @@ async function protectArtifactUploadWithLeaseBeats(
   info: DaemonInfo,
   settings: DaemonClientSettings,
   request: Omit<DaemonRequest, 'token'>,
+  callerSignal: AbortSignal | undefined,
 ): Promise<PreparedRemoteRequest> {
   const leaseScope = leaseScopeFromRequest(request);
   if (!isRemoteDaemon(info) || !leaseScope.leaseId) {
-    return await prepareRemoteRequestArtifacts(request, info, new AbortController().signal);
+    return await prepareRemoteRequestArtifacts(
+      request,
+      info,
+      callerSignal ?? new AbortController().signal,
+    );
   }
   const { buildUploadLeaseHeartbeat, runProtectedLeaseWork } =
     await import('./daemon-client-lease-beat.ts');
   return await runProtectedLeaseWork({
     heartbeat: buildUploadLeaseHeartbeat(info, settings, request),
-    task: (signal) => prepareRemoteRequestArtifacts(request, info, signal),
+    // The upload stops for either owner of its signal: the lease beat finding the lease gone, or
+    // the caller aborting this one call.
+    task: (leaseSignal) =>
+      prepareRemoteRequestArtifacts(
+        request,
+        info,
+        callerSignal ? AbortSignal.any([leaseSignal, callerSignal]) : leaseSignal,
+      ),
+    callerSignal,
   });
 }
