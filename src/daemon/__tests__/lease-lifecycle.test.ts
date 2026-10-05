@@ -1,4 +1,5 @@
 import { test, expect, vi } from 'vitest';
+import { emitDiagnostic } from '@agent-device/host-kit/diagnostics';
 import { makeIosSession } from '../../__tests__/test-utils/session-factories.ts';
 import { makeSessionStore } from '../../__tests__/test-utils/store-factory.ts';
 import { LeaseRegistry } from '../lease-registry.ts';
@@ -10,6 +11,11 @@ import {
   resolveSessionLeaseForRequest,
 } from '../lease-lifecycle.ts';
 import type { DaemonRequest } from '../daemon-request.ts';
+
+vi.mock('@agent-device/host-kit/diagnostics', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@agent-device/host-kit/diagnostics')>();
+  return { ...actual, emitDiagnostic: vi.fn() };
+});
 
 test('admitRequestLeaseForLockedScope heartbeats and stores admitted lease on the request', () => {
   let now = 1_000;
@@ -122,6 +128,41 @@ test('releaseSessionLease releases with the stored session owner scope', async (
 
   expect(leaseRegistry.listActiveLeases()).toHaveLength(0);
   expect(provider).toEqual({ provider: 'proxy' });
+});
+
+test('releaseSessionLease leaves a retainOnClose lease and its provider device alone', async () => {
+  const leaseRegistry = new LeaseRegistry();
+  const lease = leaseRegistry.allocateLease({
+    tenantId: 'tenant-a',
+    runId: 'run-1',
+    clientId: 'client-a',
+    retainOnClose: true,
+  });
+  const session = makeIosSession('default', {
+    lease: {
+      leaseId: lease.leaseId,
+      tenantId: lease.tenantId,
+      runId: lease.runId,
+      leaseBackend: lease.backend,
+      clientId: lease.clientId,
+    },
+  });
+  const release = vi.fn(async () => ({ released: true }));
+
+  const provider = await releaseSessionLease({
+    session,
+    leaseRegistry,
+    leaseLifecycleProvider: { release },
+  });
+
+  expect(provider).toBeUndefined();
+  expect(release).not.toHaveBeenCalled();
+  expect(leaseRegistry.listActiveLeases()).toHaveLength(1);
+  expect(vi.mocked(emitDiagnostic)).toHaveBeenCalledWith({
+    level: 'info',
+    phase: 'session_lease_released',
+    data: { session: 'default', leaseId: lease.leaseId, released: false, retained: true },
+  });
 });
 
 test('releaseSessionLease retains provider session ownership for artifact lookup', async () => {

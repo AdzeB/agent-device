@@ -149,6 +149,7 @@ export function resolveSessionLeaseForRequest(params: {
   );
 }
 
+/** Releases the lease a closing session holds, unless its owner allocated it with `retainOnClose`. */
 export async function releaseSessionLease(params: {
   session: SessionState;
   leaseRegistry: LeaseRegistry;
@@ -166,6 +167,19 @@ export async function releaseSessionLease(params: {
     clientId: lease.clientId,
   });
   const activeLease = params.leaseRegistry.getLease(releaseRequest);
+  if (activeLease?.retainOnClose) {
+    emitDiagnostic({
+      level: 'info',
+      phase: 'session_lease_released',
+      data: {
+        session: params.session.name,
+        leaseId: lease.leaseId,
+        released: false,
+        retained: true,
+      },
+    });
+    return undefined;
+  }
   const providerData = activeLease
     ? await params.leaseLifecycleProvider?.release?.(activeLease)
     : undefined;

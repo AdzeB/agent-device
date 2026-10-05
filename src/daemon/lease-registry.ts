@@ -99,7 +99,10 @@ export class LeaseRegistry {
       return undefined;
     }
     if (existingLease.clientId === request.clientId) {
-      return this.refreshLease(existingLease, leaseTtlMs);
+      return this.refreshLease(
+        request.retainOnClose ? { ...existingLease, retainOnClose: true } : existingLease,
+        leaseTtlMs,
+      );
     }
     if (existingLease.deviceKey) {
       throw deviceLeaseBusyError(existingLease);
