@@ -4,6 +4,7 @@ import type {
 } from '@agent-device/contracts/observability';
 import type { ProviderWebDriverDependencies } from './dependencies.ts';
 import {
+  CLOUD_WEBDRIVER_PROFILE_FIELDS,
   createCloudWebDriverProviderDefinitions,
   type DefaultCloudWebDriverArtifactEnv,
   type DefaultCloudWebDriverProviderRuntimeEnv,
@@ -17,10 +18,9 @@ import {
 } from './connection-verification.ts';
 import type { CloudWebDriverRuntime } from './runtime.ts';
 
-export { CLOUD_WEBDRIVER_PROVIDERS };
+export { CLOUD_WEBDRIVER_PROFILE_FIELDS, CLOUD_WEBDRIVER_PROVIDERS };
 export { readAwsDeviceFarmRegionFromArn };
 export { parseBrowserStackAppReference } from './browserstack.ts';
-export { rejectBrowserStackOnlyDeviceFeatures } from './browserstack-device-features.ts';
 export type { CloudWebDriverKnownProviderName } from './providers.ts';
 export type { ProviderWebDriverDependencies, RunHostCommand } from './dependencies.ts';
 export type {
@@ -51,7 +51,7 @@ export function createProviderWebDriver(
   return {
     providerIds: definitions.map((definition) => definition.provider),
     createDefaultRuntimes: (env = process.env) =>
-      definitions.map((definition) => definition.createRuntime(env)),
+      definitions.map((definition) => definition.createRuntime(env, definition.profileFields)),
     listArtifactsFromEnv: async (query, env) => {
       if (!query.providerSessionId) return undefined;
       return await definitions

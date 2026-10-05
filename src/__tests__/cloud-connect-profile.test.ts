@@ -810,7 +810,7 @@ test('connect does not activate provider state when verification fails', async (
   }
 });
 
-test('connect aws-device-farm rejects BrowserStack-only device-feature flags', () => {
+test('connect aws-device-farm rejects device-feature flags it does not read', () => {
   const tempRoot = mkdtempForTestSync('agent-device-connect-aws-reject-');
 
   try {
@@ -836,8 +836,7 @@ test('connect aws-device-farm rejects BrowserStack-only device-feature flags', (
         assert.equal(error.code, 'INVALID_ARGS');
         // Names every offending flag, and fires before the provider's own required-arg checks so
         // the caller is told what is unsupported rather than what else is missing.
-        assert.match(error.message, /--provider-device-orientation, --provider-timezone/);
-        assert.match(error.message, /only supported by BrowserStack, not aws-device-farm/);
+        assert.equal(error.details?.provider, 'aws-device-farm');
         assert.deepEqual(error.details?.flags, [
           '--provider-device-orientation',
           '--provider-timezone',
