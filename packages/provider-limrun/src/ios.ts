@@ -1,4 +1,5 @@
 import { isDeepLinkTarget } from '@agent-device/contracts/command';
+import type { SettingOptions } from '@agent-device/contracts/settings';
 import type {
   DeviceLease,
   DeviceRotation,
@@ -365,8 +366,14 @@ class LimrunIosInteractor implements Interactor {
     await this.session.client.setOrientation(orientation === 'portrait' ? 'Portrait' : 'Landscape');
   }
 
-  async setSetting(): Promise<never> {
-    throw unsupported('settings', 'Limrun iOS direct sessions do not expose settings changes yet.');
+  async setSetting(
+    setting: string,
+    state: string,
+    appId?: string,
+    options?: SettingOptions,
+  ): Promise<Record<string, unknown> | void> {
+    const { setLimrunIosSetting } = await import('./ios-settings.ts');
+    return await setLimrunIosSetting(this.session, setting, state, appId, options);
   }
 }
 

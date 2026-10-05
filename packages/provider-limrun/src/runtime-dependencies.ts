@@ -4,6 +4,7 @@ import type { Interactor } from '@agent-device/contracts/interactor-types';
 import type { AndroidInputOwner } from '@agent-device/contracts/android-input-ownership';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import type { AppError } from '@agent-device/kernel/errors';
+import type { SettingOptions } from '@agent-device/contracts/settings';
 
 export type LimrunAdbCommandOptions = {
   allowFailure?: boolean;
@@ -140,7 +141,23 @@ export type LimrunHostAdapter = {
   downloadFile(options: LimrunFileDownload): Promise<void>;
 };
 
+/**
+ * One simulator setting the Apple package changes through `simctl`, in that package's terms. The
+ * composition root supplies the Apple plan, so the provider does not import a platform package.
+ */
+export type LimrunIosSimctlSettingRequest = {
+  runSimctl(args: string[]): Promise<{ readonly stdout: string; readonly stderr: string }>;
+  udid: string;
+  setting: 'appearance' | 'permission' | 'location';
+  state: string;
+  appBundleId?: string;
+  options?: SettingOptions;
+};
+
 export type LimrunIosRuntimeAdapter = {
+  applySimctlSetting(
+    request: LimrunIosSimctlSettingRequest,
+  ): Promise<Record<string, unknown> | void>;
   resolveAppAlias(app: string): Promise<string>;
   readBundleAppName(appPath: string): Promise<string | undefined>;
 };

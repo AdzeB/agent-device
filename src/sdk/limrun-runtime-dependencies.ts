@@ -107,6 +107,10 @@ export function createLimrunRuntimeDependencies(): LimrunRuntimeDependencies {
       },
     },
     ios: {
+      applySimctlSetting: async (request) => {
+        const { applySimctlSetting } = await import('@agent-device/platform-apple/simctl-settings');
+        return await applySimctlSetting(request);
+      },
       resolveAppAlias: async (app) => {
         const { resolveIosAppAlias } = await import('@agent-device/platform-apple/app-resolution');
         return resolveIosAppAlias(app);
