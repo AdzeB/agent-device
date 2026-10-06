@@ -163,6 +163,10 @@ Script paths are the caller's:
   replay <path> and test <path-or-glob> resolve and read on the machine running the command, then send the script content (Maestro runFlow includes too) with the request. The same flows therefore run against a local daemon and against a remote one (AGENT_DEVICE_DAEMON_BASE_URL) with no copy step, and a missing script fails immediately, naming the path you typed. --save-script writes on the DAEMON host and is rejected against a remote daemon.
   test --json marks a failed test with infrastructure: true only when the owning runtime classified a device, runner, boot, or transport failure. It remains a failed test; consumers may use the tag to distinguish "the oracle did not run" from a behavioral replay divergence without weakening either gate.
 
+Script line grammar:
+  A .ad line is <command> [positional...] [flag...]. Whitespace splits tokens; a token quoted with " or ' is one argument, and single quotes keep a double quote literal, exactly as at the shell (press 'id="far"' is one selector). Values in double quotes are JSON strings (escape \\\\, \\", \\t, \\n). Values in single quotes are literal, as at the shell: a backslash keeps its own character and the only escape is \\' for an apostrophe. A script carries only the flags declared for that command and marked recorded, so the script form of a step matches the CLI form: scroll down --until 'id="x"', wait 'label="Sign in"' --raw. CLI-only spellings and per-request options are not part of a step: --settle, --verify, scroll --pixels/--duration-ms, and the device-selection flags (--platform, --serial, --device) are the common ones a script does not carry.
+  Reaching an off-screen target is viewport-independent in a script the same way it is at the CLI: write scroll down --until <selector>, not a fixed scroll amount that passes on one screen size and fails on another.
+
 Reusable open-to-destination scripts:
   Arm recording on the first open, perform the full journey, verify the destination with a selector-targeted wait, then publish without closing:
     agent-device open com.example.app --relaunch --save-script=screen-x.ad
