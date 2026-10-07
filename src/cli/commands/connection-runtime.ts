@@ -914,6 +914,7 @@ async function allocateOrReuseLease(
     serial: flags.serial,
     providerApp: initialApp ?? flags.providerApp,
     providerOsVersion: flags.providerOsVersion,
+    providerDeviceType: flags.providerDeviceType,
     providerProject: flags.providerProject,
     providerBuild: flags.providerBuild,
     providerSessionName: flags.providerSessionName,

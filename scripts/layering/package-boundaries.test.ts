@@ -151,6 +151,38 @@ test('readWorkspacePackages reads tracked manifests only', () => {
   );
 });
 
+test('published ESM plugins declare bundled workspace build dependencies without runtime dependencies', () => {
+  const [plugin] = workspacePackagesFromManifests(
+    new Map([
+      [
+        'packages/provider-example/package.json',
+        JSON.stringify({
+          name: '@agent-device/example',
+          exports: { '.': { import: './dist/plugin.mjs' } },
+          devDependencies: { '@agent-device/kernel': 'workspace:*', tsdown: '^0.21.0' },
+        }),
+      ],
+    ]),
+  );
+  assert.ok(plugin);
+  assert.equal(
+    plugin.exportTargets.get('@agent-device/example'),
+    'packages/provider-example/dist/plugin.mjs',
+  );
+  assert.deepEqual([...plugin.workspaceDependencies], ['@agent-device/kernel']);
+  assert.equal(plugin.externalDependencies.size, 0);
+  const sites = specifierSites(
+    'packages/provider-example/src/plugin.ts',
+    "import { AppError } from '@agent-device/kernel/errors';",
+  );
+  assert.deepEqual(checkPackageInternalSites(plugin, sites, [plugin, kernel]), []);
+  const undeclared = { ...plugin, workspaceDependencies: new Set<string>() };
+  const violations = checkPackageInternalSites(undeclared, sites, [undeclared, kernel]);
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0]?.rule, 'R11 package-boundaries');
+  assert.match(violations[0]?.message ?? '', /without declaring/);
+});
+
 test('every workspace package façade names its exports explicitly (no bare `export *`)', () => {
   // #1574 built a hand-maintained pin table (`facade-symbols.ts`, 816 symbols across every
   // workspace-package façade) plus a ~200-line star-chain resolver (`readFacadeExports`) whose
@@ -788,6 +820,7 @@ test('the real tree parses, declares, and passes R11', () => {
   assert.ok(providerWebDriverPackage, 'provider-webdriver package must exist');
   assert.deepEqual([...providerWebDriverPackage.exportTargets.keys()].sort(), [
     '@agent-device/provider-webdriver',
+    '@agent-device/provider-webdriver/plugin',
     '@agent-device/provider-webdriver/providers',
   ]);
   assert.deepEqual([...providerWebDriverPackage.workspaceDependencies].sort(), [

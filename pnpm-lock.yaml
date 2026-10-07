@@ -89,6 +89,9 @@ importers:
       '@agent-device/session-journal':
         specifier: workspace:*
         version: link:packages/session-journal
+      '@agent-device/testmu':
+        specifier: workspace:*
+        version: link:packages/provider-testmu
       '@agent-device/xml':
         specifier: workspace:*
         version: link:packages/xml
@@ -475,6 +478,21 @@ importers:
       '@limrun/api':
         specifier: ^0.59.0
         version: 0.59.0(supports-color@7.2.0)
+
+  packages/provider-testmu:
+    devDependencies:
+      '@agent-device/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@agent-device/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@agent-device/provider-webdriver':
+        specifier: workspace:*
+        version: link:../provider-webdriver
+      agent-device:
+        specifier: workspace:*
+        version: link:../..
 
   packages/provider-webdriver:
     dependencies:
