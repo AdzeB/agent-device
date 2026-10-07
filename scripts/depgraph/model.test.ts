@@ -243,6 +243,33 @@ test('flags only value edges whose target is already reachable at distance >= 2'
   assert.deepEqual(flagged, ['src/core/a.ts -> src/core/c.ts']);
 });
 
+function valueCycleFixture(): Map<string, string> {
+  return sources({
+    'src/core/a.ts': "import { b } from './b.ts';\nexport const a = b;",
+    'src/core/b.ts': "import { a } from './a.ts';\nexport const b = a;",
+  });
+}
+
+test('transitive marking is undefined on a value cycle', () => {
+  const edges = collapseEdges(resolveImportEdges(valueCycleFixture()));
+
+  assert.throws(() => markTransitivelyReachableEdges(edges), /cycle/);
+});
+
+test('buildGraph still reports a value cycle and leaves edges unmarked', () => {
+  const files = valueCycleFixture();
+  const graph = buildGraph(files, resolveImportEdges(files));
+
+  assert.deepEqual(
+    graph.cycles.map((cycle) => cycle.kind),
+    ['value'],
+  );
+  assert.deepEqual(
+    graph.edges.filter((edge) => edge.transitivelyReachable),
+    [],
+  );
+});
+
 test('a type-only shortcut is never flagged against a value path', () => {
   const edges = collapseEdges(
     resolveImportEdges(
