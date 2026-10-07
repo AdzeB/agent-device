@@ -1,5 +1,7 @@
 export {
   createDaemonProxy,
+  createDaemonProxyRequestListener,
+  createDaemonProxyServer,
   type DaemonProxy,
   type DaemonProxyOptions,
   type DaemonProxyUpstreamFetch,

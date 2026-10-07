@@ -1,34 +1,25 @@
-import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { TLSSocket } from 'node:tls';
-import { createDaemonProxy, type DaemonProxy, type DaemonProxyOptions } from './daemon-proxy.ts';
+import type { DaemonProxy } from './daemon-proxy.ts';
 
-export function createDaemonProxyServer(options: DaemonProxyOptions): http.Server {
-  return http.createServer(createDaemonProxyRequestListener(createDaemonProxy(options)));
-}
-
-/** Serves a proxy from any `node:http` or `node:https` server; upload tickets follow its scheme. */
-export function createDaemonProxyRequestListener(proxy: DaemonProxy): http.RequestListener {
-  return (req, res) => {
-    void serveProxyRequest(proxy, req, res).catch((error: unknown) => {
-      if (!res.destroyed) res.destroy(error instanceof Error ? error : undefined);
-    });
-  };
-}
-
-async function serveProxyRequest(
+export async function serveProxyRequest(
   proxy: DaemonProxy,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const request = toWebRequest(req, res);
-  if (!request) {
-    res.statusCode = 400;
-    res.end();
+  // Fetch refuses TRACE. node:http rejects TRACK and routes CONNECT to the 'connect' event.
+  if (req.method === 'TRACE') {
+    endWithStatus(res, 404);
     return;
   }
-  const response = await proxy.handle(request);
+  const url = requestUrl(req);
+  if (!url) {
+    endWithStatus(res, 400);
+    return;
+  }
+  const response = await proxy.handle(toWebRequest(url, req, res));
   res.statusCode = response.status;
   for (const [name, value] of response.headers) res.setHeader(name, value);
   if (!response.body) {
@@ -38,11 +29,20 @@ async function serveProxyRequest(
   await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), res);
 }
 
-/** `null` when the Host header and path do not form a URL. */
-function toWebRequest(req: IncomingMessage, res: ServerResponse): Request | null {
+function endWithStatus(res: ServerResponse, status: number): void {
+  res.statusCode = status;
+  res.end();
+}
+
+/** `null` when the Host header and path do not form a URL that Fetch accepts. */
+function requestUrl(req: IncomingMessage): URL | null {
   const scheme = req.socket instanceof TLSSocket ? 'https' : 'http';
   const url = URL.parse(req.url ?? '/', `${scheme}://${req.headers.host ?? '127.0.0.1'}`);
-  if (!url) return null;
+  if (!url || url.username || url.password) return null;
+  return url;
+}
+
+function toWebRequest(url: URL, req: IncomingMessage, res: ServerResponse): Request {
   const method = req.method ?? 'GET';
   const hasBody = method !== 'GET' && method !== 'HEAD';
   return new Request(url, {
@@ -72,5 +72,6 @@ function clientGoneSignal(req: IncomingMessage, res: ServerResponse): AbortSigna
   };
   req.on('aborted', abortIfResponseIncomplete);
   res.on('close', abortIfResponseIncomplete);
+  if (res.closed) abortIfResponseIncomplete();
   return clientGone.signal;
 }
