@@ -7,7 +7,6 @@ import {
   buildSimctlArgsForDevice,
   runXcrun,
 } from './host.ts';
-import type { ExecResult } from '@agent-device/host-kit/command';
 import { isApplePlatform, type DeviceInfo } from '@agent-device/kernel/device';
 import type { RunnerLogicalLeaseContext } from '@agent-device/contracts/runner-lease-context';
 import type { AppleRunnerLifecycleOptions } from './runner-provider.ts';
@@ -521,11 +520,8 @@ async function cleanupStaleSimulatorRunnerBundles(device: DeviceInfo): Promise<v
 
   await Promise.allSettled(
     IOS_RUNNER_CONTAINER_BUNDLE_IDS.map(async (bundleId) => {
-      const result = await uninstallStaleSimulatorRunnerBundle(device, bundleId);
-      if (!result || isBenignSimulatorRunnerUninstallResult(result)) {
-        return;
-      }
       // Best-effort cleanup only; xcodebuild may still be able to install.
+      await uninstallStaleSimulatorRunnerBundle(device, bundleId);
     }),
   );
 }
@@ -533,9 +529,9 @@ async function cleanupStaleSimulatorRunnerBundles(device: DeviceInfo): Promise<v
 async function uninstallStaleSimulatorRunnerBundle(
   device: DeviceInfo,
   bundleId: string,
-): Promise<ExecResult | undefined> {
+): Promise<void> {
   try {
-    return await runXcrun(buildSimctlArgsForDevice(device, ['uninstall', device.id, bundleId]), {
+    await runXcrun(buildSimctlArgsForDevice(device, ['uninstall', device.id, bundleId]), {
       allowFailure: true,
       timeoutMs: RUNNER_STALE_BUNDLE_UNINSTALL_TIMEOUT_MS,
     });
@@ -550,20 +546,7 @@ async function uninstallStaleSimulatorRunnerBundle(
         error: error instanceof Error ? error.message : String(error),
       },
     });
-    return undefined;
   }
-}
-
-function isBenignSimulatorRunnerUninstallResult(result: ExecResult): boolean {
-  if (result.exitCode === 0) return true;
-  const output = `${result.stdout}\n${result.stderr}`.toLowerCase();
-  return (
-    output.includes('not installed') ||
-    output.includes('found nothing') ||
-    output.includes('no such file') ||
-    output.includes('invalid device') ||
-    output.includes('could not find')
-  );
 }
 
 /**
