@@ -382,7 +382,8 @@ export function emitRunnerXctestrunDecision(
     | 'external_xctestrun'
     | 'external_bad_artifact'
     | 'uncertifiable_products'
-    | 'stale_cache_evicted',
+    | 'stale_cache_evicted'
+    | 'build_scratch_trimmed',
   data: Record<string, unknown>,
 ): void {
   emitDiagnostic({

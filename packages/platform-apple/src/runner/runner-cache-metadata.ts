@@ -486,9 +486,14 @@ export function resolveRunnerDerivedPath(
   if (override) {
     return path.resolve(override);
   }
-  const cacheKey = resolveRunnerCacheKey(metadata);
-  const base = resolveRunnerDerivedBasePath(device);
-  return path.join(base, cacheKey);
+  return resolveRunnerKeyedDerivedPath(device, metadata);
+}
+
+export function resolveRunnerKeyedDerivedPath(
+  device: DeviceInfo,
+  metadata: RunnerXctestrunCacheMetadata,
+): string {
+  return path.join(resolveRunnerDerivedBasePath(device), resolveRunnerCacheKey(metadata));
 }
 
 function resolveRunnerDerivedBasePath(device: DeviceInfo): string {

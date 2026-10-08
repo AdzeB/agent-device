@@ -60,7 +60,7 @@ import {
   resolveRunnerBuildDestination,
   resolveRunnerXctestrunHints,
 } from './apple-runner-platform.ts';
-import { resolveRunnerCacheKey } from './runner-cache-metadata.ts';
+import { resolveRunnerCacheKey, resolveRunnerKeyedDerivedPath } from './runner-cache-metadata.ts';
 import { resolveAppleRunnerProjectPath } from './runner-source.ts';
 export { prepareXctestrunWithEnv } from './runner-artifact-env.ts';
 
@@ -689,6 +689,11 @@ async function buildXctestrunArtifact(params: {
     ),
     derived,
   );
+  await trimRunnerBuildScratchBestEffort(
+    resolveRunnerKeyedDerivedPath(device, expectedCacheMetadata),
+    derived,
+    [built, ...builtProductPaths],
+  );
   emitRunnerXctestrunDecision('build', 'built_new', {
     derived,
     xctestrunPath: built,
@@ -703,6 +708,26 @@ async function buildXctestrunArtifact(params: {
     xctestrunPathSource: 'build',
     reason,
   };
+}
+
+/** Runs under the cache lock, so no rebuild or reuse of this key sees the tree mid-trim. */
+async function trimRunnerBuildScratchBestEffort(
+  expectedKeyPath: string,
+  derived: string,
+  protectedPaths: readonly string[],
+): Promise<void> {
+  try {
+    const { trimRunnerBuildScratch } = await import('./runner-cache-trim.ts');
+    const removed = await trimRunnerBuildScratch(derived, protectedPaths, expectedKeyPath);
+    if (removed.length > 0)
+      emitRunnerXctestrunDecision('clean', 'build_scratch_trimmed', { derived });
+  } catch (error) {
+    emitDiagnostic({
+      level: 'warn',
+      phase: 'runner_xctestrun_cache_trim_failed',
+      data: { derived, error: error instanceof Error ? error.message : String(error) },
+    });
+  }
 }
 
 async function tryReuseExistingXctestrun(
