@@ -13,12 +13,8 @@ import {
 } from './context.ts';
 import { assertSessionSelectorMatches } from './session-selector.ts';
 import { resolveEffectiveSessionName } from './session-routing.ts';
-import { scopeRequestSession } from './request-admission.ts';
-import {
-  admitRequestLeaseForLockedScope,
-  assertLockedLeaseAdmissionPreflight,
-  cleanupExpiredLeasedSession,
-} from './lease-lifecycle.ts';
+import { assertRequestLeaseAdmissionPreflight, scopeRequestSession } from './request-admission.ts';
+import { admitRequestLeaseForLockedScope, cleanupExpiredLeasedSession } from './lease-lifecycle.ts';
 import {
   prepareLockedRequestBinding,
   resolveRequestExecutionLockPlan,
@@ -84,6 +80,14 @@ const requestScopeFinalizers = new WeakMap<
   RequestExecutionScope,
   (response: DaemonResponse) => DaemonResponse
 >();
+
+const gatewayMissing = async (): Promise<never> => {
+  throw new AppError(
+    'COMMAND_FAILED',
+    'Device runtime gateway is not configured for this request scope',
+    { reason: 'runtime-gateway-missing' },
+  );
+};
 
 export type RequestExecutionScope = AsyncDisposable & {
   req: DaemonRequest;
@@ -194,7 +198,7 @@ export async function createRequestExecutionScope(params: {
   }
   try {
     if (params.daemonPolicy) assertDaemonPolicyAdmitsRequest(params.daemonPolicy, scopedReq);
-    assertLockedLeaseAdmissionPreflight(scopedReq);
+    assertRequestLeaseAdmissionPreflight(scopedReq);
     // Parse the budget once, before resolving the target device or taking any lock. The lock plan
     // still supplies the device to wait for, but an out-of-range budget is refused before either.
     const openWaitBudgetMs =
@@ -238,33 +242,9 @@ export async function createRequestExecutionScope(params: {
       startedAtMs,
       retainDeviceExecutionLock: async (deviceId) =>
         await requestExecutionLocks.retainDevice(deviceId),
-      bindDevice:
-        runtimeBindings?.bindDevice ??
-        (async () => {
-          throw new AppError(
-            'COMMAND_FAILED',
-            'Device runtime gateway is not configured for this request scope',
-            { reason: 'runtime-gateway-missing' },
-          );
-        }),
-      inspectFacts:
-        runtimeBindings?.inspectFacts ??
-        (async () => {
-          throw new AppError(
-            'COMMAND_FAILED',
-            'Device runtime gateway is not configured for this request scope',
-            { reason: 'runtime-gateway-missing' },
-          );
-        }),
-      bindExactDevice:
-        runtimeBindings?.bindExactDevice ??
-        (async () => {
-          throw new AppError(
-            'COMMAND_FAILED',
-            'Device runtime gateway is not configured for this request scope',
-            { reason: 'runtime-gateway-missing' },
-          );
-        }),
+      bindDevice: runtimeBindings?.bindDevice ?? gatewayMissing,
+      inspectFacts: runtimeBindings?.inspectFacts ?? gatewayMissing,
+      bindExactDevice: runtimeBindings?.bindExactDevice ?? gatewayMissing,
       dispatchLedger,
       throwIfCanceled: () => throwIfRequestCanceled(scopedReq.meta?.requestId),
       runAdmitted: async (task) => {
