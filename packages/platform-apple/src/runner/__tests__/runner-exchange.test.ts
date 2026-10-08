@@ -57,6 +57,27 @@ test('the exchange preflights a mutation and settles only its answer', async () 
   assert.deepEqual(invalidations, []);
 });
 
+test('the exchange sends an observe-only snapshot without a readiness preflight', async () => {
+  server = await startFakeRunnerServer({
+    snapshot: [{ kind: 'ok', data: { nodes: [] } }],
+  });
+  const session = sessionFor(server.port);
+
+  await executeRunnerExchange(
+    IOS_SIMULATOR,
+    session,
+    { command: 'snapshot', observeOnly: true, appBundleId: 'com.example.app' },
+    undefined,
+    10_000,
+    async () => {},
+  );
+
+  assert.deepEqual(
+    server.requests.map(({ command }) => command),
+    ['snapshot'],
+  );
+});
+
 test('the readiness probe preserves its main-thread busy report when the command omits it', async () => {
   server = await startFakeRunnerServer({
     uptime: [{ kind: 'ok', data: { runnerMainThreadBusy: true } }],

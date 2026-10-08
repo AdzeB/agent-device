@@ -39,9 +39,8 @@ test('runner command trait table pins lifecycle-sensitive command groups', () =>
       'querySelector',
       'readText',
       'screenshot',
-      'snapshot',
     ],
-    payloadDependent: ['alert'],
+    payloadDependent: ['alert', 'snapshot'],
     readOnlyReadinessProbe: ['status', 'uptime'],
     readinessPreflightExemptMutation: ['activate', 'targetReset', 'terminate'],
     default: [
@@ -63,6 +62,18 @@ test('runner command trait table pins lifecycle-sensitive command groups', () =>
     ],
   });
   assert.deepEqual(Object.values(groups).flat().sort(), [...RUNNER_COMMANDS].sort());
+});
+
+test('only an observe-only snapshot is exempt from the readiness preflight', () => {
+  assert.deepEqual(readRunnerCommandTraits({ command: 'snapshot' }), readOnly());
+  assert.deepEqual(
+    readRunnerCommandTraits({ command: 'snapshot', observeOnly: false }),
+    readOnly(),
+  );
+  assert.deepEqual(readRunnerCommandTraits({ command: 'snapshot', observeOnly: true }), {
+    ...readOnly(),
+    readinessPreflightExempt: true,
+  });
 });
 
 test('alert actions match the native read-only golden table', () => {

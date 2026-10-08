@@ -7,6 +7,7 @@ import { appleRemotePressCommand } from './os/tvos/remote.ts';
 import { runMacOsScreenshotAction } from './os/macos/helper.ts';
 import { actOnAppleAlert, awaitAppleAlert, readAppleAlert } from './alert.ts';
 import { runAppleRunnerCommand } from './core/runner-client.ts';
+import type { AppleRunnerCommandOptions } from './runner/runner-provider.ts';
 import {
   withAppleRunnerProvider,
   type AppleRunnerCommandExecutor,
@@ -22,7 +23,12 @@ import {
 import { DEVICE_ROTATIONS, type DeviceRotation } from '@agent-device/contracts/device';
 import { normalizeSnapshotScope } from '@agent-device/contracts/snapshot';
 import { withDiagnosticTimer } from '@agent-device/host-kit/diagnostics';
-import { isMacOs, isTvOsDevice, type DeviceInfo } from '@agent-device/kernel/device';
+import {
+  isHandheldAppleDevice,
+  isMacOs,
+  isTvOsDevice,
+  type DeviceInfo,
+} from '@agent-device/kernel/device';
 import { AppError } from '@agent-device/kernel/errors';
 import { withMethodScope } from '@agent-device/kernel/scoped-provider';
 import type { Point, SnapshotQualityVerdict } from '@agent-device/kernel/snapshot';
@@ -227,6 +233,12 @@ async function captureAppleSnapshot(
   runnerOpts: RunnerCallOptions,
   helper: MacOsHelperSurface | undefined,
 ) {
+  if (options?.observeOnly === true && !isHandheldAppleDevice(device)) {
+    throw new AppError(
+      'UNSUPPORTED_OPERATION',
+      'observe-only snapshot is supported on iOS and iPadOS only.',
+    );
+  }
   if (helper) {
     return await captureMacOsSurfaceSnapshot({ ...options, surface: helper }, options?.signal);
   }
@@ -238,6 +250,7 @@ async function captureAppleRunnerSnapshot(
   options: SnapshotOptions | undefined,
   runnerOpts: RunnerCallOptions,
 ) {
+  const observationPolicy = await snapshotObservationPolicy(device, options, runnerOpts);
   const result = readAppleSnapshotResult(
     await withDiagnosticTimer(
       'snapshot_capture',
@@ -250,15 +263,17 @@ async function captureAppleRunnerSnapshot(
             interactiveOnly: options?.interactiveOnly,
             preferredBackend: options?.preferredBackend,
             customActions: options?.customActions,
+            ...observationPolicy.request,
             depth: options?.depth,
             scope: options?.scope,
             raw: options?.raw,
           },
-          mergeRunnerCallSignal(runnerOpts, options?.signal),
+          mergeRunnerCallSignal(observationPolicy.runnerOpts, options?.signal),
         ),
       { backend: 'xctest' },
     ),
   );
+  assertSnapshotObservationResponse(options, result);
   assertReportedRunnerSnapshotNodes(device, options, result);
   const warnings = runnerSnapshotWarnings(result);
   const presentation = presentRunnerSnapshotForDevice(device, options, result);
@@ -272,8 +287,50 @@ async function captureAppleRunnerSnapshot(
     ...(result.systemSurface ? { systemSurface: result.systemSurface } : {}),
     ...(result.keyboard ? { keyboard: result.keyboard } : {}),
     ...(result.targetActivation ? { targetActivation: result.targetActivation } : {}),
+    ...(result.observation ? { observation: result.observation } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
   };
+}
+
+async function snapshotObservationPolicy(
+  device: DeviceInfo,
+  options: SnapshotOptions | undefined,
+  runnerOpts: RunnerCallOptions,
+): Promise<{
+  request: { observeOnly?: true };
+  runnerOpts: RunnerCallOptions & Pick<AppleRunnerCommandOptions, 'expectedRunnerSessionId'>;
+}> {
+  if (options?.observeOnly !== true) return { request: {}, runnerOpts };
+  const capabilities = await runAppleRunnerCommand(
+    device,
+    { command: 'uptime', observeOnly: true },
+    mergeRunnerCallSignal(runnerOpts, options.signal),
+  );
+  if (
+    capabilities.supportsObserveOnlySnapshot !== true ||
+    typeof capabilities.runnerSessionId !== 'string' ||
+    capabilities.runnerSessionId.length === 0
+  ) {
+    throw new AppError('COMMAND_FAILED', 'Runner does not support observe-only snapshots.', {
+      reason: 'observation-unavailable',
+      dispatched: 'no',
+    });
+  }
+  return {
+    request: { observeOnly: true },
+    runnerOpts: { ...runnerOpts, expectedRunnerSessionId: capabilities.runnerSessionId },
+  };
+}
+
+function assertSnapshotObservationResponse(
+  options: SnapshotOptions | undefined,
+  result: AppleRunnerSnapshotResult,
+): void {
+  if (options?.observeOnly !== true) return;
+  if (result.observation && !result.targetActivation) return;
+  throw new AppError('COMMAND_FAILED', 'Runner did not return an observe-only snapshot.', {
+    reason: 'observation-unavailable',
+  });
 }
 
 /**
