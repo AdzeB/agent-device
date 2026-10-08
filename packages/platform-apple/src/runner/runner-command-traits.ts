@@ -24,11 +24,6 @@ const READ_ONLY_TRAITS: RunnerCommandTraits = {
   readOnly: true,
 };
 
-const READ_ONLY_READINESS_PREFLIGHT_EXEMPT_TRAITS: RunnerCommandTraits = {
-  ...READ_ONLY_TRAITS,
-  readinessPreflightExempt: true,
-};
-
 const READ_ONLY_READINESS_PROBE_TRAITS: RunnerCommandTraits = {
   ...READ_ONLY_TRAITS,
   readinessProbe: true,
@@ -52,11 +47,6 @@ type RunnerCommandTraitsEntry =
 const readAlertActionTraits = (command: RunnerCommand): RunnerCommandTraits =>
   (command.action ?? 'get').toLowerCase() === 'get' ? READ_ONLY_TRAITS : DEFAULT_TRAITS;
 
-// An observe-only snapshot is pinned to the session its own observe-only uptime probe just proved
-// ready, so a second readiness probe would add a request without adding evidence.
-const readSnapshotTraits = (command: RunnerCommand): RunnerCommandTraits =>
-  command.observeOnly === true ? READ_ONLY_READINESS_PREFLIGHT_EXEMPT_TRAITS : READ_ONLY_TRAITS;
-
 /**
  * Traits of every runner command the daemon can send. A command whose traits depend on its
  * payload maps to a function of the command instead of a fixed trait set.
@@ -74,7 +64,7 @@ export const RUNNER_COMMAND_TRAITS = {
   findText: READ_ONLY_TRAITS,
   querySelector: READ_ONLY_TRAITS,
   readText: READ_ONLY_TRAITS,
-  snapshot: readSnapshotTraits,
+  snapshot: READ_ONLY_TRAITS,
   screenshot: READ_ONLY_TRAITS,
   backInApp: DEFAULT_TRAITS,
   backSystem: DEFAULT_TRAITS,

@@ -42,14 +42,9 @@ extension RunnerTests {
   func executeUptime() -> Response {
     // Placeholder value: the transport layer (jsonResponse) overwrites currentUptimeMs with a
     // fresher send-time stamp on every ok response; kept so direct callers still get a value.
-#if os(iOS)
-    let supportsObserveOnlySnapshot = true
-#else
-    let supportsObserveOnlySnapshot = false
-#endif
-    return Response(
+    Response(
       ok: true,
-      data: DataPayload(currentUptimeMs: currentUptimeMs(), supportsObserveOnlySnapshot: supportsObserveOnlySnapshot)
+      data: DataPayload(currentUptimeMs: currentUptimeMs())
     )
   }
 

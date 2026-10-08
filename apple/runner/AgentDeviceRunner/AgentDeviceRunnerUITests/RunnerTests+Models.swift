@@ -448,7 +448,6 @@ struct DataPayload: Codable {
   var referenceWidth: Double?
   var referenceHeight: Double?
   var currentUptimeMs: Double?
-  var supportsObserveOnlySnapshot: Bool?
   var applicationState: String?
   var commandId: String?
   var lifecycleState: String?

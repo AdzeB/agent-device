@@ -3,14 +3,6 @@ import AgentDeviceSnapshotPresentation
 
 #if AGENT_DEVICE_RUNNER_UNIT_TESTS
 extension RunnerTests {
-  func testUptimeAdvertisesObserveOnlyOnIosOnly() {
-#if os(iOS)
-    XCTAssertEqual(executeUptime().data?.supportsObserveOnlySnapshot, true)
-#else
-    XCTAssertEqual(executeUptime().data?.supportsObserveOnlySnapshot, false)
-#endif
-  }
-
   func testInjectedTapRecordedFailureGateIsTapOnlyAndCountGated() {
     // The seam's recording side cannot run in-bundle (a real XCTIssue would
     // fail this very test run — same constraint the record(_:) suppression

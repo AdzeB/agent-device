@@ -29,11 +29,7 @@ const HEALTHY_TREE = {
 function interactorServing(payload: Record<string, unknown>) {
   const runnerProvider: AppleRunnerProvider = {
     hasLiveSession: () => true,
-    runCommand: async () => ({
-      ...payload,
-      supportsObserveOnlySnapshot: true,
-      runnerSessionId: 'observation-runner',
-    }),
+    runCommand: async () => payload,
   };
   return createAppleInteractor(IOS_SIMULATOR, { appBundleId: 'com.example.app' }, runnerProvider);
 }
@@ -70,74 +66,21 @@ test.each([
     const commands: RunnerCommand[] = [];
     const runnerProvider: AppleRunnerProvider = {
       hasLiveSession: () => true,
-      runCommand: async (_device, command, options) => {
+      runCommand: async (_device, command) => {
         commands.push(command);
-        if (command.command === 'snapshot') {
-          assert.equal(options?.expectedRunnerSessionId, 'observation-runner');
-        }
-        return {
-          ...HEALTHY_TREE,
-          observation,
-          supportsObserveOnlySnapshot: true,
-          runnerSessionId: 'observation-runner',
-        };
+        return { ...HEALTHY_TREE, observation };
       },
     };
     const snapshot = (await createAppleInteractor(device, {}, runnerProvider).snapshot({
       appBundleId: 'com.example.app',
       observeOnly: true,
     })) as SnapshotResult;
-    const runnerCommand = (name: string) => commands.find((command) => command.command === name);
-    assert.equal(runnerCommand('uptime')?.observeOnly, true);
-    assert.equal(runnerCommand('snapshot')?.observeOnly, true);
+    assert.deepEqual(
+      commands.map((command) => [command.command, command.observeOnly]),
+      [['snapshot', true]],
+    );
     assert.deepEqual(snapshot.observation, observation);
     assert.equal('targetActivation' in snapshot, false);
-  },
-);
-
-test('observe-only refuses a tvOS session before any runner command', async () => {
-  const commands: string[] = [];
-  const runnerProvider: AppleRunnerProvider = {
-    hasLiveSession: () => true,
-    runCommand: async (_device, command) => {
-      commands.push(command.command);
-      return {};
-    },
-  };
-  await assert.rejects(
-    createAppleInteractor(
-      { ...IOS_SIMULATOR, appleOs: 'tvos', target: 'tv' },
-      {},
-      runnerProvider,
-    ).snapshot({ appBundleId: 'com.example.app', observeOnly: true }),
-    (error: unknown) => error instanceof AppError && error.code === 'UNSUPPORTED_OPERATION',
-  );
-  assert.deepEqual(commands, []);
-});
-
-test.each([
-  { supportsObserveOnlySnapshot: false, runnerSessionId: 'observation-runner' },
-  { supportsObserveOnlySnapshot: true },
-])(
-  'observe-only rejects an unbound capability response before snapshot dispatch: %j',
-  async (capabilities) => {
-    const commands: string[] = [];
-    const runnerProvider: AppleRunnerProvider = {
-      hasLiveSession: () => true,
-      runCommand: async (_device, command) => {
-        commands.push(command.command);
-        return capabilities;
-      },
-    };
-    await assert.rejects(
-      createAppleInteractor(IOS_SIMULATOR, {}, runnerProvider).snapshot({
-        appBundleId: 'com.example.app',
-        observeOnly: true,
-      }),
-      (error: unknown) =>
-        error instanceof AppError && error.details?.reason === 'observation-unavailable',
-    );
-    assert.deepEqual(commands, ['uptime']);
   },
 );
 

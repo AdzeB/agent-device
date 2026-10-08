@@ -286,29 +286,9 @@ export async function executeRunnerCommand(
   command: RunnerCommand,
   options: AppleRunnerCommandOptions,
 ): Promise<Record<string, unknown>> {
-  if (command.observeOnly === true) {
-    const registration = readRunnerSessionLiveness(device.id);
-    if (registration?.liveness !== 'ready') {
-      throw new AppError(
-        'COMMAND_FAILED',
-        'observe-only snapshot requires an already-ready runner.',
-        {
-          reason: 'observation-unavailable',
-          dispatched: 'no',
-        },
-      );
-    }
-    options = {
-      ...options,
-      expectedRunnerSessionId: options.expectedRunnerSessionId ?? registration.sessionId,
-    };
-  }
   const exchange = { entered: false };
   try {
-    const result = await executeRunnerCommandAttempt(device, command, options, exchange);
-    return command.observeOnly === true && command.command === 'uptime'
-      ? { ...result, runnerSessionId: options.expectedRunnerSessionId }
-      : result;
+    return await executeRunnerCommandAttempt(device, command, options, exchange);
   } catch (error) {
     const failure = asAppError(error);
     if (!exchange.entered) throw discloseDispatch(failure, 'no');

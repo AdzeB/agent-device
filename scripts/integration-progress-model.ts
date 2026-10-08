@@ -376,8 +376,7 @@ function summarizeProviderScenarioFlagExclusions() {
       // Observe-only capture is admitted only for a local iOS runner session; provider-owned
       // sessions refuse it before capture, so no provider scenario can reach the observed path.
       name: 'local iOS observe-only snapshot',
-      owner:
-        'Apple interactor observe-only, runner lifecycle wiring, and runner XCTest dispatch tests',
+      owner: 'Apple interactor observe-only and runner XCTest dispatch tests',
       keys: ['snapshotObserveOnly'],
     },
     {
