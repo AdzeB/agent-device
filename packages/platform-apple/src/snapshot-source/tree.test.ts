@@ -222,7 +222,7 @@ test('the bridge tree counts web-hosted remote leaves that reach the viewport', 
     decode({ [automationType]: 0, [frame]: viewport, [children]: [remoteLeaf(viewport)] })
       .opaqueRemoteElements,
     0,
-    'a remote leaf outside a web view is not classified',
+    'a remote leaf outside a remote-content host is not classified',
   );
   assert.equal(
     decode(
@@ -233,6 +233,75 @@ test('the bridge tree counts web-hosted remote leaves that reach the viewport', 
     ).opaqueRemoteElements,
     0,
     'a crossed boundary is not opaque',
+  );
+});
+
+test('the bridge tree counts scene-hosted remote leaves that reach the viewport', () => {
+  // A share extension presented over Photos on iOS 26, in the shape the bridge captured: the app
+  // root reports no type, its window reports the viewport, and the extension's controls live in
+  // their own process below the scene-hosting view, where the reader stops at the remote element.
+  const viewport = { X: 0, Y: 0, Width: 402, Height: 874 };
+  const remoteLeaf = (rect?: Record<string, number>) => ({
+    [application]: 'AXRemoteElement',
+    [baseType]: 'NSObject',
+    ...(rect ? { [frame]: rect } : {}),
+    [children]: [],
+  });
+  const sceneHosted = (content: Record<string, unknown>) => ({
+    [application]: '_UISceneHostingView',
+    [frame]: viewport,
+    [children]: [
+      { [application]: '_UIScenePresentationView', [frame]: viewport, [children]: [content] },
+    ],
+  });
+  const decode = (host: Record<string, unknown>) =>
+    decodeSnapshotBridgeTree(
+      {
+        [application]: 'PhotosApplication',
+        [baseType]: 'UIApplication',
+        [frame]: viewport,
+        [children]: [{ [application]: 'UIWindow', [frame]: viewport, [children]: [host] }],
+      },
+      { truncated: false },
+      limits,
+    );
+
+  const opaque = decode(sceneHosted(remoteLeaf(viewport)));
+  assert.deepEqual(opaque.viewport, {
+    kind: 'reported',
+    rect: { x: 0, y: 0, width: 402, height: 874 },
+  });
+  assert.equal(opaque.nodes[2]?.role, '_UISceneHostingView');
+  assert.equal(opaque.nodes[4]?.role, 'AXRemoteElement');
+  assert.equal(opaque.opaqueRemoteElements, 1);
+
+  assert.equal(decode(sceneHosted(remoteLeaf())).opaqueRemoteElements, 1, 'frameless leaf refuses');
+  assert.equal(
+    decode(sceneHosted(remoteLeaf({ X: 0, Y: 0, Width: 0, Height: 0 }))).opaqueRemoteElements,
+    0,
+    'a dismissed extension leaves a zero-area leaf that hosts nothing',
+  );
+  assert.equal(
+    decode(sceneHosted(remoteLeaf({ X: 0, Y: 2000, Width: 402, Height: 874 })))
+      .opaqueRemoteElements,
+    0,
+    'off-screen leaf is not on this screen',
+  );
+  assert.equal(
+    decode(
+      sceneHosted({
+        ...remoteLeaf(viewport),
+        [children]: [{ [automationType]: 9, [label]: 'Enshrine', [children]: [] }],
+      }),
+    ).opaqueRemoteElements,
+    0,
+    'a crossed boundary is not opaque',
+  );
+  assert.equal(
+    decode(sceneHosted({ [automationType]: 9, [label]: 'Enshrine', [children]: [] }))
+      .opaqueRemoteElements,
+    0,
+    'a scene-hosting view with ordinary children is not refused',
   );
 });
 
