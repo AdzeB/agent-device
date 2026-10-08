@@ -9,12 +9,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { listSourceFiles } from './check.ts';
-import { readDirectNamedExports, readNamedExports, readReExportSources } from './facade-exports.ts';
+import { readNamedExports, readReExportSources } from './facade-exports.ts';
 import {
   checkPackageBoundaries,
-  facadeEntryFiles,
   checkPackageInternalSites,
   checkRootSites,
+  insideCompiledSources,
   readWorkspacePackages,
   rootExternalDependencyRanges,
   rootWorkspaceDependencyNames,
@@ -109,6 +109,26 @@ test('specifier sites carry 1-based lines for static and dynamic imports', () =>
   );
 });
 
+test('the compiled set classifies every file region the R11 walk visits', () => {
+  // The compiler-owned/compiler-exempt split above is keyed on this predicate (#3279), so the
+  // mutation it must fail on is a file region joining or leaving `tsc -b`'s programs without
+  // the predicate following: package `src/`, root `src/` and root `test/` compile; `scripts/`
+  // and the package harness dirs are the fail-closed side.
+  assert.equal(insideCompiledSources('packages/kernel/src/errors.ts'), true);
+  assert.equal(insideCompiledSources('packages/maestro/src/index.ts'), true);
+  assert.equal(insideCompiledSources('src/cli.ts'), true);
+  assert.equal(insideCompiledSources('test/integration/smoke-web-platform.test.ts'), true);
+  assert.equal(insideCompiledSources('scripts/layering/check.ts'), false);
+  assert.equal(insideCompiledSources('packages/maestro/test/conformance/harness.ts'), false);
+  assert.equal(insideCompiledSources('packages/proxy/tsdown.config.ts'), false);
+
+  // The one scripts file the root program DOES compile is classified as uncompiled: R11
+  // keeps its full branch set there (redundant with tsc, never narrower). The exact root
+  // include list and the reference sets are pinned against the graph itself in
+  // project-references.test.ts, where the divergence is recorded rather than assumed absent.
+  assert.equal(insideCompiledSources('scripts/help-conformance-command-validator.ts'), false);
+});
+
 test('readWorkspacePackages reads tracked manifests only', () => {
   // R11's own committed-state property, and the source-level half of the #1965 review finding.
   // `readWorkspacePackages` used to enumerate `packages/` with `readdirSync`, so an uncommitted
@@ -183,93 +203,6 @@ test('published ESM plugins declare bundled workspace build dependencies without
   assert.match(violations[0]?.message ?? '', /without declaring/);
 });
 
-test('every workspace package façade names its exports explicitly (no bare `export *`)', () => {
-  // #1574 built a hand-maintained pin table (`facade-symbols.ts`, 816 symbols across every
-  // workspace-package façade) plus a ~200-line star-chain resolver (`readFacadeExports`) whose
-  // entire job was enumerating what `export *` hides. Once a façade names its exports explicitly,
-  // the façade file itself IS the pin — a widening shows up in the diff of the file that grew,
-  // not in a table two files away that only a gate failure would surface. This structural gate is
-  // what keeps that property true: every façade a package manifest declares (`exportTargets`),
-  // plus every production file under a `src/facades/` directory, must parse through
-  // `readNamedExports` without hitting the bare-`export *`/`export default` rejection it already
-  // implements — reusing that check rather than writing a second, regex-based one that would have
-  // to independently rediscover every export form to be trustworthy.
-  //
-  // The façade set comes from `facadeEntryFiles`, the single owner of "what is an entry surface".
-  // The ADR-0019 eager-closure budget table consumes the same function, so a file this gate holds
-  // to an explicit export list is necessarily a file that gate holds to a loading-shape budget.
-  const facadeFiles = facadeEntryFiles(repoRoot);
-  assert.ok(facadeFiles.length > 0, 'expected at least one workspace package façade to check');
-  for (const file of facadeFiles) {
-    const source = fs.readFileSync(path.join(repoRoot, file), 'utf8');
-    try {
-      readNamedExports(source);
-    } catch (error) {
-      assert.fail(
-        `${file} must name its exports explicitly instead of a bare \`export *\` (or an ` +
-          '`export default`) — a façade widened by a star re-export hides the new symbol from ' +
-          'its own diff, exactly what the retired symbol-pin table (#1574) used to catch by ' +
-          `hand. Underlying error: ${(error as Error).message}`,
-      );
-    }
-  }
-});
-
-test('every façade re-exports its sources exhaustively (no silent narrowing)', () => {
-  // The star-rejection above catches a façade WIDENING invisibly. This catches the
-  // opposite, which is the failure an explicit list makes newly possible: a symbol
-  // added to a source module simply never reaches the façade, and nothing notices.
-  // `export *` could not narrow by construction; an explicit list can, so the
-  // property `export *` gave for free is asserted here instead.
-  //
-  // Found by review on #1614: this conversion was generated against the surface at
-  // fork time, and #1567 landed 13 new exports meanwhile (`DragOptions`, the drag
-  // gesture vocabulary, `MultiTargetAnnotationV1`). The rebase silently dropped all
-  // 13 and only a human diff caught it. Exhaustiveness is what makes that mechanical.
-  //
-  // Scoped to `packages/*/src/facades/` — the barrels this PR converted, which were
-  // exhaustive by construction because `export *` cannot narrow. A hand-curated
-  // package `index.ts` is a different thing: `@agent-device/ad-replay` deliberately
-  // publishes two values out of a much larger `internal/`, and forcing it exhaustive
-  // would widen a surface its owner narrowed on purpose (#1555).
-  const facadeFiles = listSourceFiles().filter((file) => file.includes('/src/facades/'));
-  assert.ok(facadeFiles.length > 0, 'expected at least one converted façade to check');
-  for (const file of [...facadeFiles].sort()) {
-    const absolute = path.join(repoRoot, file);
-    const exported = new Set(readNamedExports(fs.readFileSync(absolute, 'utf8')));
-    for (const specifier of reExportSources(fs.readFileSync(absolute, 'utf8'))) {
-      const sourcePath = path.resolve(path.dirname(absolute), specifier);
-      if (!fs.existsSync(sourcePath)) continue;
-      // A source may itself carry a bare `export *` (contracts' `gesture-plan.ts`
-      // stars `gesture-plan-types.ts`). Read its DIRECT exports rather than skipping
-      // the file: skipping would also drop `buildDragGesturePlan` and friends from
-      // this check, so removing one from a façade would narrow the surface silently
-      // (#1614 review P2). The starred names are covered because the façade
-      // re-exports the starred module directly too, and that path is checked here on
-      // its own turn.
-      const sourceNames = readDirectNamedExports(fs.readFileSync(sourcePath, 'utf8'));
-      const dropped = sourceNames.filter((name) => name !== 'default' && !exported.has(name));
-      assert.deepEqual(
-        dropped,
-        [],
-        `${file} re-exports from ${specifier} but omits ${dropped.join(', ')} — an explicit ` +
-          'façade list must stay exhaustive over its sources, or a symbol added upstream ' +
-          'silently never becomes public. Add the names, or move them out of that module.',
-      );
-    }
-  }
-});
-
-/** The relative specifiers a façade re-exports from, in source order. */
-function reExportSources(source: string): string[] {
-  const found = new Set<string>();
-  for (const match of source.matchAll(/\bfrom\s+'(\.[^']*)'/g)) {
-    const specifier = match[1];
-    if (specifier) found.add(specifier);
-  }
-  return [...found];
-}
-
 // These `src/utils` paths are in-memory arbitrary parser fixtures, not live repository paths.
 test('double-quoted and re-export routes into packages are not invisible to R11', () => {
   // The scanner is the layering parser, so quote style and statement form
@@ -279,34 +212,66 @@ test('double-quoted and re-export routes into packages are not invisible to R11'
     'src/utils/exec.ts',
     'import { AppError } from "../../packages/kernel/src/errors.ts";',
   );
-  assert.equal(checkRootSites(doubleQuoted, ALL, new Set([kernel.name])).length, 1);
+  assert.equal(checkRootSites(doubleQuoted, ALL, new Set([kernel.name]), true).length, 1);
 
   const reExport = specifierSites(
     'src/utils/exec.ts',
     'export { AppError } from "../../packages/kernel/src/errors.ts";',
   );
-  assert.equal(checkRootSites(reExport, ALL, new Set([kernel.name])).length, 1);
+  assert.equal(checkRootSites(reExport, ALL, new Set([kernel.name]), true).length, 1);
 
   const dynamic = specifierSites(
     'src/utils/exec.ts',
     'void import("../../packages/kernel/src/errors.ts");',
   );
-  assert.equal(checkRootSites(dynamic, ALL, new Set([kernel.name])).length, 1);
+  assert.equal(checkRootSites(dynamic, ALL, new Set([kernel.name]), true).length, 1);
 
   const packageEscape = specifierSites(
     'packages/kernel/src/errors.ts',
     'export * from "../../../src/utils/exec.ts";',
   );
-  assert.equal(checkPackageInternalSites(kernel, packageEscape, ALL).length, 1);
+  // The escape is R11's own for EVERY package source, compiled or not (#3289 maintainer
+  // review): the compiled-only skip was retired with a planted proof, below.
+  assert.equal(checkPackageInternalSites(kernel, packageEscape, ALL, true).length, 1);
+  assert.equal(checkPackageInternalSites(kernel, packageEscape, ALL, false).length, 1);
 });
 
 // This `src/utils` path is another in-memory arbitrary parser fixture, not a live repository path.
-test('a package file importing root src is a violation', () => {
-  const sites = specifierSites(
+test('a package relative escape is R11-owned, compiled or not', () => {
+  // #3289 maintainer review restored this branch after a planted `tsc -b` run showed the
+  // compiler covers NEITHER package escape for a REFERENCED sibling:
+  //   packages/host-kit/src/r11-planted-sibling-tunnel.ts
+  //     import { AppError } from '../../kernel/src/errors.ts';
+  //   pnpm exec tsc -b packages/host-kit --force  ->  exit 0, no diagnostics
+  // The reference redirects kernel's sources to their dist-types .d.ts, so nothing outside
+  // host-kit's rootDir is emitted and TS6059/TS6307 never fire; the earlier PR-#3279 proof
+  // (TS6059+TS6307) only held for the ROOT escape, where no project redirects. What both
+  // tunnels break instead is runtime identity: Node instantiates the tunnelled module once
+  // by path and once by specifier, so two AppError classes coexist and instanceof fails —
+  // invisible to any compiler, so R11 holds it for compiled files too.
+  const rootEscape = specifierSites(
     'packages/kernel/src/errors.ts',
     "import { helper } from '../../../src/utils/exec.ts';",
   );
-  assert.deepEqual(rules(checkPackageInternalSites(kernel, sites, ALL)), [
+  assert.deepEqual(rules(checkPackageInternalSites(kernel, rootEscape, ALL, true)), [
+    'R11 package-boundaries',
+  ]);
+  assert.match(
+    checkPackageInternalSites(kernel, rootEscape, ALL, true)[0]!.message,
+    /escapes packages\/kernel/,
+  );
+
+  // The exact reviewer case: compiled=true with a sibling-relative specifier.
+  const siblingTunnel = specifierSites(
+    'packages/kernel/src/errors.ts',
+    "import { thing } from '../../xml/src/index.ts';",
+  );
+  assert.deepEqual(rules(checkPackageInternalSites(kernel, siblingTunnel, ALL, true)), [
+    'R11 package-boundaries',
+  ]);
+
+  // Uncompiled package files keep the same branch (they never reach the compiler at all).
+  assert.deepEqual(rules(checkPackageInternalSites(kernel, rootEscape, ALL, false)), [
     'R11 package-boundaries',
   ]);
 });
@@ -316,50 +281,60 @@ test('intra-package relative imports hold', () => {
     'packages/kernel/src/daemon-error.ts',
     "import { AppError } from './errors.ts';",
   );
-  assert.deepEqual(checkPackageInternalSites(kernel, sites, ALL), []);
+  assert.deepEqual(checkPackageInternalSites(kernel, sites, ALL, true), []);
 });
 
-test('an exported package self-reference holds while a deep self-import fails', () => {
+test('an exported package self-reference holds while a deep self-import is compiler-owned', () => {
   const exported = specifierSites(
     'packages/kernel/src/errors.test.ts',
     "import { AppError } from '@agent-device/kernel/errors';",
   );
-  assert.deepEqual(checkPackageInternalSites(kernel, exported, ALL), []);
+  assert.deepEqual(checkPackageInternalSites(kernel, exported, ALL, true), []);
 
+  // #3279: NodeNext resolution rejects the un-exported self subpath with TS2307 (planted proof);
+  // R11 keeps the branch only where the compiler cannot see the site.
   const deep = specifierSites(
     'packages/kernel/src/errors.test.ts',
     "import { AppError } from '@agent-device/kernel/src/errors.ts';",
   );
-  assert.equal(checkPackageInternalSites(kernel, deep, ALL).length, 1);
+  assert.equal(checkPackageInternalSites(kernel, deep, ALL, true).length, 0);
+  assert.equal(checkPackageInternalSites(kernel, deep, ALL, false).length, 1);
 });
 
-test('a cross-package import needs a workspace:* declaration and an exported subpath', () => {
+test('a cross-package import needs a workspace:* declaration; the exports map is compiler-owned', () => {
   const declared = specifierSites(
     'packages/contracts/src/gesture.ts',
     "import { AppError } from '@agent-device/kernel/errors';",
   );
-  assert.deepEqual(checkPackageInternalSites(contracts, declared, ALL), []);
+  assert.deepEqual(checkPackageInternalSites(contracts, declared, ALL, true), []);
 
+  // The undeclared-dep branch stays R11's own for compiled files: pnpm's root link farm makes
+  // the import resolve and typecheck anyway, and the declaration is what the published bundle
+  // externalizes against — no compiler check can express it (recorded in #3279).
   const undeclared = specifierSites(
     'packages/kernel/src/errors.ts',
     "import { g } from '@agent-device/contracts/interaction';",
   );
-  assert.equal(checkPackageInternalSites(kernel, undeclared, ALL).length, 1);
+  assert.equal(checkPackageInternalSites(kernel, undeclared, ALL, true).length, 1);
 
+  // The un-exported subpath is TS2307 for compiled files (planted proof in #3279).
   const deep = specifierSites(
     'packages/contracts/src/gesture.ts',
     "import { internal } from '@agent-device/kernel/internal/secret';",
   );
-  assert.equal(checkPackageInternalSites(contracts, deep, ALL).length, 1);
+  assert.equal(checkPackageInternalSites(contracts, deep, ALL, true).length, 0);
 });
 
 test('a root src file tunnelling into packages/*/src relatively is a violation', () => {
   // This `src/utils` path is an in-memory arbitrary parser fixture, not a live repository path.
+  // It stays R11's own for every root file, compiled or not: #3279 planted the tunnel inside the
+  // compiled tree and tsc accepted it — the failure this rule prevents is the runtime one where
+  // Node's ESM loader instantiates the module twice.
   const sites = specifierSites(
     'src/utils/exec.ts',
     "import { AppError } from '../../packages/kernel/src/errors.ts';",
   );
-  const violations = checkRootSites(sites, ALL, new Set([kernel.name]));
+  const violations = checkRootSites(sites, ALL, new Set([kernel.name]), true);
   assert.deepEqual(rules(violations), ['R11 package-boundaries']);
   assert.match(violations[0]!.message, /instantiate the module twice/);
 });
@@ -373,34 +348,41 @@ test('a scripts/ file gets no relative route into a package either', () => {
     'scripts/some-tool/run.ts',
     "import { AppError } from '../../packages/kernel/src/errors.ts';",
   );
-  assert.equal(checkRootSites(exportsNamed, ALL, new Set([kernel.name])).length, 1);
+  assert.equal(checkRootSites(exportsNamed, ALL, new Set([kernel.name]), false).length, 1);
 
   const nonExported = specifierSites(
     'scripts/some-tool/run.ts',
     "import { hidden } from '../../packages/kernel/src/internal.ts';",
   );
-  assert.equal(checkRootSites(nonExported, ALL, new Set([kernel.name])).length, 1);
+  assert.equal(checkRootSites(nonExported, ALL, new Set([kernel.name]), false).length, 1);
 });
 
-test('root workspace specifiers need a root workspace:* entry and an exported subpath', () => {
+test('root workspace specifiers need a root workspace:* entry; resolution is compiler-owned', () => {
   const fine = specifierSites(
     'src/cli.ts',
     "import { AppError } from '@agent-device/kernel/errors';",
   );
-  assert.deepEqual(checkRootSites(fine, ALL, new Set([kernel.name])), []);
+  assert.deepEqual(checkRootSites(fine, ALL, new Set([kernel.name]), true), []);
 
-  const undeclared = checkRootSites(fine, ALL, new Set());
+  // The root-declaration branch stays R11's own (#3279): the root link farm resolves an
+  // undeclared specifier anyway, and the published bundle externalizes against this entry.
+  const undeclared = checkRootSites(fine, ALL, new Set(), true);
   assert.equal(undeclared.length, 1);
   assert.match(undeclared[0]!.message, /workspace:\*/);
 
+  // #3279 planted both below inside the compiled tree and `tsc -b` failed them with TS2307
+  // (unknown package and non-exported subpath), so R11 stands down there; uncompiled sites,
+  // which the compiler never parses, keep both branches.
   const deep = specifierSites(
     'src/cli.ts',
     "import { x } from '@agent-device/kernel/src/errors.ts';",
   );
-  assert.equal(checkRootSites(deep, ALL, new Set([kernel.name])).length, 1);
+  assert.equal(checkRootSites(deep, ALL, new Set([kernel.name]), true).length, 0);
+  assert.equal(checkRootSites(deep, ALL, new Set([kernel.name]), false).length, 1);
 
   const unknown = specifierSites('src/cli.ts', "import { x } from '@agent-device/nope/thing';");
-  assert.equal(checkRootSites(unknown, ALL, new Set([kernel.name])).length, 1);
+  assert.equal(checkRootSites(unknown, ALL, new Set([kernel.name]), true).length, 0);
+  assert.equal(checkRootSites(unknown, ALL, new Set([kernel.name]), false).length, 1);
 });
 
 test('a published package declares its bundled workspace siblings as devDependencies', () => {
@@ -427,7 +409,7 @@ test('a published package declares its bundled workspace siblings as devDependen
     'packages/published/src/index.ts',
     "import { g } from '@agent-device/contracts/interaction';",
   );
-  const [violation] = checkPackageInternalSites(published, undeclared, [...ALL, published]);
+  const [violation] = checkPackageInternalSites(published, undeclared, [...ALL, published], true);
   assert.match(violation?.message ?? '', /packages\/published\/package\.json devDependencies\.$/);
 });
 
