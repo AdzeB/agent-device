@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mkdtempForTestSync } from '../../__tests__/test-utils/tmp-dir.ts';
-import { publishDaemonRegistration } from '../../__tests__/test-utils/device-claim-store.ts';
+import { publishDaemonRegistration } from '@agent-device/daemon-contracts/daemon-registration-fixtures';
 
 const lifecycleEvents = vi.hoisted(() => [] as string[]);
 const startupFailure = vi.hoisted(() => ({ active: false }));
@@ -58,7 +58,7 @@ vi.mock('../../platform-runtime-daemon-lifecycle.ts', () => ({
 }));
 
 import { startDaemonRuntime } from './daemon-runtime.ts';
-import { resolveDaemonPaths } from '../../daemon-resolution.ts';
+import { resolveDaemonPaths } from '@agent-device/daemon-contracts/daemon-resolution';
 
 type DaemonPaths = ReturnType<typeof resolveDaemonPaths>;
 
