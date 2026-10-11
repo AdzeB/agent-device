@@ -94,6 +94,53 @@ function skip(reason) {
   return { mode: 'skip', reason };
 }
 
+/**
+ * What GitHub must enforce before any publish, since npm trusts every run of release.yml that
+ * reaches the npm-publish environment and a run's own copy of this script proves nothing.
+ */
+export function repositorySetupGaps({ npmPublish, npmPublishPolicies, release, tagRulesets }) {
+  const gaps = [];
+  const allowed = new Set(npmPublishPolicies.map((policy) => `${policy.type}:${policy.name}`));
+  const onlyMainAndTags = allowed.size === 2 && allowed.has('branch:main') && allowed.has('tag:v*');
+  if (!npmPublish?.deployment_branch_policy?.custom_branch_policies || !onlyMainAndTags) {
+    gaps.push('the npm-publish environment must deploy only from branch main and tags v*');
+  }
+  const reviewers = release?.protection_rules?.find((rule) => rule.type === 'required_reviewers');
+  if (!reviewers?.reviewers?.length) gaps.push('the release environment must require a reviewer');
+  if (!tagRulesets.some(guardsReleaseTags)) {
+    gaps.push(
+      'an active tag ruleset must restrict creating, updating, and deleting every refs/tags/v* tag, ' +
+        'with no exclusions and only admins able to bypass',
+    );
+  }
+  return gaps;
+}
+
+/**
+ * A ruleset covers every `v*` tag only with no exclusions. GitHub returns `bypass_actors` only to
+ * admins, never to the Plan job's token, so the admin-only bypass is checked where it is visible.
+ */
+function guardsReleaseTags(ruleset) {
+  const types = new Set(ruleset.rules.map((rule) => rule.type));
+  const refs = ruleset.conditions?.ref_name;
+  return (
+    ruleset.enforcement === 'active' &&
+    (refs?.include?.includes('refs/tags/v*') || refs?.include?.includes('~ALL')) &&
+    (refs.exclude ?? []).length === 0 &&
+    ['creation', 'update', 'deletion'].every((type) => types.has(type)) &&
+    (ruleset.bypass_actors ?? []).every(isAdminBypass)
+  );
+}
+
+function isAdminBypass(actor) {
+  return (
+    actor.actor_type === 'OrganizationAdmin' ||
+    (actor.actor_type === 'RepositoryRole' && actor.actor_id === REPOSITORY_ADMIN_ROLE)
+  );
+}
+
+const REPOSITORY_ADMIN_ROLE = 5;
+
 function assertAheadOfStable(run, version) {
   if (run.latestStable && compareReleaseVersions(version, run.latestStable) <= 0) {
     throw new Error(
@@ -167,8 +214,35 @@ async function github(env, pathname) {
       authorization: `Bearer ${env.GITHUB_TOKEN}`,
     },
   });
-  if (!response.ok) throw new Error(`GitHub API ${pathname} failed: ${response.status}`);
+  if (!response.ok) {
+    throw Object.assign(new Error(`GitHub API ${pathname} failed: ${response.status}`), {
+      status: response.status,
+    });
+  }
   return response.json();
+}
+
+/** A missing environment is a setup gap; any other failure must not read as one. */
+function absentOn404(fallback) {
+  return (error) => {
+    if (error.status === 404) return fallback;
+    throw error;
+  };
+}
+
+async function readRepositorySetup(env) {
+  const environment = (name) => github(env, `environments/${name}`).catch(absentOn404(null));
+  const summaries = await github(env, 'rulesets?targets=tag');
+  return {
+    npmPublish: await environment('npm-publish'),
+    npmPublishPolicies: await github(env, 'environments/npm-publish/deployment-branch-policies')
+      .then((body) => body.branch_policies)
+      .catch(absentOn404([])),
+    release: await environment('release'),
+    tagRulesets: await Promise.all(
+      summaries.map((summary) => github(env, `rulesets/${summary.id}`)),
+    ),
+  };
 }
 
 async function readRun(env) {
@@ -205,6 +279,14 @@ const OUTPUTS = {
 
 async function main(env) {
   const result = planRelease(await readRun(env));
+  if (result.mode === 'nightly' || result.mode === 'stable') {
+    const gaps = repositorySetupGaps(await readRepositorySetup(env));
+    if (gaps.length > 0) {
+      throw new Error(
+        `Repository setup is incomplete (see CONTRIBUTING.md, "One-time repository setup"): ${gaps.join('; ')}.`,
+      );
+    }
+  }
   const lines = Object.entries(OUTPUTS).map(([output, key]) => `${output}=${result[key] ?? ''}\n`);
   fs.appendFileSync(env.GITHUB_OUTPUT, lines.join(''));
   const summary = result.reason ?? `${result.mode} ${result.version}`;

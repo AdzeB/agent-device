@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { isVersionOnlyCommit, planRelease } from '../release-plan.mjs';
+import { isVersionOnlyCommit, planRelease, repositorySetupGaps } from '../release-plan.mjs';
 
 const MAIN = 'a'.repeat(40);
 const NIGHTLY_COMMIT = 'b'.repeat(40);
@@ -114,4 +114,87 @@ test("the workflow's -dev bump stands on its parent's CI, and nothing else does"
     false,
   );
   assert.equal(isVersionOnlyCommit({ ...bump, files: [] }), false);
+});
+
+function protectedSetup() {
+  return {
+    npmPublish: { deployment_branch_policy: { custom_branch_policies: true } },
+    npmPublishPolicies: [
+      { name: 'main', type: 'branch' },
+      { name: 'v*', type: 'tag' },
+    ],
+    release: {
+      protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'User' }] }],
+    },
+    tagRulesets: [
+      {
+        enforcement: 'active',
+        conditions: { ref_name: { include: ['refs/tags/v*'] } },
+        rules: [{ type: 'creation' }, { type: 'update' }, { type: 'deletion' }],
+      },
+    ],
+  };
+}
+
+test('publishing needs the protections GitHub enforces, not this script', () => {
+  assert.deepEqual(repositorySetupGaps(protectedSetup()), []);
+  assert.equal(
+    repositorySetupGaps({
+      npmPublish: null,
+      npmPublishPolicies: [],
+      release: null,
+      tagRulesets: [],
+    }).length,
+    3,
+  );
+});
+
+test('each missing protection is named on its own', () => {
+  const setup = protectedSetup();
+  const anyBranch = {
+    ...setup,
+    npmPublishPolicies: [...setup.npmPublishPolicies, { name: '*', type: 'branch' }],
+  };
+  assert.match(repositorySetupGaps(anyBranch).join(), /npm-publish environment/);
+  const unreviewed = { ...setup, release: { protection_rules: [] } };
+  assert.match(repositorySetupGaps(unreviewed).join(), /release environment/);
+  const evaluating = {
+    ...setup,
+    tagRulesets: [{ ...setup.tagRulesets[0], enforcement: 'evaluate' }],
+  };
+  assert.match(repositorySetupGaps(evaluating).join(), /tag ruleset/);
+  const anyBranchToggle = {
+    ...setup,
+    npmPublish: { deployment_branch_policy: { custom_branch_policies: false } },
+  };
+  assert.match(repositorySetupGaps(anyBranchToggle).join(), /npm-publish environment/);
+  const excluding = {
+    ...setup,
+    tagRulesets: [
+      {
+        ...setup.tagRulesets[0],
+        conditions: { ref_name: { include: ['refs/tags/v*'], exclude: ['refs/tags/v9*'] } },
+      },
+    ],
+  };
+  assert.match(repositorySetupGaps(excluding).join(), /tag ruleset/);
+  const writerBypass = {
+    ...setup,
+    tagRulesets: [
+      { ...setup.tagRulesets[0], bypass_actors: [{ actor_type: 'RepositoryRole', actor_id: 4 }] },
+    ],
+  };
+  assert.match(repositorySetupGaps(writerBypass).join(), /tag ruleset/);
+  const adminBypass = {
+    ...setup,
+    tagRulesets: [
+      { ...setup.tagRulesets[0], bypass_actors: [{ actor_type: 'RepositoryRole', actor_id: 5 }] },
+    ],
+  };
+  assert.deepEqual(repositorySetupGaps(adminBypass), []);
+  const creatable = {
+    ...setup,
+    tagRulesets: [{ ...setup.tagRulesets[0], rules: [{ type: 'deletion' }] }],
+  };
+  assert.match(repositorySetupGaps(creatable).join(), /tag ruleset/);
 });
