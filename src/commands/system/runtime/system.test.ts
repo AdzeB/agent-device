@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import type {
   AgentDeviceBackend,
   BackendAlertAction,
+  BackendAlertResult,
   BackendDeviceOrientation,
   BackendKeyboardOptions,
   BackendTvRemoteOptions,
@@ -112,6 +113,75 @@ test('runtime system commands validate options before backend calls', async () =
   );
 
   assert.deepEqual(calls, []);
+});
+
+test('runtime alert wait projects the backend alert, timing, and timeout verdict', async () => {
+  const alert = { title: 'Location', message: 'Allow access?', buttons: ['Allow', 'Deny'] };
+  const outcomes: BackendAlertResult[] = [
+    { kind: 'alertWait', alert, waitedMs: 250 },
+    { kind: 'alertWait', alert: null, waitedMs: 5_000, timedOut: true },
+    { kind: 'alertWait', alert },
+  ];
+  let next = 0;
+  const device = createAgentDevice({
+    backend: {
+      platform: 'ios',
+      handleAlert: async (): Promise<BackendAlertResult> => {
+        const result = outcomes[next++];
+        if (!result) throw new Error('alert backend double exhausted');
+        return result;
+      },
+    },
+    artifacts: createLocalArtifactAdapter(),
+    policy: localCommandPolicy(),
+  });
+
+  const visible = await device.system.alert({ action: 'wait', timeoutMs: 1_000 });
+  if (visible.kind !== 'alertWait') throw new Error(`expected alertWait, got ${visible.kind}`);
+  assert.deepEqual(visible.alert, alert);
+  assert.equal(visible.waitedMs, 250);
+  assert.equal(visible.timedOut, undefined);
+  assert.equal(String(visible.message), 'Alert visible');
+
+  const timedOut = await device.system.alert({ action: 'wait', timeoutMs: 5_000 });
+  if (timedOut.kind !== 'alertWait') throw new Error(`expected alertWait, got ${timedOut.kind}`);
+  assert.equal(timedOut.alert, null);
+  assert.equal(timedOut.waitedMs, 5_000);
+  assert.equal(timedOut.timedOut, true);
+  assert.equal(String(timedOut.message), 'Alert wait timed out');
+
+  // A backend that reports neither timing field keeps both keys absent.
+  const bare = await device.system.alert({ action: 'wait' });
+  if (bare.kind !== 'alertWait') throw new Error(`expected alertWait, got ${bare.kind}`);
+  assert.deepEqual(bare.alert, alert);
+  assert.equal('waitedMs' in bare, false);
+  assert.equal('timedOut' in bare, false);
+  assert.equal(String(bare.message), 'Alert visible');
+});
+
+test('runtime alert wait refuses a backend result of the wrong kind', async () => {
+  // Typed as the union the backend contract allows: a wrong `kind` is a legal
+  // backend result the normalizer must refuse with the typed COMMAND_FAILED
+  // code, not just the message.
+  const wrongKind: BackendAlertResult = { kind: 'alertStatus', alert: null };
+  const device = createAgentDevice({
+    backend: {
+      platform: 'ios',
+      handleAlert: async () => wrongKind,
+    },
+    artifacts: createLocalArtifactAdapter(),
+    policy: localCommandPolicy(),
+  });
+
+  await assert.rejects(
+    () => device.system.alert({ action: 'wait' }),
+    (error: unknown) => {
+      const appError = error as { code?: string; message?: string };
+      assert.equal(appError.code, 'COMMAND_FAILED');
+      assert.match(appError.message ?? '', /system\.alert wait returned an invalid backend result/);
+      return true;
+    },
+  );
 });
 
 function createSystemBackend(calls: unknown[]): AgentDeviceBackend {
