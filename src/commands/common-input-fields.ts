@@ -166,7 +166,8 @@ const COMMON_INPUT_FIELDS = {
   iosXctestrunFile: {
     schema: {
       type: 'string',
-      description: 'Externally built iOS XCTest runner .xctestrun artifact path.',
+      description:
+        'Externally built iOS XCTest runner .xctestrun artifact path. Build it with the same agent-device version.',
     },
     read: (record) => optionalString(record, 'iosXctestrunFile'),
     audience: ENV_OR_OPERATOR_CONFIG,

@@ -62,7 +62,9 @@ test('a refused watch is never attached to a later listener on the same port', a
   observeRunnerListener(session, vi.fn());
   assert.equal(await session.listenerWatch?.ready, false);
   const replacement = net.createServer((socket) => connections.push(socket));
-  await new Promise<void>((resolve) => replacement.listen(session.port, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) =>
+    replacement.listen(session.endpoint.port, '127.0.0.1', resolve),
+  );
   listeners.push(replacement);
   observeRunnerListener(session, vi.fn());
   assert.equal(await retainRunnerSession(session, vi.fn()), false);

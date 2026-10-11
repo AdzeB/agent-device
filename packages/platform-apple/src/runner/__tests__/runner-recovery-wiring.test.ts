@@ -93,6 +93,10 @@ const LOST_RESPONSE_MUTATION_ROWS = {
 >;
 
 afterEach(async () => {
+  // Every send path — readiness probe, command, resend, status recovery — presents the token.
+  for (const request of [...(server?.requests ?? []), ...(restartedServer?.requests ?? [])]) {
+    assert.equal(request.token, 'runner-token-fixture', request.command);
+  }
   await server?.close();
   server = undefined;
   await restartedServer?.close();
@@ -106,7 +110,7 @@ function makeRunnerSession(port: number, sessionId = `wiring:${port}`): RunnerSe
     sessionId,
     device: IOS_SIMULATOR,
     deviceId: IOS_SIMULATOR.id,
-    port,
+    endpoint: { port, token: 'runner-token-fixture' },
     xctestrunPath: '/tmp/wiring.xctestrun',
     jsonPath: '/tmp/wiring.json',
     testPromise: new Promise<ExecResult>(() => {}),
@@ -205,10 +209,6 @@ test('a read whose reply is lost is resent and succeeds', async () => {
     status: [{ kind: 'ok', data: { lifecycleState: 'notAccepted' } }],
   });
   seedSession(server.port);
-  // The simctl curl route of a ready simulator could not connect, so it sent nothing.
-  appleRunnerTestHost.update({
-    runXcrun: vi.fn(async () => ({ exitCode: 7, stdout: '', stderr: 'curl exited 7' })),
-  });
 
   assert.deepEqual(await runAppleRunnerCommand(IOS_SIMULATOR, { command: 'snapshot' }), {
     nodes: [],
@@ -227,10 +227,6 @@ async function runnerDiesOnCommand(
   ensureRunnerSessionMock
     .mockResolvedValueOnce(makeRunnerSession(server.port))
     .mockResolvedValueOnce(makeRunnerSession(restartedServer.port));
-  // The simctl curl fallback of the connect loop timed out after its POST.
-  appleRunnerTestHost.update({
-    runXcrun: vi.fn(async () => ({ exitCode: 28, stdout: '', stderr: 'curl exited 28' })),
-  });
   return restartedServer;
 }
 

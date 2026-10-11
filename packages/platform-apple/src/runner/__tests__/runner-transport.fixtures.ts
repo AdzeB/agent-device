@@ -37,9 +37,19 @@ export function makeTunnelIpLookupSequence(tunnelIps: string[]) {
   };
 }
 
+export const RUNNER_TOKEN_FIXTURE = 'runner-token-fixture';
+export const RUNNER_ENDPOINT_FIXTURE = { port: 8100, token: RUNNER_TOKEN_FIXTURE } as const;
+
+/** A reply as the runner's transport sees it: every runner response declares its token rule. */
+export function runnerTransportResponse(body = '{}', init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set('X-Agent-Device-Runner-Auth', 'required');
+  return new Response(body, { ...init, headers });
+}
+
 export function stubSuccessfulFetch(): void {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response('{}')),
+    vi.fn(async () => runnerTransportResponse()),
   );
 }

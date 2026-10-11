@@ -5,7 +5,7 @@ import type { Deadline } from './host.ts';
 import type { RunnerXctestrunArtifact } from './runner-xctestrun.ts';
 import type { RunnerLease } from './runner-lease.ts';
 import type { IosRunnerDeviceStates } from './runner-error-classification.ts';
-import type { RunnerCommand } from './runner-contract.ts';
+import type { RunnerCommand, RunnerEndpoint } from './runner-contract.ts';
 
 /**
  * Where one runner process stands in the lifecycle of the session that owns it (#2662). The state
@@ -63,7 +63,7 @@ export type RunnerSession = {
   sessionId: string;
   device: DeviceInfo;
   deviceId: string;
-  port: number;
+  endpoint: RunnerEndpoint;
   xctestrunPath: string;
   xctestrunArtifact?: RunnerXctestrunArtifact;
   jsonPath: string;

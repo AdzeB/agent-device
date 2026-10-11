@@ -3,19 +3,27 @@ import Network
 
 #if AGENT_DEVICE_RUNNER_UNIT_TESTS
 extension RunnerTests {
-  func testUptimeHttpRemainsResponsiveWhileCommandQueueIsOccupied() throws {
-    let listener = try NWListener(using: .tcp, on: .any)
+  private static let transportToken = String(repeating: "k", count: 32)
+
+  /// Serves through the production listener factory with a fixed token.
+  private func startTransportListener() throws -> NWListener {
+    listenerToken = RunnerListenerToken(Self.transportToken)
+    let listener = try Self.makeRunnerListener(port: .any)
     let ready = expectation(description: "HTTP listener ready")
     listener.stateUpdateHandler = { state in
       if case .ready = state { ready.fulfill() }
     }
     listener.newConnectionHandler = { connection in
-      connection.start(queue: self.transportQueue)
       self.handle(connection: connection)
     }
     listener.start(queue: transportQueue)
-    defer { listener.cancel() }
     wait(for: [ready], timeout: 2)
+    return listener
+  }
+
+  func testUptimeHttpRemainsResponsiveWhileCommandQueueIsOccupied() throws {
+    let listener = try startTransportListener()
+    defer { listener.cancel() }
     let port = try XCTUnwrap(listener.port)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.timeoutIntervalForRequest = 3
@@ -81,6 +89,8 @@ extension RunnerTests {
   private final class TransportHttpReply {
     let finished = XCTestExpectation(description: "HTTP response received")
     var data: Data?
+    var status: Int?
+    var authHeader: String?
     var error: Error?
 
     func response() throws -> Response {
@@ -92,14 +102,22 @@ extension RunnerTests {
   private func transportHttpRequest(
     client: URLSession,
     port: NWEndpoint.Port,
-    payload: String
+    payload: String,
+    token: String? = RunnerTests.transportToken
   ) -> TransportHttpReply {
     let reply = TransportHttpReply()
     var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port.rawValue)/command")!)
     request.httpMethod = "POST"
     request.httpBody = Data(payload.utf8)
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    client.dataTask(with: request) { data, _, error in
+    if let token {
+      request.setValue(token, forHTTPHeaderField: RunnerListenerToken.requestHeaderName)
+    }
+    client.dataTask(with: request) { data, response, error in
+      reply.status = (response as? HTTPURLResponse)?.statusCode
+      reply.authHeader = (response as? HTTPURLResponse)?.value(
+        forHTTPHeaderField: Self.authEnforcedResponseHeader
+      )
       reply.data = data
       reply.error = error
       reply.finished.fulfill()
@@ -110,11 +128,95 @@ extension RunnerTests {
   private func transportHttpResponse(
     client: URLSession,
     port: NWEndpoint.Port,
-    payload: String
+    payload: String,
+    token: String? = RunnerTests.transportToken
   ) throws -> Response {
-    let reply = transportHttpRequest(client: client, port: port, payload: payload)
+    let reply = transportHttpRequest(client: client, port: port, payload: payload, token: token)
     wait(for: [reply.finished], timeout: 2)
     return try reply.response()
+  }
+
+  func testRunnerListenerBindsLoopbackOffDevice() throws {
+    let listener = try Self.makeRunnerListener(port: .any)
+    #if targetEnvironment(simulator) || os(macOS)
+      guard case .hostPort(let host, _) = try XCTUnwrap(listener.parameters.requiredLocalEndpoint),
+        case .ipv4(let address) = host
+      else {
+        return XCTFail("listener must require a loopback local endpoint")
+      }
+      XCTAssertTrue(address.isLoopback)
+    #endif
+  }
+
+  func testListenerRefusesRequestsWithoutTheTokenBeforeDecoding() throws {
+    let listener = try startTransportListener()
+    defer { listener.cancel() }
+    let port = try XCTUnwrap(listener.port)
+    let client = URLSession(configuration: .ephemeral)
+    defer { client.invalidateAndCancel() }
+
+    for token in [nil, "wrong"] as [String?] {
+      let reply = transportHttpRequest(
+        client: client,
+        port: port,
+        payload: #"{"command":"appState","commandId":"without-token"}"#,
+        token: token
+      )
+      wait(for: [reply.finished], timeout: 2)
+      XCTAssertEqual(reply.status, 401)
+      XCTAssertEqual(reply.authHeader, "required")
+      XCTAssertEqual(try reply.response().error?.code, "UNAUTHORIZED")
+    }
+    XCTAssertEqual(
+      commandJournal.status(normalizedCommandId: "without-token").lifecycleState,
+      RunnerCommandLifecycleState.notAccepted.rawValue
+    )
+  }
+
+  func testListenerKeepsServingAfterRefusingABadlyFramedRequest() throws {
+    let listener = try startTransportListener()
+    defer { listener.cancel() }
+    let port = try XCTUnwrap(listener.port)
+    let token = "\(RunnerListenerToken.requestHeaderName): \(Self.transportToken)"
+    let tooLarge = RunnerHttpRequestFraming.maxBodyBytes + 1
+    let refusals = [
+      ("POST /command HTTP/1.1\r\n\(token)\r\nContent-Length: -5\r\n\r\n{}", 400),
+      ("POST /command HTTP/1.1\r\n\(token)\r\nContent-Length: \(tooLarge)\r\n\r\n", 413),
+      ("POST /command HTTP/1.1\r\nContent-Length: \(tooLarge)\r\n\r\n", 401),
+    ]
+    for (request, status) in refusals {
+      XCTAssertEqual(try rawTransportStatus(port: port, request: request), status, request)
+    }
+    let client = URLSession(configuration: .ephemeral)
+    defer { client.invalidateAndCancel() }
+    let uptime = try transportHttpResponse(
+      client: client,
+      port: port,
+      payload: #"{"command":"uptime"}"#
+    )
+    XCTAssertTrue(uptime.ok)
+  }
+
+  /// Sends raw bytes and returns the status the runner answered with.
+  private func rawTransportStatus(port: NWEndpoint.Port, request: String) throws -> Int? {
+    let connection = NWConnection(host: .ipv4(.loopback), port: port, using: .tcp)
+    let answered = expectation(description: "raw response")
+    final class Box: @unchecked Sendable { var data = Data() }
+    let box = Box()
+    connection.start(queue: .global())
+    connection.send(content: Data(request.utf8), completion: .contentProcessed { _ in })
+    func read() {
+      connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, done, error in
+        if let data { box.data.append(data) }
+        if done || error != nil { answered.fulfill() } else { read() }
+      }
+    }
+    read()
+    wait(for: [answered], timeout: 3)
+    connection.cancel()
+    let statusLine = String(decoding: box.data, as: UTF8.self).split(separator: "\r\n").first ?? ""
+    let parts = statusLine.split(separator: " ")
+    return parts.count > 1 ? Int(parts[1]) : nil
   }
 
   func testDuplicateCommandIdCoalescesOntoInFlightExecution() throws {

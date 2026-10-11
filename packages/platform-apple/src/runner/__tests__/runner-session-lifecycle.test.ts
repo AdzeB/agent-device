@@ -230,6 +230,24 @@ test('a startup publishes starting and its first answer publishes ready', async 
   assert.equal(hasLiveIosRunnerSession(device), true);
 });
 
+test('every launch mints its own listener token for the runner, the session, and the lease', async () => {
+  const device = { ...IOS_SIMULATOR, id: 'runner-lifecycle-token' };
+  const first = await ensureRunnerSession(device, {});
+  await stopIosRunnerSession(device.id);
+  const second = await ensureRunnerSession(device, {});
+
+  assert.deepEqual(
+    mockPrepareXctestrunWithEnv.mock.calls.slice(-2).map(([, runnerEnv]) => runnerEnv),
+    [first, second].map(({ endpoint }) => ({
+      AGENT_DEVICE_RUNNER_PORT: String(endpoint.port),
+      AGENT_DEVICE_RUNNER_TOKEN: endpoint.token,
+    })),
+  );
+  assert.match(first.endpoint.token, /^[A-Za-z0-9_-]{32}$/);
+  assert.notEqual(first.endpoint.token, second.endpoint.token);
+  assert.equal(second.lease?.runnerToken, second.endpoint.token);
+});
+
 test('stopping the same registered runner twice tears it down once', async () => {
   const device = { ...IOS_SIMULATOR, id: 'runner-lifecycle-stop-twice' };
   const session = await ensureRunnerSession(device, {});

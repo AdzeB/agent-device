@@ -14,8 +14,8 @@ import { startFakeRunnerServer, type FakeRunnerServer } from './fake-runner-serv
 
 // contracts/fixtures/dispatch-disclosure.json, ios-runner pre-send and transport rows: each row
 // drives runAppleRunnerCommand through the real lifecycle and restart path with the session start
-// mocked; the connect rows run the real connect loop (waitForRunner) over a stubbed fetch and simctl
-// curl, and assert the failure the caller receives.
+// mocked; the connect rows run the real connect loop (waitForRunner) over a stubbed fetch, and assert
+// the failure the caller receives.
 
 const {
   mockEnsureRunnerSession,
@@ -80,34 +80,23 @@ const readinessPreflightFailure = (): AppError =>
     runnerReadinessPreflightFailed: true,
   });
 
-/**
- * The first attempt runs the real connect loop against a simulator whose every fetch fails the
- * same way and whose simctl curl fallback exits with `curlExitCode`.
- */
-function stubConnectLoopFailure(transport: { fetchFailure: () => Error; curlExitCode: number }) {
+/** The first attempt runs the real connect loop against a simulator whose every fetch fails. */
+function stubConnectLoopFailure(transport: { fetchFailure: () => Error }) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => {
       throw transport.fetchFailure();
     }),
   );
-  appleRunnerTestHost.update({
-    runXcrun: vi.fn(async () => ({
-      exitCode: transport.curlExitCode,
-      stdout: '',
-      stderr: `curl exited ${transport.curlExitCode}`,
-    })),
-  });
   mockExecuteRunnerCommandWithSession.mockImplementationOnce(
     async (device, session, command) =>
-      await waitForRunner(device, session.port, command, undefined, 400),
+      await waitForRunner(device, session.endpoint, command, undefined, 400),
   );
 }
 
 /** A connect loop that fails as `transport` says, then a restart that fails. */
 async function connectLoopThenFailedRestart(transport: {
   fetchFailure: () => Error;
-  curlExitCode: number;
 }): Promise<unknown> {
   stubConnectLoopFailure(transport);
   mockEnsureRunnerSession
@@ -122,10 +111,9 @@ async function connectLoopThenFailedRestart(transport: {
   }
 }
 
-/** A fetch deadline, then a simctl curl that timed out after its POST: the command may have run. */
+/** A fetch that hit its deadline after the POST left: the command may have run. */
 const writtenThenLost = {
   fetchFailure: () => new AppError('COMMAND_FAILED', 'Runner command deadline exceeded'),
-  curlExitCode: 28,
 };
 
 /**
@@ -150,7 +138,7 @@ async function writtenThenLostThenRestarted(
 
 function sendsOnRestartedRunner(): number {
   return mockExecuteRunnerCommandWithSession.mock.calls.filter(
-    ([, session]) => session.port === 8101,
+    ([, session]) => session.endpoint.port === 8101,
   ).length;
 }
 
@@ -169,17 +157,15 @@ const DRIVERS: Record<string, () => Promise<unknown>> = {
             code: 'ECONNREFUSED',
           }),
         }),
-      curlExitCode: 7,
     }),
   'ios-runner.transport.written-then-lost': async () => {
     const runnerSession =
       await vi.importActual<typeof import('../runner-session.ts')>('../runner-session.ts');
     const runner = await startFakeRunnerServer({ tap: [{ kind: 'exit' }] });
     fakeRunner = runner;
-    // The status probe finds no listener, over fetch or the simctl curl fallback.
+    // The status probe finds no listener.
     const { retryWithPolicy } = appleRunnerTestHost.defaults();
     appleRunnerTestHost.update({
-      runXcrun: vi.fn(async () => ({ exitCode: 7, stdout: '', stderr: 'curl exited 7' })),
       retryWithPolicy: (task, policy, options) =>
         retryWithPolicy(task, { ...policy, baseDelayMs: 1, maxDelayMs: 1, jitter: 0 }, options),
     });

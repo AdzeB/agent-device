@@ -251,7 +251,7 @@ function makeRunnerSession(
     sessionId: `${device.id}:8123:test`,
     device,
     deviceId: device.id,
-    port: 8123,
+    endpoint: { port: 8123, token: 'runner-token-fixture' },
     xctestrunPath: `/tmp/${device.id}.xctestrun`,
     jsonPath: `/tmp/${device.id}.json`,
     testPromise,

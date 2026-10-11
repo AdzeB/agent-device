@@ -199,18 +199,6 @@ test('only a runner that never accepted a connection indicts the cached artifact
     ),
     true,
   );
-  assert.equal(
-    shouldRebuildCachedRunnerArtifact(
-      runnerConnectFailure(
-        'runner_connect_refused',
-        'Runner did not accept connection (simctl spawn)',
-        {
-          port: 8100,
-        },
-      ),
-    ),
-    true,
-  );
   // Wiping derived data cannot fix a boot that refuses to compile.
   assert.equal(
     shouldRebuildCachedRunnerArtifact(
@@ -261,7 +249,7 @@ test('a refused connection before send restarts the session', () => {
 });
 
 test('a connect failure whose POST may have been written restarts only a read', () => {
-  // simctl curl exit 28: the POST left, then the request timed out.
+  // The POST left, then the request timed out.
   const writtenThenTimedOut = runnerConnectFailure('runner_connect_refused', undefined, {
     dispatched: 'unknown',
   });
@@ -362,4 +350,25 @@ test('only the typed RUNNER_BUSY refusal reads as busy', () => {
   );
   assert.equal(isRunnerBusyError(commandFailed('RUNNER_BUSY')), false);
   assert.equal(isRunnerBusyError(new Error('RUNNER_BUSY')), false);
+});
+
+// --- runner that predates the listener token ---
+
+test('a runner that does not require the token is session-fatal and never retried or replayed', () => {
+  for (const extra of [{}, { runnerReadinessPreflightFailed: true }]) {
+    const refusal = new AppError(
+      'COMMAND_FAILED',
+      'XCTest runner does not require a listener token',
+      {
+        reason: 'runner_token_unsupported',
+        ...extra,
+      },
+    );
+    assert.equal(resolveRunnerFatalErrorReason(refusal), 'runner_token_unsupported');
+    assert.equal(isRetryableRunnerError(refusal), false);
+    assert.equal(shouldRetryRunnerConnectError(refusal), false);
+    assert.equal(shouldRestartRunnerBeforeCommandSend(refusal, SNAPSHOT), false);
+    assert.equal(shouldRestartRunnerAfterReadinessPreflight(refusal), false);
+    assert.equal(shouldRebuildCachedRunnerArtifact(refusal), false);
+  }
 });

@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { AppError } from '@agent-device/kernel/errors';
 import type { RunnerXctestrunArtifact } from '../runner-artifact.ts';
 import { IOS_SIMULATOR } from './device-fixtures.ts';
+import { RUNNER_TOKEN_FIXTURE } from './runner-transport.fixtures.ts';
 import { appleRunnerTestHost } from '../test-host.ts';
 import {
   resolveRunnerCacheKey,
@@ -56,19 +57,23 @@ export function makeRunnerArtifact(
   };
 }
 
-export function makeRunnerSession(overrides: Partial<RunnerSession> = {}): RunnerSession {
+/** A ready runner session; `port` is shorthand for an endpoint carrying the fixture token. */
+export function makeRunnerSession(
+  overrides: Partial<RunnerSession> & { port?: number } = {},
+): RunnerSession {
+  const { port = 8100, ...rest } = overrides;
   return {
-    sessionId: `session-${overrides.port ?? 8100}`,
+    sessionId: `session-${port}`,
     device: IOS_SIMULATOR,
     deviceId: IOS_SIMULATOR.id,
-    port: 8100,
+    endpoint: { port, token: RUNNER_TOKEN_FIXTURE },
     xctestrunPath: '/tmp/runner.xctestrun',
     jsonPath: '/tmp/runner.json',
     testPromise: Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
     child: { pid: 1234, exitCode: null },
     state: 'ready',
     commandCharges: new RunnerCommandAccounting(),
-    ...overrides,
+    ...rest,
   } as RunnerSession;
 }
 
@@ -85,6 +90,7 @@ export function makeRunnerLease(
     sessionId: `session-${overrides.deviceId}`,
     runnerPid: 4242,
     port: 8123,
+    runnerToken: RUNNER_TOKEN_FIXTURE,
     xctestrunPath: `/tmp/AgentDeviceRunner.env.session-${overrides.deviceId}-${ownerToken}-8123.xctestrun`,
     jsonPath: `/tmp/AgentDeviceRunner.env.session-${overrides.deviceId}-${ownerToken}-8123.json`,
     createdAtMs: Date.now(),
@@ -104,12 +110,16 @@ export function makeBackgroundRunner(pid: number) {
   };
 }
 
+const RUNNER_CREDENTIAL_ENFORCED = { 'X-Agent-Device-Runner-Auth': 'required' };
+
 export function runnerResponse(data: Record<string, unknown>): Response {
-  return new Response(JSON.stringify({ ok: true, data }));
+  return new Response(JSON.stringify({ ok: true, data }), { headers: RUNNER_CREDENTIAL_ENFORCED });
 }
 
 export function runnerError(error: { code: string; message: string }): Response {
-  return new Response(JSON.stringify({ ok: false, error }));
+  return new Response(JSON.stringify({ ok: false, error }), {
+    headers: RUNNER_CREDENTIAL_ENFORCED,
+  });
 }
 
 /** Each reason's canonical connect-path message, reused as `runnerConnectFailure`'s default. */

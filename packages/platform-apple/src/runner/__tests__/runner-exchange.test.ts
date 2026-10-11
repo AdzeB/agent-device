@@ -35,7 +35,7 @@ function sessionFor(port: number): RunnerSession {
     sessionId: `exchange:${port}`,
     device: IOS_SIMULATOR,
     deviceId: IOS_SIMULATOR.id,
-    port,
+    endpoint: { port, token: 'runner-token-fixture' },
     xctestrunPath: '/tmp/fake.xctestrun',
     jsonPath: '/tmp/fake.json',
     testPromise: new Promise<ExecResult>(() => {}),
@@ -94,11 +94,10 @@ test('the readiness probe preserves its main-thread busy report when the command
 });
 
 test.each(['activate', 'terminate', 'targetReset'] as const)(
-  'a starting runner sends exempt %s without a readiness preflight',
+  'a ready runner sends exempt %s without a readiness preflight',
   async (command) => {
     server = await startFakeRunnerServer([{ kind: 'ok', data: {} }]);
     const session = sessionFor(server.port);
-    session.state = 'starting';
 
     await executeRunnerExchange(
       IOS_SIMULATOR,
@@ -113,6 +112,34 @@ test.each(['activate', 'terminate', 'targetReset'] as const)(
       server.requests.map((request) => request.command),
       [command],
     );
+  },
+);
+
+test.each(['activate', 'terminate', 'targetReset'] as const)(
+  'a starting runner that predates the token never receives %s',
+  async (command) => {
+    server = await startFakeRunnerServer([{ kind: 'ok', data: {} }], { predatesToken: true });
+    const session = sessionFor(server.port);
+    session.state = 'starting';
+    const invalidations: string[] = [];
+
+    await assert.rejects(
+      executeRunnerExchange(
+        IOS_SIMULATOR,
+        session,
+        { command, appBundleId: 'com.example.app' },
+        undefined,
+        10_000,
+        async (reason) => {
+          invalidations.push(reason);
+        },
+      ),
+    );
+    assert.deepEqual(
+      server.requests.map((request) => request.command),
+      ['uptime'],
+    );
+    assert.deepEqual(invalidations, ['runner_token_unsupported']);
   },
 );
 
@@ -483,4 +510,38 @@ test("a caller's own deadline abort does not wait on the runner journal", async 
   await assert.rejects(exchange);
   assert.deepEqual(statusPolls(server), []);
   assert.equal(session.commandCharges.hasAbandonedCharges, true);
+});
+
+test('a runner that predates the listener token is stopped, and the command is not resent', async () => {
+  server = await startFakeRunnerServer(
+    { tap: [{ kind: 'ok', data: {} }] },
+    { predatesToken: true },
+  );
+  const session = sessionFor(server.port);
+  const invalidations: string[] = [];
+
+  await assert.rejects(
+    executeRunnerExchange(
+      IOS_SIMULATOR,
+      session,
+      { command: 'tap', x: 10, y: 10, appBundleId: 'com.example.app' },
+      undefined,
+      10_000,
+      async (reason) => {
+        invalidations.push(reason);
+      },
+    ),
+    (error: unknown) => {
+      assert.equal(
+        (error as { details?: { reason?: string } }).details?.reason,
+        'runner_token_unsupported',
+      );
+      return true;
+    },
+  );
+  assert.deepEqual(invalidations, ['runner_token_unsupported']);
+  assert.deepEqual(
+    server.requests.map(({ command }) => command),
+    ['uptime'],
+  );
 });

@@ -6,7 +6,11 @@ import {
 import http, { type IncomingMessage } from 'node:http';
 import { type Socket } from 'node:net';
 import { Deadline } from './host.ts';
-import type { RunnerCommand } from './runner-contract.ts';
+import {
+  type RunnerCommand,
+  runnerRequestHeaders,
+  type RunnerEndpoint,
+} from './runner-contract.ts';
 import { openUsbmuxRunnerSocket } from './runner-usbmux-protocol.ts';
 
 const USBMUXD_SOCKET_PATH = '/var/run/usbmuxd';
@@ -15,7 +19,7 @@ const RUNNER_HTTP_MAX_BODY_BYTES = 64 * 1024 * 1024;
 export type UsbmuxRunnerTransport = {
   postCommand(
     deviceId: string,
-    port: number,
+    endpoint: RunnerEndpoint,
     command: RunnerCommand,
     timeoutMs: number,
     signal?: AbortSignal,
@@ -24,19 +28,25 @@ export type UsbmuxRunnerTransport = {
 
 export function createUsbmuxRunnerTransport(socketPath: string): UsbmuxRunnerTransport {
   return {
-    postCommand: async (deviceId, port, command, timeoutMs, signal) => {
+    postCommand: async (deviceId, endpoint, command, timeoutMs, signal) => {
       const deadline = Deadline.fromTimeoutMs(timeoutMs);
       const socket = await openUsbmuxRunnerSocket(
         socketPath,
         deviceId,
-        port,
+        endpoint.port,
         deadline.remainingMs(),
         signal,
       ).catch((error: unknown) => {
         throw error instanceof AppError ? discloseDispatch(error, 'no') : error;
       });
       try {
-        return await postRunnerHttpCommand(socket, command, deadline.remainingMs(), signal);
+        return await postRunnerHttpCommand(
+          socket,
+          endpoint,
+          command,
+          deadline.remainingMs(),
+          signal,
+        );
       } catch (error) {
         socket.destroy();
         throw error;
@@ -49,6 +59,7 @@ export const usbmuxRunnerTransport = createUsbmuxRunnerTransport(USBMUXD_SOCKET_
 
 async function postRunnerHttpCommand(
   socket: Socket,
+  endpoint: RunnerEndpoint,
   command: RunnerCommand,
   timeoutMs: number,
   signal?: AbortSignal,
@@ -64,9 +75,10 @@ async function postRunnerHttpCommand(
     return socket;
   };
   try {
-    const response = await requestRunnerCommand(agent, socket, body, requestSignal);
+    const response = await requestRunnerCommand(agent, socket, endpoint, body, requestSignal);
     return new Response((await readBoundedResponseBody(response)).toString('utf8'), {
       status: response.statusCode ?? 500,
+      headers: readResponseHeaders(response),
     });
   } catch (error) {
     if (signal?.aborted) throw createRequestCanceledError();
@@ -86,6 +98,7 @@ async function postRunnerHttpCommand(
 async function requestRunnerCommand(
   agent: http.Agent,
   socket: Socket,
+  endpoint: RunnerEndpoint,
   body: Buffer,
   signal: AbortSignal,
 ): Promise<IncomingMessage> {
@@ -96,7 +109,7 @@ async function requestRunnerCommand(
         host: '127.0.0.1',
         path: '/command',
         headers: {
-          'Content-Type': 'application/json',
+          ...runnerRequestHeaders(endpoint),
           'Content-Length': body.length,
           Connection: 'close',
         },
@@ -109,6 +122,14 @@ async function requestRunnerCommand(
     socket.resume();
     request.end(body);
   });
+}
+
+function readResponseHeaders(response: IncomingMessage): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(response.headers)) {
+    if (typeof value === 'string') headers.set(name, value);
+  }
+  return headers;
 }
 
 async function readBoundedResponseBody(response: IncomingMessage): Promise<Buffer> {

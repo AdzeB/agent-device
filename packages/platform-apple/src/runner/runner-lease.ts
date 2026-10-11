@@ -19,6 +19,7 @@ import { AppError } from '@agent-device/kernel/errors';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import type { RunnerLogicalLeaseContext } from '@agent-device/contracts/runner-lease-context';
 import { runnerSimulatorSetPath } from './runner-device-set.ts';
+import type { RunnerEndpoint } from './runner-contract.ts';
 
 const RUNNER_LEASE_SCHEMA_VERSION = 1;
 const RUNNER_LEASE_LOCK_TIMEOUT_MS = 30_000;
@@ -49,6 +50,11 @@ export type RunnerLease = {
   runnerPid: number | null;
   runnerStartTime?: string | null;
   port: number;
+  /**
+   * The listener token the leased runner was launched with, so an adopter can reach it. Absent
+   * on leases written before runners required one: such a runner is cleaned up, never adopted.
+   */
+  runnerToken?: string;
   xctestrunPath: string;
   cacheKey?: string;
   jsonPath: string;
@@ -116,7 +122,7 @@ export function buildRunnerLease(params: {
   device: DeviceInfo;
   sessionId: string;
   runnerPid: number | undefined;
-  port: number;
+  endpoint: RunnerEndpoint;
   xctestrunPath: string;
   cacheKey?: string;
   jsonPath: string;
@@ -133,7 +139,8 @@ export function buildRunnerLease(params: {
     sessionId: params.sessionId,
     runnerPid: params.runnerPid ?? null,
     runnerStartTime: params.runnerPid ? readProcessStartTime(params.runnerPid) : null,
-    port: params.port,
+    port: params.endpoint.port,
+    runnerToken: params.endpoint.token,
     xctestrunPath: params.xctestrunPath,
     cacheKey: params.cacheKey,
     jsonPath: params.jsonPath,
@@ -337,6 +344,11 @@ export type RunnerLeaseAdoptionVerdict =
   | { type: 'absent' }
   | { type: 'refused'; reason: RunnerLeaseAdoptionRefusal; lease: RunnerLease };
 
+/** The leased runner's endpoint, or null for a runner launched before it required a token. */
+export function leasedRunnerEndpoint(lease: RunnerLease): RunnerEndpoint | null {
+  return lease.runnerToken ? { port: lease.port, token: lease.runnerToken } : null;
+}
+
 /** The one classification adoption reads, so a refused lease reports why it was refused. */
 export function readRunnerLeaseForAdoption(deviceId: string): RunnerLeaseAdoptionVerdict {
   const state = classifyRunnerLease(readRunnerLease(deviceId));
@@ -413,6 +425,8 @@ export function writeRunnerLease(lease: RunnerLease): void {
   publishFileSync({
     destination: leasePath,
     contents: JSON.stringify(lease, null, 2),
+    // The lease carries the runner's listener token.
+    mode: 0o600,
   });
 }
 
@@ -535,6 +549,7 @@ function normalizeRunnerLease(value: unknown, deviceId: string): RunnerLease | n
     runnerPid: readPositiveInteger(raw.runnerPid),
     runnerStartTime: readOptionalString(raw.runnerStartTime),
     runnerLogPath: readOptionalNonEmptyString(raw.runnerLogPath),
+    runnerToken: readOptionalNonEmptyString(raw.runnerToken),
     cacheKey: readOptionalNonEmptyString(raw.cacheKey),
     ...optionalSimulatorSetPath(raw.simulatorSetPath),
     ...(raw.deviceClaimProtocol === 1 ? { deviceClaimProtocol: 1 as const } : {}),

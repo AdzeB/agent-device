@@ -31,7 +31,7 @@ function makeRunnerSession(port: number): RunnerSession {
     sessionId: `fake:${port}`,
     device: IOS_SIMULATOR,
     deviceId: IOS_SIMULATOR.id,
-    port,
+    endpoint: { port, token: 'runner-token-fixture' },
     xctestrunPath: '/tmp/fake.xctestrun',
     jsonPath: '/tmp/fake.json',
     testPromise: new Promise<ExecResult>(() => {}),

@@ -50,6 +50,7 @@ final class RunnerTests: XCTestCase {
   }()
   static let defaultRecordingFps: Int32 = 15
   var listener: NWListener?
+  var listenerToken: RunnerListenerToken?
   var doneExpectation: XCTestExpectation?
   let transportQueue = DispatchQueue(label: "agent-device.runner.transport")
   let commandExecutionQueue = DispatchQueue(label: "agent-device.runner.commands")
@@ -64,7 +65,6 @@ final class RunnerTests: XCTestCase {
   // input is a scoped witness for the immediately-following bare type; lifecycle and non-text
   // interactions clear it before it can become stale.
   var textEntryTapWitness: TextEntryTapWitness?
-  let maxRequestBytes = 2 * 1024 * 1024
   static let mainThreadExecutionTimeout: TimeInterval = 30
   let appExistenceTimeout: TimeInterval = 30
   let retryCooldown: TimeInterval = 0.2
@@ -291,9 +291,15 @@ final class RunnerTests: XCTestCase {
   func testCommand() throws {
     doneExpectation = expectation(description: "agent-device command handled")
     NSLog("AGENT_DEVICE_RUNNER_HEADLESS_STARTUP=1")
-    let desiredPort = RunnerEnv.resolvePort()
-    NSLog("AGENT_DEVICE_RUNNER_DESIRED_PORT=%d", desiredPort)
-    listener = try makeRunnerListener(desiredPort: desiredPort)
+    guard let configuration = RunnerListenerConfiguration.fromEnvironment() else {
+      NSLog("AGENT_DEVICE_RUNNER_LISTENER_CONFIGURATION_MISSING")
+      XCTFail("runner listener port or token is missing; refusing to listen")
+      return
+    }
+    listenerToken = configuration.token
+    NSLog("AGENT_DEVICE_RUNNER_AUTH=required")
+    NSLog("AGENT_DEVICE_RUNNER_DESIRED_PORT=%d", configuration.port.rawValue)
+    listener = try Self.makeRunnerListener(port: configuration.port)
     listener?.stateUpdateHandler = { [weak self] state in
       switch state {
       case .ready:
@@ -311,9 +317,7 @@ final class RunnerTests: XCTestCase {
       }
     }
     listener?.newConnectionHandler = { [weak self] conn in
-      guard let self else { return }
-      conn.start(queue: self.transportQueue)
-      self.handle(connection: conn)
+      self?.handle(connection: conn)
     }
     listener?.start(queue: transportQueue)
     let idleKeepaliveTimer = DispatchSource.makeTimerSource(queue: transportQueue)
@@ -341,17 +345,15 @@ final class RunnerTests: XCTestCase {
     }
   }
 
-  private func makeRunnerListener(desiredPort: UInt16) throws -> NWListener {
-    if desiredPort > 0, let port = NWEndpoint.Port(rawValue: desiredPort) {
-      #if os(macOS)
-        let parameters = NWParameters.tcp
-        parameters.allowLocalEndpointReuse = true
-        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
-        return try NWListener(using: parameters)
-      #else
-        return try NWListener(using: .tcp, on: port)
-      #endif
-    }
-    return try NWListener(using: .tcp)
+  /// Simulators and macOS bind loopback: the host reaches them only through 127.0.0.1. A physical
+  /// device listens on every interface because the CoreDevice tunnel arrives on a network address.
+  static func makeRunnerListener(port: NWEndpoint.Port) throws -> NWListener {
+    #if targetEnvironment(simulator) || os(macOS)
+      let parameters = NWParameters.tcp
+      parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: port)
+      return try NWListener(using: parameters)
+    #else
+      return try NWListener(using: .tcp, on: port)
+    #endif
   }
 }

@@ -108,7 +108,7 @@ test('runner-internal request sites build exactly their runner-requests.json ent
       device: IOS_SIMULATOR,
       sessionId: `${IOS_SIMULATOR.id}:${server.port}:1`,
       runnerPid: 424242,
-      port: server.port,
+      endpoint: { port: server.port, token: 'runner-token-fixture' },
       cacheKey: RUNNER_CACHE_KEY_FIXTURE,
       xctestrunPath: path.join(runnerState.derivedPath, 'Build', 'Products', 'r.xctestrun'),
       jsonPath: path.join(runnerState.derivedPath, 'Build', 'Products', 'r.json'),

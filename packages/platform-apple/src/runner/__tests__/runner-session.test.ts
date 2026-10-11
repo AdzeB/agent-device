@@ -280,16 +280,14 @@ test('runner session starts xcodebuild through provider seams and reuses an aliv
   const reused = await ensureRunnerSession(device, {});
 
   assert.equal(reused, session);
-  assert.equal(session.port, 8123);
+  assert.equal(session.endpoint.port, 8123);
   assert.equal(session.xctestrunPath, '/tmp/session-runner.xctestrun');
   assert.equal(mockRunCmdBackground.mock.calls.length, 1);
   assert.equal(mockRunCmdBackground.mock.calls[0]?.[0], 'xcodebuild');
   const xcodebuildArgs = mockRunCmdBackground.mock.calls[0]?.[1];
   assert.ok(Array.isArray(xcodebuildArgs));
   assert.equal(xcodebuildArgs[xcodebuildArgs.indexOf('-derivedDataPath') + 1], '/tmp/derived');
-  assert.deepEqual(mockPrepareXctestrunWithEnv.mock.calls[0]?.[1], {
-    AGENT_DEVICE_RUNNER_PORT: '8123',
-  });
+  assert.equal(mockPrepareXctestrunWithEnv.mock.calls[0]?.[1]?.AGENT_DEVICE_RUNNER_PORT, '8123');
   assert.match(
     String(mockPrepareXctestrunWithEnv.mock.calls[0]?.[2] ?? ''),
     /^session-runner-session-start-sim-owner-\d+-[a-f0-9]{8}-8123$/,

@@ -20,7 +20,6 @@ import {
 import { runApplePressSeries } from '../runner-sequence.ts';
 import { executeRunnerCommandWithSession, type RunnerSession } from '../runner-session.ts';
 import { RunnerCommandAccounting } from '../runner-session-types.ts';
-import { appleRunnerTestHost } from '../test-host.ts';
 import {
   startFakeRunnerServer,
   type FakeRunnerCommandScript,
@@ -45,7 +44,7 @@ function runnerSession(port: number): RunnerSession {
     sessionId: `fake:${port}`,
     device: IOS_SIMULATOR,
     deviceId: IOS_SIMULATOR.id,
-    port,
+    endpoint: { port, token: 'runner-token-fixture' },
     xctestrunPath: '/tmp/fake.xctestrun',
     jsonPath: '/tmp/fake.json',
     testPromise: new Promise<ExecResult>(() => {}),
@@ -72,7 +71,7 @@ async function replyFailure(code: string): Promise<unknown> {
 /**
  * The runner hangs up on the command, then answers the status probe with `status`. A read goes
  * through the connect loop, which posts again on each attempt, so the runner hangs up on every
- * attempt until the loop gives up, and the loop's simctl curl fallback times out after its POST.
+ * attempt until the loop gives up.
  * The read's short timeout only bounds how long the loop runs.
  */
 async function lostResponse(
@@ -84,11 +83,6 @@ async function lostResponse(
     [command.command]: [{ kind: readOnly ? 'hangUpAlways' : 'hangUp' }],
     status,
   });
-  if (readOnly) {
-    appleRunnerTestHost.update({
-      runXcrun: vi.fn(async () => ({ exitCode: 28, stdout: '', stderr: 'curl exited 28' })),
-    });
-  }
   const session = runnerSession(server.port);
   const transportError = await executeRunnerCommandWithSession(
     IOS_SIMULATOR,

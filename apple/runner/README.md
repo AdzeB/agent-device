@@ -24,8 +24,10 @@ Protocol and maintenance references:
 
 - `RunnerTests.swift`: shared state/constants, `setUp()`, and `testCommand()` entry flow.
 - `RunnerTests+Models.swift`: wire protocol models (`Command`, `Response`, snapshot payload models).
-- `RunnerTests+Environment.swift`: environment and CLI argument helpers (`RunnerEnv`).
+- `RunnerTests+Environment.swift`: the listener port and token the daemon passes (`RunnerListenerConfiguration`).
 - `RunnerTests+Transport.swift`: TCP request handling and HTTP parsing/encoding.
+- `RunnerHttpRequestFraming.swift`: request-head admission (token, route, length limits).
+- `RunnerListenerToken.swift`: the per-launch listener token.
 - `RunnerTests+CommandDispatch.swift`: the dispatch entry (`executeAccepted`, `executeDispatched`),
   its recovery loops, target preparation, and recorded-failure conversion.
 - `RunnerTests+CommandExecution.swift`: the prepared-command switch (`executeOnMainPrepared`).
@@ -58,6 +60,8 @@ for the backend boundary and future simulator AX-service direction.
 
 ## Protocol Notes
 
-- The daemon posts JSON commands to `POST /command` on the runner's local HTTP listener.
+- The daemon posts JSON commands to `POST /command` on the runner's local HTTP listener, with the
+  per-launch listener token on every request. See `RUNNER_PROTOCOL.md` for binding, token, and
+  framing rules.
 - The runner responds with a JSON envelope shaped as `{ ok, data?, error? }`.
 - The protocol is internal to `agent-device`; when adding or renaming commands, update both wire models and the protocol tests/docs in the same change.

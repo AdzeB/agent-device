@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AppError } from '@agent-device/kernel/errors';
-import { requireExecSuccess, runAppleToolCommand } from './host.ts';
+import { publishFileSync, requireExecSuccess, runAppleToolCommand } from './host.ts';
 
 /** The xctestrun plist spells environment blocks as fully defined string maps. */
 type EnvMap = Record<string, string>;
@@ -91,9 +91,6 @@ const RUNNER_XCTESTRUN_CAPTURE_OPTIONS = {
 type XctestrunTarget = {
   TestBundlePath?: unknown;
   EnvironmentVariables?: EnvMap;
-  UITestEnvironmentVariables?: EnvMap;
-  UITargetAppEnvironmentVariables?: EnvMap;
-  TestingEnvironmentVariables?: EnvMap;
   [key: string]: unknown;
 };
 type XctestrunConfig = {
@@ -111,9 +108,13 @@ type XctestrunEnvOptions = {
   iosXctestEnvDir?: string;
 };
 
+/**
+ * Writes the session xctestrun. `runnerEnv` lands in each test target's `EnvironmentVariables`, the
+ * environment of the runner process alone: the app under test never sees it.
+ */
 export async function prepareXctestrunWithEnv(
   xctestrunPath: string,
-  envVars: Record<string, string>,
+  runnerEnv: EnvMap,
   suffix: string,
   options: XctestrunEnvOptions = {},
 ): Promise<{ xctestrunPath: string; jsonPath: string }> {
@@ -128,7 +129,9 @@ export async function prepareXctestrunWithEnv(
   );
   const parsed = await readXctestrunPlist(xctestrunPath);
 
-  visitXctestrunTargets(parsed, (target) => mergeEnvIntoXctestrunTarget(target, envVars));
+  visitXctestrunTargets(parsed, (target) => {
+    target.EnvironmentVariables = { ...target.EnvironmentVariables, ...runnerEnv };
+  });
   // Xcode re-synthesizes these keys from its own defaults, not the test plan: building this
   // runner's plan (which sets keepNever) still yields SystemAttachmentLifetime=deleteOnSuccess on
   // Xcode 26.2 and 27.1, so a launch that skipped this rewrite would keep a screenshot per test.
@@ -167,35 +170,25 @@ async function readXctestrunPlist(xctestrunPath: string): Promise<XctestrunPlist
   }
 }
 
+/** Both files may carry the runner's listener token, so they are owner-only from creation. */
 async function writeXctestrunPlist(
   parsed: XctestrunPlist,
   tmpJsonPath: string,
   tmpXctestrunPath: string,
 ): Promise<void> {
-  fs.writeFileSync(tmpJsonPath, JSON.stringify(parsed, null, 2));
-  requireExecSuccess(
-    await runAppleToolCommand('plutil', ['-convert', 'xml1', '-o', tmpXctestrunPath, tmpJsonPath], {
+  publishFileSync({
+    destination: tmpJsonPath,
+    contents: JSON.stringify(parsed, null, 2),
+    mode: 0o600,
+  });
+  const xml = requireExecSuccess(
+    await runAppleToolCommand('plutil', ['-convert', 'xml1', '-o', '-', tmpJsonPath], {
       allowFailure: true,
     }),
     'Failed to write xctestrun plist',
     { tmpXctestrunPath },
   );
-}
-
-function mergeEnvIntoXctestrunTarget(
-  target: XctestrunTarget,
-  envVars: Record<string, string>,
-): void {
-  target.EnvironmentVariables = { ...(target.EnvironmentVariables ?? {}), ...envVars };
-  target.UITestEnvironmentVariables = { ...(target.UITestEnvironmentVariables ?? {}), ...envVars };
-  target.UITargetAppEnvironmentVariables = {
-    ...(target.UITargetAppEnvironmentVariables ?? {}),
-    ...envVars,
-  };
-  target.TestingEnvironmentVariables = {
-    ...(target.TestingEnvironmentVariables ?? {}),
-    ...envVars,
-  };
+  publishFileSync({ destination: tmpXctestrunPath, contents: xml.stdout, mode: 0o600 });
 }
 
 function applyRunnerXctestrunCapturePolicy(parsed: XctestrunPlist): void {

@@ -1,4 +1,4 @@
-import type { DeviceInfo } from '@agent-device/kernel/device';
+import { isMacOs, type DeviceInfo } from '@agent-device/kernel/device';
 import { resolveIosPhysicalDeviceControl } from './host.ts';
 
 const RUNNER_DEVICE_TUNNEL_IP_CACHE_TTL_MS = 30_000;
@@ -8,15 +8,20 @@ type DeviceTunnelIpCacheEntry = {
   expiresAt: number;
 };
 
+/**
+ * The one URL a runner command goes to. A simulator or macOS runner listens on this Mac's loopback;
+ * a physical device is reached over usbmux or at its CoreDevice tunnel address, and has no route
+ * (`url: null`) while that address is unknown.
+ */
 export type RunnerCommandRoute =
   | {
       kind: 'network';
-      endpoints: string[];
+      url: string | null;
       cachedTunnelIp: boolean;
     }
   | {
       kind: 'usbmux';
-      endpoints: [string];
+      url: string;
       cachedTunnelIp: false;
     };
 
@@ -48,23 +53,21 @@ export function createRunnerCommandRouteResolver(device: DeviceInfo, port: numbe
       timeoutBudgetMs?: number,
       forceRefresh = false,
     ): Promise<RunnerCommandRoute> => {
-      if (device.kind !== 'device') {
-        return buildNetworkRoute(device, port, null, false);
-      }
+      if (runsOnThisHost(device)) return buildLoopbackRoute(port);
       const control = resolveIosPhysicalDeviceControl(device);
       if (control.backend === 'xctest') return buildUsbmuxRoute(device, port);
       if (!usbmuxUnattached) return buildUsbmuxRoute(device, port);
       if (!forceRefresh) {
         const cached = readDeviceTunnelIpCache(device.id);
-        if (cached) return buildNetworkRoute(device, port, cached, true);
+        if (cached) return buildTunnelRoute(port, cached, true);
         if (requestTunnelIp !== undefined) {
-          return buildNetworkRoute(device, port, requestTunnelIp, false);
+          return buildTunnelRoute(port, requestTunnelIp, false);
         }
       }
       const { tunnelIp } = await control.resolveTunnel(device, timeoutBudgetMs);
       requestTunnelIp = tunnelIp;
       if (tunnelIp) writeDeviceTunnelIpCache(device.id, tunnelIp);
-      return buildNetworkRoute(device, port, tunnelIp, false);
+      return buildTunnelRoute(port, tunnelIp, false);
     },
   };
 }
@@ -83,22 +86,30 @@ export function clearDeviceTunnelIpCache(): void {
 function buildUsbmuxRoute(device: DeviceInfo, port: number): RunnerCommandRoute {
   return {
     kind: 'usbmux',
-    endpoints: [`usbmux://${device.id}:${port}/command`],
+    url: `usbmux://${device.id}:${port}/command`,
     cachedTunnelIp: false,
   };
 }
 
-function buildNetworkRoute(
-  device: DeviceInfo,
+/** A simulator and the macOS host run their runner on this Mac, bound to its loopback. */
+function runsOnThisHost(device: DeviceInfo): boolean {
+  return device.kind !== 'device' || isMacOs(device);
+}
+
+function buildLoopbackRoute(port: number): RunnerCommandRoute {
+  return { kind: 'network', url: `http://127.0.0.1:${port}/command`, cachedTunnelIp: false };
+}
+
+function buildTunnelRoute(
   port: number,
   tunnelIp: string | null,
   cachedTunnelIp: boolean,
 ): RunnerCommandRoute {
-  const endpoints = [`http://127.0.0.1:${port}/command`];
-  if (device.kind === 'device' && tunnelIp) {
-    endpoints.unshift(`http://[${tunnelIp}]:${port}/command`);
-  }
-  return { kind: 'network', endpoints, cachedTunnelIp };
+  return {
+    kind: 'network',
+    url: tunnelIp ? `http://[${tunnelIp}]:${port}/command` : null,
+    cachedTunnelIp,
+  };
 }
 
 function readDeviceTunnelIpCache(deviceId: string): string | null {

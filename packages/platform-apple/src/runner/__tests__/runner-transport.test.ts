@@ -11,11 +11,15 @@ import {
   iosDevice,
   iosSimulator,
   makeTunnelIpLookup,
+  makeTunnelIpLookupSequence,
+  RUNNER_ENDPOINT_FIXTURE,
+  runnerTransportResponse,
   stubSuccessfulFetch,
   usbmuxDeviceUnattachedError,
   xctestIosDevice,
 } from './runner-transport.fixtures.ts';
 import { appleRunnerTestHost } from '../test-host.ts';
+import { MACOS_DEVICE } from './device-fixtures.ts';
 import { isCommandTimeoutError } from '../host.ts';
 import type { IosPhysicalDeviceRunnerControl } from '../../core/physical-device-routing.ts';
 
@@ -92,7 +96,7 @@ beforeEach(() => {
   clearDeviceTunnelIpCache();
   mockRunCmd.mockReset();
   mockUsbmuxPostCommand.mockReset();
-  mockUsbmuxPostCommand.mockResolvedValue(new Response('{}'));
+  mockUsbmuxPostCommand.mockResolvedValue(runnerTransportResponse());
   appleRunnerTestHost.update({
     resolveIosPhysicalDeviceControl: fakeResolveIosPhysicalDeviceControl,
   });
@@ -115,7 +119,13 @@ test('sendRunnerCommandOnce does not retry or simulator fallback after request f
   );
 
   await assert.rejects(
-    () => sendRunnerCommandOnce(iosSimulator, 8100, { command: 'tap', x: 120, y: 240 }, 5_000),
+    () =>
+      sendRunnerCommandOnce(
+        iosSimulator,
+        RUNNER_ENDPOINT_FIXTURE,
+        { command: 'tap', x: 120, y: 240 },
+        5_000,
+      ),
     (error: unknown) => error === fetchError,
   );
 
@@ -149,13 +159,18 @@ test('sendRunnerCommandOnce routes xctest physical devices through usbmux', asyn
   const fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
 
-  const response = await sendRunnerCommandOnce(xctestIosDevice, 8100, { command: 'uptime' }, 5_000);
+  const response = await sendRunnerCommandOnce(
+    xctestIosDevice,
+    RUNNER_ENDPOINT_FIXTURE,
+    { command: 'uptime' },
+    5_000,
+  );
 
   assert.equal(response.status, 200);
   assert.equal(fetchMock.mock.calls.length, 0);
   assert.deepEqual(mockUsbmuxPostCommand.mock.calls[0]?.slice(0, 3), [
     xctestIosDevice.id,
-    8100,
+    RUNNER_ENDPOINT_FIXTURE,
     { command: 'uptime' },
   ]);
 });
@@ -164,7 +179,12 @@ test('sendRunnerCommandOnce routes coredevice physical devices through usbmux fi
   const fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
 
-  const response = await sendRunnerCommandOnce(iosDevice, 8100, { command: 'uptime' }, 5_000);
+  const response = await sendRunnerCommandOnce(
+    iosDevice,
+    RUNNER_ENDPOINT_FIXTURE,
+    { command: 'uptime' },
+    5_000,
+  );
 
   assert.equal(response.status, 200);
   assert.equal(fetchMock.mock.calls.length, 0);
@@ -172,9 +192,41 @@ test('sendRunnerCommandOnce routes coredevice physical devices through usbmux fi
   assert.equal(mockRunCmd.mock.calls.length, 0);
   assert.deepEqual(mockUsbmuxPostCommand.mock.calls[0]?.slice(0, 3), [
     iosDevice.id,
-    8100,
+    RUNNER_ENDPOINT_FIXTURE,
     { command: 'uptime' },
   ]);
+});
+
+test('sendRunnerCommandOnce reaches the macOS host runner on loopback, never over usbmux', async () => {
+  stubSuccessfulFetch();
+
+  const response = await sendRunnerCommandOnce(MACOS_DEVICE, RUNNER_ENDPOINT_FIXTURE, {
+    command: 'uptime',
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(vi.mocked(fetch).mock.calls[0]?.[0], 'http://127.0.0.1:8100/command');
+  assert.equal(mockUsbmuxPostCommand.mock.calls.length, 0);
+  // No devicectl tunnel lookup either.
+  assert.equal(mockRunCmd.mock.calls.length, 0);
+});
+
+test('sendRunnerCommandOnce writes nothing for a device with no route, and says so', async () => {
+  mockUsbmuxPostCommand.mockRejectedValue(usbmuxDeviceUnattachedError());
+  const fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+  mockRunCmd.mockImplementation(makeTunnelIpLookupSequence([]));
+
+  await assert.rejects(
+    () => sendRunnerCommandOnce(iosDevice, RUNNER_ENDPOINT_FIXTURE, { command: 'tap', x: 1, y: 1 }),
+    (error: unknown) => {
+      assert.ok(error instanceof AppError);
+      assert.equal(error.message, 'Runner command endpoint not available');
+      assert.equal(error.details?.dispatched, 'no');
+      return true;
+    },
+  );
+  assert.equal(fetchMock.mock.calls.length, 0);
 });
 
 test('sendRunnerCommandOnce falls back to the tunnel route when usbmux reports the device unattached', async () => {
@@ -182,7 +234,12 @@ test('sendRunnerCommandOnce falls back to the tunnel route when usbmux reports t
   stubSuccessfulFetch();
   mockRunCmd.mockImplementation(makeTunnelIpLookup('fd00::123'));
 
-  const response = await sendRunnerCommandOnce(iosDevice, 8100, { command: 'uptime' }, 5_000);
+  const response = await sendRunnerCommandOnce(
+    iosDevice,
+    RUNNER_ENDPOINT_FIXTURE,
+    { command: 'uptime' },
+    5_000,
+  );
 
   assert.equal(response.status, 200);
   assert.equal(mockUsbmuxPostCommand.mock.calls.length, 1);
@@ -194,7 +251,8 @@ test('sendRunnerCommandOnce keeps the usbmux verdict for xctest devices that hav
   stubSuccessfulFetch();
 
   await assert.rejects(
-    () => sendRunnerCommandOnce(xctestIosDevice, 8100, { command: 'uptime' }, 5_000),
+    () =>
+      sendRunnerCommandOnce(xctestIosDevice, RUNNER_ENDPOINT_FIXTURE, { command: 'uptime' }, 5_000),
     (error: unknown) => {
       assert.equal((error as AppError).code, 'DEVICE_NOT_FOUND');
       return true;
@@ -220,7 +278,12 @@ test('falls back to the tunnel when usbmux loses the device mid-connect', async 
   stubSuccessfulFetch();
   mockRunCmd.mockImplementation(makeTunnelIpLookup('fd00::123'));
 
-  const response = await sendRunnerCommandOnce(iosDevice, 8100, { command: 'uptime' }, 5_000);
+  const response = await sendRunnerCommandOnce(
+    iosDevice,
+    RUNNER_ENDPOINT_FIXTURE,
+    { command: 'uptime' },
+    5_000,
+  );
 
   assert.equal(response.status, 200);
   assert.equal(vi.mocked(fetch).mock.calls[0]?.[0], 'http://[fd00::123]:8100/command');
@@ -240,7 +303,7 @@ test('a cancellation during route resolution discloses that the command was neve
     () =>
       sendRunnerCommandOnce(
         iosDevice,
-        8100,
+        RUNNER_ENDPOINT_FIXTURE,
         { command: 'tap', x: 1, y: 1 },
         5_000,
         controller.signal,

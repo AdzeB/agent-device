@@ -1,53 +1,115 @@
-import { createRequestCanceledError, AppError } from '@agent-device/kernel/errors';
+import {
+  createRequestCanceledError,
+  discloseDispatch,
+  AppError,
+} from '@agent-device/kernel/errors';
 import { Deadline, resolveIosPhysicalDeviceControl } from './host.ts';
 import type { DeviceInfo } from '@agent-device/kernel/device';
-import { createRunnerCommandRouteResolver } from './runner-command-route.ts';
+import {
+  createRunnerCommandRouteResolver,
+  type RunnerCommandRoute,
+} from './runner-command-route.ts';
 import { isUsbmuxDeviceUnattachedError } from './runner-error-classification.ts';
-import type { RunnerCommand } from './runner-contract.ts';
+import {
+  type RunnerCommand,
+  requireTokenEnforcingRunner,
+  runnerRequestHeaders,
+  type RunnerEndpoint,
+} from './runner-contract.ts';
 import { usbmuxRunnerTransport } from './runner-usbmux.ts';
 
 export const RUNNER_COMMAND_TIMEOUT_MS = 45_000;
 
+/** Sends one command; the reply is proven to come from a runner that enforces its token. */
 export async function sendRunnerCommandOnce(
   device: DeviceInfo,
-  port: number,
+  endpoint: RunnerEndpoint,
   command: RunnerCommand,
   timeoutMs: number = RUNNER_COMMAND_TIMEOUT_MS,
   signal?: AbortSignal,
 ): Promise<Response> {
+  return requireTokenEnforcingRunner(
+    await postRunnerCommandOnce(device, endpoint, command, timeoutMs, signal),
+  );
+}
+
+async function postRunnerCommandOnce(
+  device: DeviceInfo,
+  endpoint: RunnerEndpoint,
+  command: RunnerCommand,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
   throwIfCanceledBeforeSend(signal);
   const deadline = Deadline.fromTimeoutMs(timeoutMs);
-  const resolver = createRunnerCommandRouteResolver(device, port);
+  const resolver = createRunnerCommandRouteResolver(device, endpoint.port);
   let route = await resolver.resolveRoute(deadline.remainingMs());
   if (route.kind === 'usbmux') {
     try {
-      return await postUsbmuxRunnerCommand(device, port, command, deadline, signal);
+      return await postRunnerCommandOverRoute(device, route, {
+        endpoint,
+        command,
+        timeoutMs: deadline.remainingMs(),
+        signal,
+      });
     } catch (error) {
       if (!canFallBackFromUsbmux(device, error)) throw error;
       resolver.markUsbmuxUnattached();
       route = await resolver.resolveRoute(deadline.remainingMs());
     }
   }
+  return await postRunnerCommandOverRoute(device, route, {
+    endpoint,
+    command,
+    timeoutMs: deadline.remainingMs(),
+    signal,
+  });
+}
+
+/**
+ * Posts one command over a resolved route, the one write both the single send and the connect loop
+ * make. A refusal before anything is written discloses `dispatched: no`.
+ */
+export async function postRunnerCommandOverRoute(
+  device: DeviceInfo,
+  route: RunnerCommandRoute,
+  request: Readonly<{
+    endpoint: RunnerEndpoint;
+    command: RunnerCommand;
+    timeoutMs: number;
+    signal?: AbortSignal;
+  }>,
+): Promise<Response> {
+  const { endpoint, command, timeoutMs, signal } = request;
   throwIfCanceledBeforeSend(signal);
-  const remainingMs = deadline.remainingMs();
-  if (remainingMs <= 0) {
-    throw new AppError('COMMAND_FAILED', 'Runner command deadline exceeded', { timeoutMs });
+  if (timeoutMs <= 0) {
+    throw discloseDispatch(
+      new AppError('COMMAND_FAILED', 'Runner command deadline exceeded', {
+        port: endpoint.port,
+        timeoutMs,
+      }),
+      'no',
+    );
   }
-  const endpoint = route.endpoints[0];
-  if (!endpoint) {
-    throw new AppError('COMMAND_FAILED', 'Runner command endpoint not available', {
-      port,
-      endpoints: route.endpoints,
-    });
+  if (route.kind === 'usbmux') {
+    return await usbmuxRunnerTransport.postCommand(device.id, endpoint, command, timeoutMs, signal);
+  }
+  if (!route.url) {
+    throw discloseDispatch(
+      new AppError('COMMAND_FAILED', 'Runner command endpoint not available', {
+        port: endpoint.port,
+      }),
+      'no',
+    );
   }
   return await fetchWithTimeout(
-    endpoint,
+    route.url,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: runnerRequestHeaders(endpoint),
       body: JSON.stringify(command),
     },
-    remainingMs,
+    timeoutMs,
     signal,
   );
 }
@@ -55,23 +117,6 @@ export async function sendRunnerCommandOnce(
 /** A cancellation that lands before the POST is issued proves the runner received nothing. */
 export function throwIfCanceledBeforeSend(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw createRequestCanceledError({ dispatched: 'no' });
-}
-
-async function postUsbmuxRunnerCommand(
-  device: DeviceInfo,
-  port: number,
-  command: RunnerCommand,
-  deadline: Deadline,
-  signal?: AbortSignal,
-): Promise<Response> {
-  const remainingMs = deadline.remainingMs();
-  if (remainingMs <= 0) {
-    throw new AppError('COMMAND_FAILED', 'Runner command deadline exceeded', {
-      port,
-      timeoutMs: remainingMs,
-    });
-  }
-  return await usbmuxRunnerTransport.postCommand(device.id, port, command, remainingMs, signal);
 }
 
 /**
@@ -93,7 +138,8 @@ export async function fetchWithTimeout(
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const signal = requestSignal ? AbortSignal.any([requestSignal, timeoutSignal]) : timeoutSignal;
   try {
-    return await fetch(url, { ...init, signal });
+    // The token travels in a header, so a redirect must never carry it elsewhere.
+    return await fetch(url, { ...init, redirect: 'error', signal });
   } catch (error) {
     // `AbortSignal.timeout` rejects with a bare DOMException that no recovery rule can
     // read. Only a rejection carrying that signal's own reason is our deadline: a

@@ -8,8 +8,60 @@ The Apple runner speaks a small internal HTTP+JSON protocol between the TypeScri
 - Content type: `application/json`
 - Request body: one JSON command object
 - Response body: one JSON envelope
+- One request per connection; every response carries `Connection: close`.
 
-The daemon probes `http://127.0.0.1:<port>/command` for simulator and desktop flows, and can use a tunneled device address for physical iOS/tvOS devices before falling back to localhost.
+The daemon sends to `http://127.0.0.1:<port>/command` for simulator and macOS runners. A physical device is reached over usbmux when cabled, otherwise at its CoreDevice tunnel address; it is never dialed at this Mac's loopback.
+
+### Listener binding
+
+Simulators and macOS bind `127.0.0.1` only. A physical device listens on every interface: a cabled
+device is reached through usbmux on device loopback, and a Wi-Fi-only CoreDevice device through its
+tunnel address, which arrives on a `utun` interface of type `.other`.
+
+The runner classifies each connection once it is ready (`RunnerListenerPeer.swift`): a loopback or
+tunnel peer is served, and a peer on any other interface (Wi-Fi, Ethernet, cellular, a Personal
+Hotspot bridge) reached the device directly and is closed before it is read.
+
+### Listener token
+
+The daemon mints a token (24 random bytes, base64url) for each runner launch. The session
+xctestrun carries it with the port, as `AGENT_DEVICE_RUNNER_TOKEN` and `AGENT_DEVICE_RUNNER_PORT`,
+in each test target's `EnvironmentVariables`: the runner process's environment, which the app under
+test does not inherit. The runner refuses to start its listener without both.
+
+Every request presents it as `X-Agent-Device-Runner-Token`, exactly once. The runner checks it, in
+constant time, as soon as the request head is complete and before routing, length checks, or body
+decoding. That applies to every command, including `status`, `uptime`, and `shutdown`. A missing or
+wrong token answers `401` with error code `UNAUTHORIZED`.
+
+Every response carries `X-Agent-Device-Runner-Auth: required`. The daemon refuses a reply without
+it: such a runner was built before the token existed and listens without one.
+
+### Request framing
+
+Checked in this order once the head is complete (`RunnerHttpRequestFraming.swift`):
+
+| Condition | Status |
+| --- | --- |
+| Head over 16 KiB | `431` |
+| Malformed request line or header | `400` |
+| Missing, duplicated, or wrong token | `401` |
+| Method other than `POST` | `405` |
+| Path other than `/command` | `404` |
+| Any `Transfer-Encoding` | `400` |
+| `Content-Length` missing or duplicated | `411` |
+| `Content-Length` not plain decimal digits | `400` |
+| Body over 2 MiB | `413` |
+
+A request must arrive within 30 s, or it is answered `408`. The clock starts when the connection is
+accepted, except for a loopback peer, whose clock starts at its first byte: the simulator listener
+watch holds an idle loopback connection to observe the runner's lifetime. Each refusal closes only
+its own connection; the listener keeps serving.
+
+A runner reply without `X-Agent-Device-Runner-Auth: required` is session-fatal on the host: the
+session is invalidated, which stops the runner, and the command is neither resent nor replayed.
+Until a session has answered, every mutation is preceded by an `uptime` probe, so a runner that does
+not require the token never receives one.
 
 ## Request Shape
 

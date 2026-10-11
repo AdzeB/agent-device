@@ -10,13 +10,14 @@ import {
   createSocketPath,
   hostToNetworkPort,
   type FakeDevice,
-  readHttpRequestBody,
+  readHttpRequest,
   readPacket,
 } from './runner-usbmux-fixtures.ts';
 
 const DEVICE_UDID = '00008020-001C2D2234567890';
 const USBMUX_DEVICE_ID = 42;
 const RUNNER_PORT = 51_234;
+const RUNNER_ENDPOINT = { port: RUNNER_PORT, token: 'runner-token-fixture' };
 const openServers: Server[] = [];
 const socketDirectories: string[] = [];
 
@@ -62,8 +63,9 @@ test('xctest runner commands use usbmux device lookup and port transport', async
         ),
       );
 
-      const requestBody = await readHttpRequestBody(socket);
-      assert.deepEqual(JSON.parse(requestBody), {
+      const request = await readHttpRequest(socket);
+      assert.match(request.head, /^X-Agent-Device-Runner-Token: runner-token-fixture$/m);
+      assert.deepEqual(JSON.parse(request.body), {
         command: 'uptime',
         commandId: 'runner-usbmux-test',
       });
@@ -73,6 +75,7 @@ test('xctest runner commands use usbmux device lookup and port transport', async
           'HTTP/1.1 200 OK',
           'Content-Type: application/json',
           `Content-Length: ${Buffer.byteLength(body)}`,
+          'X-Agent-Device-Runner-Auth: required',
           'Connection: close',
           '',
           body,
@@ -83,12 +86,13 @@ test('xctest runner commands use usbmux device lookup and port transport', async
 
   const response = await createUsbmuxRunnerTransport(socketPath).postCommand(
     DEVICE_UDID,
-    RUNNER_PORT,
+    RUNNER_ENDPOINT,
     { command: 'uptime', commandId: 'runner-usbmux-test' },
     2_000,
   );
 
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('X-Agent-Device-Runner-Auth'), 'required');
   assert.deepEqual(await response.json(), { ok: true, data: { uptimeMs: 123 } });
   await serverDone;
 });
@@ -138,7 +142,7 @@ async function serveUsbmuxDevices(
 
 async function postThroughFakeUsbmux(socketPath: string, udid: string): Promise<unknown> {
   return await createUsbmuxRunnerTransport(socketPath)
-    .postCommand(udid, RUNNER_PORT, { command: 'uptime' }, 5_000)
+    .postCommand(udid, RUNNER_ENDPOINT, { command: 'uptime' }, 5_000)
     .catch((error: unknown) => error);
 }
 

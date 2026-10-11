@@ -230,7 +230,7 @@ on iOS) — run on this prefix as siblings of the continuation and are not count
 | 15 | `packages/platform-apple/src/runner/runner-recycle-ledger.ts` | ledger key, touched-session check/mark | policy | KEEP — recycle budget ledger |
 | 16 | `packages/platform-apple/src/runner/runner-disposal.ts` | `isRunnerProcessAlive` liveness check | policy | KEEP — lease liveness + cleanup |
 | 17 | `packages/platform-apple/src/runner/runner-command-route.ts` | `resolveRoute`: loopback/usbmux endpoint | translation | KEEP — usbmux/network route model |
-| 18 | `packages/platform-apple/src/runner/runner-startup-transport.ts` | `waitForRunner` → `tryRunnerRoute` → `tryRunnerEndpoints` | orchestration | KEEP — readiness wait (network route) |
+| 18 | `packages/platform-apple/src/runner/runner-startup-transport.ts` | `waitForRunner` → `tryRunnerRoute` → `postRunnerCommandOverRoute` | orchestration | KEEP — readiness wait (network route) |
 | 19 | `packages/platform-apple/src/runner/runner-transport.ts` | `fetchWithTimeout` → `fetch` to the runner at :90 | **terminal (adapter)** | n/a (terminal) |
 
 Re-entry: arm B #4 enters `packages/platform-apple/src/index.ts` (shared #22) via

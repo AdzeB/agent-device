@@ -158,7 +158,7 @@ async function shutdownRunnerSessionGracefully(session: RunnerSession): Promise<
   try {
     await waitForRunner(
       session.device,
-      session.port,
+      session.endpoint,
       withRunnerCommandId({
         command: 'shutdown',
       } as RunnerCommand),

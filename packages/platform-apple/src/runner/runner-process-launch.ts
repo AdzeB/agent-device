@@ -18,7 +18,6 @@ const RUNNER_DESTINATION_TIMEOUT_SECONDS = 20;
 
 type LaunchRunnerProcessInput = Readonly<{
   device: DeviceInfo;
-  port: number;
   xctestrunPath: string;
   derivedPath: string;
   /** Where the runner's own output goes. The child owns this file for its whole life (#2681). */
@@ -85,11 +84,6 @@ export function launchRunnerProcess(input: LaunchRunnerProcessInput): LaunchedRu
       ],
       {
         allowFailure: true,
-        // xcodebuild does not forward its own environment to the test runner: per xcodebuild(1),
-        // only names prefixed `TEST_RUNNER_` cross that boundary, with the prefix stripped. This
-        // entry is visible to xcodebuild alone, and the runner reads its port from the session
-        // xctestrun's EnvironmentVariables instead.
-        env: { ...process.env, AGENT_DEVICE_RUNNER_PORT: String(input.port) },
         detached: true,
         signal: input.signal,
         stdio: ['ignore', outputFd, outputFd],

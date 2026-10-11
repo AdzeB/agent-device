@@ -32,7 +32,12 @@ import {
   type RunnerStartAdmission,
 } from './runner-xctestrun.ts';
 import { resolveRunnerCacheKey } from './runner-cache-metadata.ts';
-import type { RunnerCommand } from './runner-contract.ts';
+import {
+  type RunnerCommand,
+  mintRunnerToken,
+  runnerListenerEnv,
+  type RunnerEndpoint,
+} from './runner-contract.ts';
 import { enrichRunnerStartupFailureWithDeviceStates } from './runner-error-classification.ts';
 import { isRunnerReadinessProbeCommand } from './runner-command-traits.ts';
 import {
@@ -234,7 +239,7 @@ async function startRunnerSessionWithLease(
     });
   }
   let xctestrunArtifact: Awaited<ReturnType<typeof ensureXctestrunArtifact>>;
-  let port: number;
+  let endpoint: RunnerEndpoint;
   let xctestrunPath: string;
   let jsonPath: string;
   const runnerLogPath = resolveRunnerLaunchLogPath(options.logPath, device.id);
@@ -255,22 +260,21 @@ async function startRunnerSessionWithLease(
         }),
     );
     startupTimings.build_xctestrun = xctestrunArtifact.buildMs;
-    port = await measureRunnerStartupStep(
-      startupTimings,
-      'allocate_port',
-      async () => await getFreePort(),
-    );
+    endpoint = await measureRunnerStartupStep(startupTimings, 'allocate_port', async () => ({
+      port: await getFreePort(),
+      token: mintRunnerToken(),
+    }));
     ({ xctestrunPath, jsonPath } = await measureRunnerStartupStep(
       startupTimings,
       'prepare_xctestrun_env',
       async () =>
         await prepareXctestrunWithEnv(
           xctestrunArtifact.xctestrunPath,
-          { AGENT_DEVICE_RUNNER_PORT: String(port) },
+          runnerListenerEnv(endpoint),
           buildRunnerSessionXctestrunSuffix({
             deviceId: device.id,
             ownerToken: runnerOwnerToken(),
-            port,
+            port: endpoint.port,
           }),
           { iosXctestEnvDir: options.iosXctestEnvDir },
         ),
@@ -293,7 +297,6 @@ async function startRunnerSessionWithLease(
         assertRunnerStartAdmitsPreparation(device.id, startAdmission);
         return await launchRunnerProcess({
           device,
-          port,
           xctestrunPath,
           derivedPath: xctestrunArtifact.derived,
           signal,
@@ -306,12 +309,12 @@ async function startRunnerSessionWithLease(
   } catch (error) {
     throw enrichRunnerStartupFailureWithDeviceStates(error, deviceStates);
   }
-  const sessionId = buildRunnerSessionId(device.id, port);
+  const sessionId = buildRunnerSessionId(device.id, endpoint.port);
   const lease = buildRunnerLease({
     device,
     sessionId,
     runnerPid: runnerProcess.child.pid,
-    port,
+    endpoint,
     xctestrunPath,
     cacheKey: xctestrunArtifact.cacheKey,
     jsonPath,
@@ -321,7 +324,7 @@ async function startRunnerSessionWithLease(
     sessionId,
     device,
     deviceId: device.id,
-    port,
+    endpoint,
     xctestrunPath,
     xctestrunArtifact,
     jsonPath,

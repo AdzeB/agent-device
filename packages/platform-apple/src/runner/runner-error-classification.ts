@@ -15,6 +15,7 @@ import {
   RUNNER_BUSY_RUNNER_CODE,
   RUNNER_WEDGED_RUNNER_CODE,
   type RunnerCommand,
+  RUNNER_TOKEN_UNSUPPORTED_REASON,
 } from './runner-contract.ts';
 import { isReadOnlyRunnerCommand } from './runner-command-traits.ts';
 
@@ -81,6 +82,8 @@ type RunnerErrorMatch = {
 
 const hasRunnerReplyLostReason: RunnerErrorDetailsMatch = (details) =>
   details.reason === RUNNER_REPLY_LOST_REASON;
+const hasRunnerTokenUnsupportedReason: RunnerErrorDetailsMatch = (details) =>
+  details.reason === RUNNER_TOKEN_UNSUPPORTED_REASON;
 /**
  * The runner refused the command before running it while abandoned main-thread work drains (#1105).
  * A resend keys on this code, never on `details.retriable`: that flag tells a caller's poll to try
@@ -243,6 +246,21 @@ export const RUNNER_ERROR_RULES: readonly RunnerErrorRule[] = [
       connectRetry: false,
       restartBeforeSend: false,
       restartAfterReadinessPreflight: false,
+    },
+  },
+  {
+    // The runner answered without requiring the listener token, so it predates the token and
+    // listens to anyone: stop it, and never resend, restart into, or replay on it.
+    reason: RUNNER_TOKEN_UNSUPPORTED_REASON,
+    match: { code: 'COMMAND_FAILED', details: hasRunnerTokenUnsupportedReason },
+    verdicts: {
+      retryable: false,
+      drainResend: false,
+      connectRetry: false,
+      sessionFatalReason: RUNNER_TOKEN_UNSUPPORTED_REASON,
+      restartBeforeSend: false,
+      restartAfterReadinessPreflight: false,
+      artifactSuspect: false,
     },
   },
   {
@@ -637,7 +655,7 @@ export function resolveRunnerFatalErrorReason(error: unknown): string | undefine
  * A connect-shaped failure that lets the session restart and resend `command`, rather than probing a
  * runner that never accepted the connection. The connect loop posts the command on every attempt, so
  * its failure restarts only when no attempt could have written the command, or when the command is
- * read-only: a POST that timed out after it was written (simctl curl exit 28) is no proof the
+ * read-only: a POST that timed out after it was written is no proof the
  * command did not run, and a mutation is never resent on it.
  */
 export function shouldRestartRunnerBeforeCommandSend(

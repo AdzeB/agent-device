@@ -22,7 +22,7 @@ export function observeRunnerListener(
   onLost: () => Promise<void> | undefined,
 ): void {
   if (session.state !== 'ready' || !needsListenerWatch(session) || session.listenerWatch) return;
-  const socket = net.connect(session.port, '127.0.0.1');
+  const socket = net.connect(session.endpoint.port, '127.0.0.1');
   socket.unref();
   let settle!: (connected: boolean) => void;
   const ready = new Promise<boolean>((resolve) => {

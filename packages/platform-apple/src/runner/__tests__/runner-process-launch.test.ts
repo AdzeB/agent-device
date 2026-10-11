@@ -24,7 +24,6 @@ test("the runner is spawned detached onto its own log file, not onto this proces
 
   launchRunnerProcess({
     device: IOS_SIMULATOR,
-    port: 8123,
     xctestrunPath: '/tmp/runner.xctestrun',
     derivedPath: '/tmp/runner-derived',
     logPath: runnerLogPath(),
@@ -35,7 +34,6 @@ test("the runner is spawned detached onto its own log file, not onto this proces
     detached?: boolean;
     stdio?: (string | number)[];
     captureOutput?: boolean;
-    env?: NodeJS.ProcessEnv;
   };
   // A detached runner that outlives this daemon must not hold a pipe this daemon can close under it:
   // SIGPIPE would then arrive on the runner's next write, minutes into the next daemon's session.
@@ -45,7 +43,6 @@ test("the runner is spawned detached onto its own log file, not onto this proces
   const [stdoutFd, stderrFd] = [options.stdio?.[1], options.stdio?.[2]];
   assert.equal(typeof stdoutFd, 'number');
   assert.equal(stdoutFd, stderrFd);
-  assert.equal(options.env?.AGENT_DEVICE_RUNNER_PORT, '8123');
 
   const args = mockRunCmdBackground.mock.calls[0]?.[1] as string[];
   assert.equal(args[args.indexOf('-xctestrun') + 1], '/tmp/runner.xctestrun');
@@ -58,7 +55,6 @@ test('test-without-building resolves a scoped-set simulator in its own set', () 
   for (const simulatorSetPath of ['/tmp/tenant-a/simulators', undefined]) {
     launchRunnerProcess({
       device: { ...IOS_SIMULATOR, simulatorSetPath },
-      port: 8123,
       xctestrunPath: '/tmp/runner.xctestrun',
       derivedPath: '/tmp/runner-derived',
       logPath: runnerLogPath(),
@@ -88,7 +84,6 @@ test('the listener-ready marker is read back from the runner log file', async ()
 
   const launched = launchRunnerProcess({
     device: IOS_SIMULATOR,
-    port: 8123,
     xctestrunPath: '/tmp/runner.xctestrun',
     derivedPath: '/tmp/runner-derived',
     logPath,
@@ -111,7 +106,6 @@ test('output an older runner generation left in the same log file does not wake 
 
   const launched = launchRunnerProcess({
     device: IOS_SIMULATOR,
-    port: 8123,
     xctestrunPath: '/tmp/runner.xctestrun',
     derivedPath: '/tmp/runner-derived',
     logPath,
@@ -136,7 +130,6 @@ test('a listener marker written during the spawn call still wakes startup', asyn
 
   const launched = launchRunnerProcess({
     device: IOS_SIMULATOR,
-    port: 8123,
     xctestrunPath: '/tmp/runner.xctestrun',
     derivedPath: '/tmp/runner-derived',
     logPath,
@@ -160,7 +153,6 @@ test('a boot failure written during the spawn call is quotable from this generat
 
   const launched = launchRunnerProcess({
     device: IOS_SIMULATOR,
-    port: 8123,
     xctestrunPath: '/tmp/runner.xctestrun',
     derivedPath: '/tmp/runner-derived',
     logPath,
@@ -182,7 +174,6 @@ test('runner process exit wakes startup probing without a listener marker', asyn
 
   const launched = launchRunnerProcess({
     device: IOS_SIMULATOR,
-    port: 8123,
     xctestrunPath: '/tmp/runner.xctestrun',
     derivedPath: '/tmp/runner-derived',
     logPath: runnerLogPath(),
@@ -202,7 +193,6 @@ test("ending output observation stops the tail and closes this process's descrip
 
   const launched = launchRunnerProcess({
     device: IOS_SIMULATOR,
-    port: 8123,
     xctestrunPath: '/tmp/runner.xctestrun',
     derivedPath: '/tmp/runner-derived',
     logPath,

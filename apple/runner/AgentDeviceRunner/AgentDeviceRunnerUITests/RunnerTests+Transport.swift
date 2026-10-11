@@ -4,41 +4,117 @@ import Network
 extension RunnerTests {
   // MARK: - Connection Lifecycle
 
+  /// How long one request may take to arrive. A tunnel peer's clock starts when it connects; a
+  /// loopback peer may idle, so its clock starts at its first byte.
+  static let requestTimeout: TimeInterval = 30
+
+  /// Starts one connection and reads one request from it once its path is known. Every refusal
+  /// answers and closes that connection only; the listener keeps serving.
   func handle(connection: NWConnection) {
-    receiveRequest(connection: connection, buffer: Data())
+    guard let token = listenerToken else {
+      connection.cancel()
+      return
+    }
+    connection.stateUpdateHandler = { [weak self] state in
+      switch state {
+      case .ready:
+        connection.stateUpdateHandler = nil
+        self?.admit(connection, token: token)
+      case .failed:
+        connection.cancel()
+      default:
+        break
+      }
+    }
+    connection.start(queue: transportQueue)
+  }
+
+  private func admit(_ connection: NWConnection, token: RunnerListenerToken) {
+    let peer = RunnerListenerPeer.of(connection)
+    guard peer != .directNetwork else {
+      connection.cancel()
+      return
+    }
+    let inbound = RunnerInboundRequest(token: token)
+    if peer == .tunnel {
+      armDeadline(for: inbound, over: connection)
+    }
+    receiveRequest(inbound, over: connection)
   }
 
   // MARK: - Request Parsing
 
-  private func receiveRequest(connection: NWConnection, buffer: Data) {
-    connection.receive(minimumIncompleteLength: 1, maximumLength: 1024 * 1024) { [weak self] data, _, _, _ in
-      guard let self = self, let data = data else {
+  private func receiveRequest(_ inbound: RunnerInboundRequest, over connection: NWConnection) {
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
+      [weak self] data, _, isComplete, error in
+      guard let self, !inbound.closed else { return }
+      if let data, !data.isEmpty {
+        self.consume(data, for: inbound, over: connection)
+      } else if error != nil || isComplete {
+        inbound.close()
         connection.cancel()
-        return
-      }
-      if buffer.count + data.count > self.maxRequestBytes {
-        let response = self.jsonResponse(
-          status: 413,
-          response: self.errorResponse(
-            code: "INVALID_ARGS",
-            message: "runner request body exceeds \(self.maxRequestBytes) bytes",
-            hint: "Send one runner command per request and keep the payload below the runner request limit."
-          )
-        )
-        self.sendResponse(response, over: connection) { [weak self] in
-          self?.finish()
-        }
-        return
-      }
-      let combined = buffer + data
-      if let body = self.parseRequest(data: combined) {
-        self.handleRequestBody(body) { [weak self] result in
-          self?.sendResult(result, over: connection)
-        }
       } else {
-        self.receiveRequest(connection: connection, buffer: combined)
+        self.receiveRequest(inbound, over: connection)
       }
     }
+  }
+
+  private func consume(_ data: Data, for inbound: RunnerInboundRequest, over connection: NWConnection) {
+    if inbound.deadline == nil {
+      armDeadline(for: inbound, over: connection)
+    }
+    let alreadyScanned = inbound.buffer.count
+    inbound.buffer.append(data)
+    if inbound.head == nil {
+      switch RunnerHttpRequestFraming.admitHead(
+        inbound.buffer,
+        token: inbound.token,
+        alreadyScanned: alreadyScanned
+      ) {
+      case .incomplete:
+        receiveRequest(inbound, over: connection)
+        return
+      case .rejected(let rejection):
+        reject(inbound, with: rejection, over: connection)
+        return
+      case .admitted(let head):
+        inbound.head = head
+      }
+    }
+    guard let head = inbound.head else { return }
+    let bodyEnd = head.bodyOffset + head.contentLength
+    guard inbound.buffer.count >= bodyEnd else {
+      receiveRequest(inbound, over: connection)
+      return
+    }
+    inbound.close()
+    let body = inbound.buffer.subdata(in: head.bodyOffset..<bodyEnd)
+    handleRequestBody(body) { [weak self] result in
+      self?.sendResult(result, over: connection)
+    }
+  }
+
+  private func armDeadline(for inbound: RunnerInboundRequest, over connection: NWConnection) {
+    let deadline = DispatchWorkItem { [weak self, inbound] in
+      guard let self, !inbound.closed else { return }
+      self.reject(inbound, with: .timedOut, over: connection)
+    }
+    inbound.deadline = deadline
+    transportQueue.asyncAfter(deadline: .now() + Self.requestTimeout, execute: deadline)
+  }
+
+  private func reject(
+    _ inbound: RunnerInboundRequest,
+    with rejection: RunnerHttpRequestRejection,
+    over connection: NWConnection
+  ) {
+    inbound.close()
+    NSLog("AGENT_DEVICE_RUNNER_REQUEST_REJECTED status=%d", rejection.status)
+    let response = jsonResponse(
+      status: rejection.status,
+      response: errorResponse(code: rejection.code, message: rejection.message)
+    )
+    sendResponse(response, over: connection)
   }
 
   private func sendResult(
@@ -64,34 +140,6 @@ extension RunnerTests {
       connection.cancel()
       afterSend()
     })
-  }
-
-  private func parseRequest(data: Data) -> Data? {
-    guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) else {
-      return nil
-    }
-    let headerData = data.subdata(in: 0..<headerEnd.lowerBound)
-    let bodyStart = headerEnd.upperBound
-    let headers = String(decoding: headerData, as: UTF8.self)
-    let contentLength = extractContentLength(headers: headers)
-    guard let contentLength = contentLength else {
-      return nil
-    }
-    if data.count < bodyStart + contentLength {
-      return nil
-    }
-    let body = data.subdata(in: bodyStart..<(bodyStart + contentLength))
-    return body
-  }
-
-  private func extractContentLength(headers: String) -> Int? {
-    for line in headers.split(separator: "\r\n") {
-      let parts = line.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-      if parts.count == 2 && parts[0].lowercased() == "content-length" {
-        return Int(parts[1])
-      }
-    }
-    return nil
   }
 
   private func handleRequestBody(
@@ -297,14 +345,33 @@ extension RunnerTests {
 
   private func httpResponse(status: Int, body: String) -> Data {
     let headers = [
-      "HTTP/1.1 \(status) OK",
+      "HTTP/1.1 \(status) \(Self.reasonPhrase(status))",
       "Content-Type: application/json",
       "Content-Length: \(body.utf8.count)",
+      "\(Self.authEnforcedResponseHeader): required",
       "Connection: close",
       "",
       body
     ].joined(separator: "\r\n")
     return Data(headers.utf8)
+  }
+
+  /// Present on every response so the daemon can refuse a runner build that predates the token.
+  static let authEnforcedResponseHeader = "X-Agent-Device-Runner-Auth"
+
+  private static func reasonPhrase(_ status: Int) -> String {
+    switch status {
+    case 200: return "OK"
+    case 400: return "Bad Request"
+    case 401: return "Unauthorized"
+    case 404: return "Not Found"
+    case 405: return "Method Not Allowed"
+    case 408: return "Request Timeout"
+    case 411: return "Length Required"
+    case 413: return "Content Too Large"
+    case 431: return "Request Header Fields Too Large"
+    default: return "Internal Server Error"
+    }
   }
 
   private func finish() {
@@ -314,5 +381,26 @@ extension RunnerTests {
     // multiple waiters, each of which may ask to finish.
     doneExpectation?.fulfill()
     doneExpectation = nil
+  }
+}
+
+/// One connection's request, read on the transport queue.
+final class RunnerInboundRequest {
+  let token: RunnerListenerToken
+  var buffer = Data()
+  var head: RunnerHttpAdmittedHead?
+  var deadline: DispatchWorkItem?
+  private(set) var closed = false
+
+  init(token: RunnerListenerToken) {
+    self.token = token
+  }
+
+  /// Ends reading this request: its body is complete, it was refused, or the peer left. Dropping the
+  /// deadline also releases the request it holds.
+  func close() {
+    closed = true
+    deadline?.cancel()
+    deadline = nil
   }
 }

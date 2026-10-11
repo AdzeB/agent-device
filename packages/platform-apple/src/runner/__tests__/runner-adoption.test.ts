@@ -113,7 +113,7 @@ function writeStaleLeaseFor(device: DeviceInfo, overrides: Partial<RunnerLease> 
       device,
       sessionId: `${device.id}:50700:1`,
       runnerPid: 424242,
-      port: 50700,
+      endpoint: { port: 50700, token: 'runner-token-fixture' },
       xctestrunPath: path.join(expectedDerived, 'Build', 'Products', 'env.session.xctestrun'),
       cacheKey: resolveRunnerCacheKey(mockResolveExpectedRunnerCacheMetadata(device)),
       jsonPath: path.join(expectedDerived, 'Build', 'Products', 'env.session.json'),
@@ -170,7 +170,7 @@ test('readStaleRunnerLease returns dead-owner leases and skips owned ones', () =
       device: simulator,
       sessionId: `${simulator.id}:50700:2`,
       runnerPid: 424242,
-      port: 50700,
+      endpoint: { port: 50700, token: 'runner-token-fixture' },
       xctestrunPath: '/tmp/x.xctestrun',
       jsonPath: '/tmp/x.json',
     }),
@@ -191,7 +191,7 @@ test('adoption succeeds for a live, matching, probe-healthy runner', async () =>
   const session = await tryAdoptRunnerSessionFromLease(simulator, {});
 
   expect(session).not.toBeNull();
-  expect(session?.port).toBe(lease.port);
+  expect(session?.endpoint.port).toBe(lease.port);
   expect(session?.state).toBe('ready');
   expect(session?.child.pid).toBe(424242);
   expect(session?.sessionId).toBe(lease.sessionId);
@@ -200,6 +200,56 @@ test('adoption succeeds for a live, matching, probe-healthy runner', async () =>
   expect(session?.lease?.cacheKey).toBe(lease.cacheKey);
   // Adoption transfers ownership: the lease on disk now belongs to us.
   expect(readStaleRunnerLease(simulator.id)).toBeNull();
+});
+
+test('the probe and the adopted session carry the token the runner was launched with', async () => {
+  const lease = writeStaleLease();
+  mockIsProcessAlive.mockReturnValue(true);
+  mockSendRunnerCommandOnce.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+
+  const session = await tryAdoptRunnerSessionFromLease(simulator, {});
+
+  expect(mockSendRunnerCommandOnce.mock.calls[0]?.[1]).toEqual({
+    port: lease.port,
+    token: 'runner-token-fixture',
+  });
+  expect(session).toMatchObject({
+    endpoint: { port: lease.port, token: 'runner-token-fixture' },
+    lease: { runnerToken: 'runner-token-fixture' },
+  });
+});
+
+test('a runner leased without a listener token is never probed or adopted', async () => {
+  // A lease from a version whose runner listened without a token: the runner is cleaned up
+  // and replaced, so nothing ever sends it a command.
+  const { runnerToken: _dropped, ...legacy } = buildRunnerLease({
+    device: simulator,
+    sessionId: `${simulator.id}:50700:1`,
+    runnerPid: 424242,
+    endpoint: { port: 50700, token: 'unused' },
+    xctestrunPath: path.join(expectedDerived, 'Build', 'Products', 'env.session.xctestrun'),
+    cacheKey: resolveRunnerCacheKey(mockResolveExpectedRunnerCacheMetadata(simulator)),
+    jsonPath: path.join(expectedDerived, 'Build', 'Products', 'env.session.json'),
+  });
+  writeRunnerLease({
+    ...legacy,
+    ownerToken: 'owner-99999-deadbeef',
+    ownerPid: 99999,
+    ownerStartTime: 'not-a-real-start-time',
+  });
+  mockIsProcessAlive.mockReturnValue(true);
+
+  expect(readStaleRunnerLease(simulator.id)?.runnerPid).toBe(424242);
+  await expect(tryAdoptRunnerSessionFromLease(simulator, {})).resolves.toBeNull();
+  expect(adoptionRefusalReason()).toBe('runner_token_missing');
+  expect(mockSendRunnerCommandOnce).not.toHaveBeenCalled();
+});
+
+test('the lease that carries the token is owner-only', () => {
+  const lease = writeStaleLease();
+  const leasePath = path.join(leaseDir, `${simulator.id}.json`);
+  expect(fs.statSync(leasePath).mode & 0o777).toBe(0o600);
+  expect(readStaleRunnerLease(simulator.id)?.runnerToken).toBe(lease.runnerToken);
 });
 
 test('the adopted runner keeps the log file its predecessor opened for it', async () => {
@@ -452,7 +502,7 @@ test('physical coredevice lane adopts the detached runner and names its lane', a
 
   expect(session?.state).toBe('ready');
   expect(session?.child.pid).toBe(lease.runnerPid);
-  expect(session?.port).toBe(lease.port);
+  expect(session?.endpoint.port).toBe(lease.port);
   expect(
     emittedDiagnostics.find((event) => event.phase === 'ios_runner_lease_adopted')?.data,
   ).toMatchObject({ deviceId: physicalCoreDevice.id, lane: 'physical_coredevice' });

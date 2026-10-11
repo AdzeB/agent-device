@@ -14,6 +14,7 @@ import {
 
 const DEVICE_UDID = '00008020-001C2D2234567890';
 const RUNNER_PORT = 51_234;
+const RUNNER_ENDPOINT = { port: RUNNER_PORT, token: 'runner-token-fixture' };
 const openServers: Server[] = [];
 const socketDirectories: string[] = [];
 
@@ -126,7 +127,7 @@ async function post(
 ): Promise<Response> {
   return await createUsbmuxRunnerTransport(socketPath).postCommand(
     DEVICE_UDID,
-    RUNNER_PORT,
+    RUNNER_ENDPOINT,
     { command: 'uptime' },
     timeoutMs,
     signal,

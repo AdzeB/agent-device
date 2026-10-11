@@ -133,7 +133,7 @@ function writeDetachedLease(device: DeviceInfo): void {
       device,
       sessionId: `${device.id}:${RUNNER_PORT}:1`,
       runnerPid: RUNNER_PID,
-      port: RUNNER_PORT,
+      endpoint: { port: RUNNER_PORT, token: 'runner-token-fixture' },
       cacheKey: RUNNER_CACHE_KEY_FIXTURE,
       xctestrunPath: path.join(expectedDerived, 'Build', 'Products', 'env.session.xctestrun'),
       jsonPath: path.join(expectedDerived, 'Build', 'Products', 'env.session.json'),
@@ -152,9 +152,11 @@ test('the adoption probe dials usbmux for a cabled CoreDevice device, never loop
   const session = await tryAdoptRunnerSessionFromLease(cabledDevice, {});
 
   expect(session).not.toBeNull();
-  expect(mockUsbmuxPostCommand.mock.calls.map(([deviceId, port]) => `${deviceId}:${port}`)).toEqual(
-    [`${cabledDevice.id}:${RUNNER_PORT}`],
-  );
+  expect(
+    mockUsbmuxPostCommand.mock.calls.map(
+      ([deviceId, endpoint]) => `${deviceId}:${endpoint.port}:${endpoint.token}`,
+    ),
+  ).toEqual([`${cabledDevice.id}:${RUNNER_PORT}:runner-token-fixture`]);
   expect(fetchUrls).toEqual([]);
   // A cabled device must not pay for the tunnel lookup either (#1403).
   expect(tunnelLookups).toBe(0);
@@ -162,8 +164,7 @@ test('the adoption probe dials usbmux for a cabled CoreDevice device, never loop
 
 test('a Wi-Fi CoreDevice device is probed at its tunnel address, not at 127.0.0.1', async () => {
   // usbmuxd never sees a CoreDevice Wi-Fi device (#1403), so the probe has to fall back to the
-  // tunnel route the real resolver builds. The loopback endpoint stays in the candidate list as a
-  // port-forward fallback, and adoption would only reach it if the tunnel address refused the probe.
+  // tunnel route the real resolver builds, whose only address is the device's tunnel.
   writeDetachedLease(cabledDevice);
   tunnelIp = 'fd18::42';
   mockUsbmuxPostCommand.mockRejectedValue(usbmuxDeviceUnattachedError());

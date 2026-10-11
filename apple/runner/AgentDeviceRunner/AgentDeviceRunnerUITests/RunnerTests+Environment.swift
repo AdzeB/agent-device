@@ -1,18 +1,25 @@
 import Foundation
+import Network
 
 // MARK: - Environment
 
-enum RunnerEnv {
-  static func resolvePort() -> UInt16 {
-    if let env = ProcessInfo.processInfo.environment["AGENT_DEVICE_RUNNER_PORT"], let port = UInt16(env) {
-      return port
+/// What the daemon hands the runner through the session xctestrun's `EnvironmentVariables`. Both
+/// parts are required: a runner on a port of its own choosing is one no daemon can reach, and one
+/// without a token would listen to anyone.
+struct RunnerListenerConfiguration {
+  let port: NWEndpoint.Port
+  let token: RunnerListenerToken
+
+  static func fromEnvironment(
+    _ environment: [String: String] = ProcessInfo.processInfo.environment
+  ) -> RunnerListenerConfiguration? {
+    guard
+      let rawPort = environment["AGENT_DEVICE_RUNNER_PORT"].flatMap({ UInt16($0) }), rawPort > 0,
+      let port = NWEndpoint.Port(rawValue: rawPort),
+      let token = RunnerListenerToken(environment["AGENT_DEVICE_RUNNER_TOKEN"])
+    else {
+      return nil
     }
-    for arg in CommandLine.arguments {
-      if arg.hasPrefix("AGENT_DEVICE_RUNNER_PORT=") {
-        let value = arg.replacingOccurrences(of: "AGENT_DEVICE_RUNNER_PORT=", with: "")
-        if let port = UInt16(value) { return port }
-      }
-    }
-    return 0
+    return RunnerListenerConfiguration(port: port, token: token)
   }
 }

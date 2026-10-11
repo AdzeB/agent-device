@@ -42,7 +42,12 @@ import {
 type RunnerExchangeSession = RunnerConnectionSession &
   Pick<
     RunnerSession,
-    'port' | 'commandCharges' | 'lastHealthyMutation' | 'runnerMainThreadBusy' | 'launchDeadline'
+    | 'endpoint'
+    | 'state'
+    | 'commandCharges'
+    | 'lastHealthyMutation'
+    | 'runnerMainThreadBusy'
+    | 'launchDeadline'
   >;
 
 const RUNNER_READY_PREFLIGHT_TIMEOUT_MS = 1_000;
@@ -80,6 +85,37 @@ type RunnerReadinessPreflightDecision =
  * charge stands for, so charging one would let it settle another command's debt (#2965).
  */
 export async function executeRunnerExchange(
+  device: DeviceInfo,
+  session: RunnerExchangeSession,
+  command: RunnerCommand,
+  logPath: string | undefined,
+  timeoutMs: number,
+  invalidateFatalSession: (reason: string) => Promise<void>,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  try {
+    return await exchangeWithRunner(
+      device,
+      session,
+      command,
+      logPath,
+      timeoutMs,
+      invalidateFatalSession,
+      signal,
+    );
+  } catch (error) {
+    // Whether it came from the preflight, the send, or the reply, a session-fatal failure stops the
+    // runner here: a runner that does not require the token must not keep listening.
+    const runnerFatalReason = resolveRunnerFatalErrorReason(error);
+    if (runnerFatalReason) {
+      session.lastHealthyMutation = undefined;
+      await invalidateFatalSession(runnerFatalReason);
+    }
+    throw error;
+  }
+}
+
+async function exchangeWithRunner(
   device: DeviceInfo,
   session: RunnerExchangeSession,
   command: RunnerCommand,
@@ -135,12 +171,7 @@ export async function executeRunnerExchange(
     return data;
   } catch (error) {
     const answered = recordUnansweredRunnerExchange(session, runnerCommand, error);
-    const runnerFatalReason = resolveRunnerFatalErrorReason(error);
-    if (runnerFatalReason) {
-      session.lastHealthyMutation = undefined;
-      await invalidateFatalSession(runnerFatalReason);
-      throw error;
-    }
+    if (resolveRunnerFatalErrorReason(error)) throw error;
     // A body-read or malformed-payload failure is transport-shaped too (the
     // runner died mid-response); structured runner failures carry a `runner`
     // detail and keep their recency — the runner proved it is alive by
@@ -275,7 +306,7 @@ async function sendRunnerCommandAfterPreflight(params: {
         if (readOnlyCommand) {
           return await waitForRunner(
             device,
-            session.port,
+            session.endpoint,
             runnerCommand,
             logPath,
             remainingMs,
@@ -285,7 +316,7 @@ async function sendRunnerCommandAfterPreflight(params: {
         }
         return await sendRunnerCommandOnce(
           device,
-          session.port,
+          session.endpoint,
           runnerCommand,
           remainingMs,
           signal,
@@ -395,7 +426,7 @@ async function readRunnerCommandLifecycleState(
 ): Promise<string> {
   const response = await sendRunnerCommandOnce(
     device,
-    session.port,
+    session.endpoint,
     { command: 'status', statusCommandId: runnerCommand.commandId },
     timeoutMs,
   );
@@ -424,7 +455,7 @@ async function runRunnerReadinessPreflight(params: {
       async () =>
         await waitForRunner(
           device,
-          session.port,
+          session.endpoint,
           withRunnerCommandId({ command: 'uptime' }),
           logPath,
           readinessTimeoutMs,
@@ -523,9 +554,8 @@ function resolveRunnerReadinessPreflightDecision(
   command: RunnerCommand,
 ): RunnerReadinessPreflightDecision {
   const readOnlyCommand = isReadOnlyRunnerCommand(command);
-  if (isRunnerReadinessPreflightExempt(command)) {
-    return { action: 'skip', reason: 'preflight_exempt_command' };
-  }
+  // Until a runner has answered, the `uptime` probe is what proves it requires the token, so no
+  // mutation reaches it first; the exemption below applies only to a runner that already answered.
   if (session.state !== 'ready') {
     if (readOnlyCommand) {
       return {
@@ -537,6 +567,9 @@ function resolveRunnerReadinessPreflightDecision(
       action: 'run',
       reason: 'startup',
     };
+  }
+  if (isRunnerReadinessPreflightExempt(command)) {
+    return { action: 'skip', reason: 'preflight_exempt_command' };
   }
   if (isRunnerReadinessProbeCommand(command)) {
     return {

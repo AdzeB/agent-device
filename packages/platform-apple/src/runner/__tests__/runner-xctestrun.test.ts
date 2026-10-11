@@ -103,8 +103,7 @@ function fakeXctestrunPlutilToolCommand(): (
       return { stdout: fs.readFileSync(String(args[4]), 'utf8'), stderr: '', exitCode: 0 };
     }
     if (args[0] === '-convert' && args[1] === 'xml1' && args[2] === '-o') {
-      fs.copyFileSync(String(args[4]), String(args[3]));
-      return { stdout: '', stderr: '', exitCode: 0 };
+      return { stdout: fs.readFileSync(String(args[4]), 'utf8'), stderr: '', exitCode: 0 };
     }
     return { stdout: '', stderr: `unexpected plutil args: ${args.join(' ')}`, exitCode: 1 };
   };
@@ -579,6 +578,36 @@ test('prepareXctestrunWithEnv writes env overlays into configured env dir', asyn
     );
     assert.equal(fs.existsSync(prepared.xctestrunPath), true);
     assert.equal(fs.existsSync(prepared.jsonPath), true);
+  });
+});
+
+test('prepareXctestrunWithEnv gives the runner env to the runner alone, in owner-only files', async () => {
+  await withTempDir('runner-xctestrun-runner-only-', async (root) => {
+    const xctestrunPath = path.join(root, 'AgentDeviceRunner.xctestrun');
+    fs.writeFileSync(
+      xctestrunPath,
+      JSON.stringify({
+        TestConfigurations: [{ TestTargets: [{ TestBundlePath: 'AgentDeviceRunnerUITests' }] }],
+      }),
+    );
+
+    appleRunnerTestHost.update({ runAppleToolCommand: fakeXctestrunPlutilToolCommand() });
+    const prepared = await prepareXctestrunWithEnv(
+      xctestrunPath,
+      { ...runnerPortEnv, AGENT_DEVICE_RUNNER_TOKEN: 'runner-token-fixture' },
+      'runner-only',
+    );
+
+    for (const written of [prepared.jsonPath, prepared.xctestrunPath]) {
+      assert.equal(fs.statSync(written).mode & 0o777, 0o600, written);
+      const target = JSON.parse(fs.readFileSync(written, 'utf8')).TestConfigurations[0]
+        .TestTargets[0];
+      assert.equal(target.EnvironmentVariables.AGENT_DEVICE_RUNNER_TOKEN, 'runner-token-fixture');
+      assert.equal(target.EnvironmentVariables.AGENT_DEVICE_RUNNER_PORT, '12345');
+      assert.equal(target.UITargetAppEnvironmentVariables, undefined);
+      assert.equal(target.UITestEnvironmentVariables, undefined);
+      assert.equal(target.TestingEnvironmentVariables, undefined);
+    }
   });
 });
 

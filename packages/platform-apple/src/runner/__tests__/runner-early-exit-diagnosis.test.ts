@@ -43,7 +43,7 @@ function sessionFailingWith(
     sessionId: 'early-exit-session',
     device: { platform: 'apple', id: 'device-1', name: 'iPhone', kind: 'device', booted: true },
     deviceId: 'device-1',
-    port: 8100,
+    endpoint: { port: 8100, token: 'runner-token-fixture' },
     xctestrunPath: '/tmp/runner.xctestrun',
     jsonPath: '/tmp/runner.json',
     runnerLogPath,

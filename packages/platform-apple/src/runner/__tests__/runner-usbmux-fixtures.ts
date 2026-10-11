@@ -60,17 +60,23 @@ export function buildPacket(xml: string): Buffer {
 }
 
 export async function readHttpRequestBody(socket: Socket): Promise<string> {
+  return (await readHttpRequest(socket)).body;
+}
+
+/** One request as the runner receives it: the raw head and the declared-length body. */
+export async function readHttpRequest(socket: Socket): Promise<{ head: string; body: string }> {
+  let head = '';
   const body = await readUntil(socket, (buffer) => {
     const headerEnd = buffer.indexOf('\r\n\r\n');
     if (headerEnd < 0) return undefined;
-    const headers = buffer.subarray(0, headerEnd).toString('utf8');
-    const contentLength = Number(/^content-length:\s*(\d+)$/im.exec(headers)?.[1]);
+    head = buffer.subarray(0, headerEnd).toString('utf8');
+    const contentLength = Number(/^content-length:\s*(\d+)$/im.exec(head)?.[1]);
     const bodyStart = headerEnd + 4;
     return buffer.length >= bodyStart + contentLength
       ? buffer.subarray(bodyStart, bodyStart + contentLength)
       : undefined;
   });
-  return body.toString('utf8');
+  return { head, body: body.toString('utf8') };
 }
 
 async function readUntil(
