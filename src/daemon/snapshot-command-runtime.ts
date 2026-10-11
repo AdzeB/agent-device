@@ -9,7 +9,7 @@ import { publicPlatformString } from '@agent-device/kernel/device';
 import { AppError } from '@agent-device/kernel/errors';
 import type { AgentDeviceBackend, BackendSnapshotResult } from '@agent-device/contracts/backend';
 import type { CommandSessionRecord } from '@agent-device/contracts/runtime-contract';
-import { createCommandSurfaceAgentDevice } from '../command-runtime/runtime-command-surface.ts';
+import type { CreateDaemonCommandSurface } from '@agent-device/contracts/daemon-command-surface';
 import { getRequestSignal } from '@agent-device/host-kit/request';
 import { maybeBuildAndroidSnapshotTimeoutFailure } from './android-snapshot-timeout-evidence.ts';
 import { captureSnapshot } from './snapshot-capture.ts';
@@ -44,7 +44,7 @@ export type SnapshotRuntimeRecord =
 type SnapshotRuntimeCommandParams = SnapshotRuntimeRouteParams & {
   command: 'snapshot' | 'diff';
   execute(params: {
-    runtime: ReturnType<typeof createSnapshotRuntime>['runtime'];
+    runtime: Awaited<ReturnType<typeof createSnapshotRuntime>>['runtime'];
     sessionName: string;
     req: DaemonRequest;
     snapshotScope: string | undefined;
@@ -66,7 +66,8 @@ export async function dispatchSnapshotRuntimeCommand(
       const { req, logPath, sessionStore } = params;
       const sessionName = ref?.address ?? params.sessionName;
       const capturedQuality: CapturedSnapshotQuality = {};
-      const { runtime, sessions } = createSnapshotRuntime({
+      const { runtime, sessions } = await createSnapshotRuntime({
+        createCommandSurface: params.createCommandSurface,
         req,
         sessionName,
         logPath,
@@ -122,7 +123,8 @@ export async function dispatchSnapshotRuntimeCommand(
   );
 }
 
-function createSnapshotRuntime(params: {
+async function createSnapshotRuntime(params: {
+  createCommandSurface: CreateDaemonCommandSurface;
   req: DaemonRequest;
   sessionName: string;
   logPath: string;
@@ -176,7 +178,7 @@ function createSnapshotRuntime(params: {
       return ref ?? sessionStore.publish(sessionName, nextSession);
     },
   });
-  const runtime = createCommandSurfaceAgentDevice({
+  const runtime = await params.createCommandSurface({
     backend: createDaemonSnapshotBackend({
       req,
       logPath,

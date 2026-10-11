@@ -5,7 +5,7 @@ import type {
   BackendSnapshotResult,
 } from '@agent-device/contracts/backend';
 import { resolveTargetDevice } from '@agent-device/device-selection/dispatch-resolve';
-import { createCommandSurfaceAgentDevice } from '../command-runtime/runtime-command-surface.ts';
+import type { CreateDaemonCommandSurface } from '@agent-device/contracts/daemon-command-surface';
 import { publicPlatformString } from '@agent-device/kernel/device';
 import type { SnapshotState, SnapshotNode } from '@agent-device/kernel/snapshot';
 import { createDaemonRuntimePolicy } from './runtime-policy.ts';
@@ -34,6 +34,8 @@ import { checkIsArgs } from '@agent-device/selectors';
 import { noActiveSessionError } from '@agent-device/kernel/contracts';
 
 export type SelectorRuntimeParams = {
+  /** Builds the command surface this request's selector runtime executes through. */
+  createCommandSurface: CreateDaemonCommandSurface;
   req: DaemonRequest;
   sessionName: string;
   logPath?: string;
@@ -69,7 +71,7 @@ type ResolvedSelectorRuntime =
   | {
       ok: true;
       ref: SessionRef | undefined;
-      runtime: ReturnType<typeof createSelectorRuntimeForDevice>;
+      runtime: Awaited<ReturnType<typeof createSelectorRuntimeForDevice>>;
     }
   | { ok: false; response: DaemonResponse };
 
@@ -82,8 +84,8 @@ type ResolvedSelectorDevice =
     }
   | { ok: false; response: DaemonResponse };
 
-export function createSelectorRuntimeForDevice(params: SelectorRuntimeDeviceParams) {
-  return createCommandSurfaceAgentDevice({
+export async function createSelectorRuntimeForDevice(params: SelectorRuntimeDeviceParams) {
+  return await params.createCommandSurface({
     backend: createSelectorBackend(params),
     ...createDaemonRuntimePolicy('selector commands', { plural: true }),
     sessions: createDaemonRuntimeSessionStore({
@@ -145,7 +147,7 @@ export async function createBoundSelectorRuntime(
   return {
     ok: true,
     ref: resolved.ref,
-    runtime: createSelectorRuntimeForDevice({
+    runtime: await createSelectorRuntimeForDevice({
       ...params,
       ref: resolved.ref,
       session: resolved.session,

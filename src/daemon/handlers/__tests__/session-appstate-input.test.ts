@@ -29,6 +29,7 @@ import {
   type RuntimeFacts,
 } from '@agent-device/contracts/platform-runtime';
 import type { BindDeviceRuntime } from '../../request-runtime-binding.ts';
+import { testCreateCommandSurface } from '../../__tests__/command-surface-fixture.ts';
 
 test('appstate on iOS requires active session on selected device', async () => {
   const sessionStore = makeSessionStore();
@@ -55,6 +56,7 @@ test('appstate on iOS requires active session on selected device', async () => {
   mockDispatch.mockRejectedValue(new Error('snapshot dispatch should not run'));
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -102,6 +104,7 @@ test('appstate returns session appName when bundle id is unavailable', async () 
   mockDispatch.mockRejectedValue(new Error('snapshot dispatch should not run'));
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -152,6 +155,7 @@ test('appstate fails when iOS session has no tracked app', async () => {
   mockResolveTargetDevice.mockResolvedValue(selectedDevice);
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -186,6 +190,7 @@ test('appstate without session on iOS selector returns SESSION_NOT_FOUND', async
   mockResolveTargetDevice.mockResolvedValue(selectedDevice);
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -210,6 +215,7 @@ test('appstate without session on iOS selector returns SESSION_NOT_FOUND', async
 test('appstate with explicit missing session returns SESSION_NOT_FOUND', async () => {
   const sessionStore = makeSessionStore();
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -236,6 +242,7 @@ test('appstate with explicit missing session returns SESSION_NOT_FOUND', async (
 test('clipboard requires an active session or explicit device selector', async () => {
   const sessionStore = makeSessionStore();
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -277,6 +284,7 @@ test('clipboard rejects unsupported iOS physical devices', async () => {
   mockDispatch.mockRejectedValue(new Error('dispatch should not run for unsupported targets'));
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -363,6 +371,7 @@ test('appstate on iOS reads the session app state from the runner when its owner
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: iosSessionRequest(sessionName),
     sessionName,
@@ -395,6 +404,7 @@ test('appstate on iOS keeps the session answer, with no state, when no runner is
   const runtime = appleAppStateRuntime(async () => ({}));
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: iosSessionRequest(sessionName),
     sessionName,
@@ -425,6 +435,7 @@ test('appstate on iOS keeps the session answer, with no state, when the runner c
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: iosSessionRequest(sessionName),
     sessionName,

@@ -17,6 +17,7 @@ import {
 import type { SessionState } from '../../../session-state.ts';
 import { handleSessionCommands } from '../../../handlers/__tests__/session-command-harness.ts';
 import { mkdtempForTestSync } from '../../../../__tests__/test-utils/tmp-dir.ts';
+import { testCreateCommandSurface } from '../../../__tests__/command-surface-fixture.ts';
 
 test('open web URL on iOS device session without active app falls back to Safari', async () => {
   const sessionStore = makeSessionStore();
@@ -39,6 +40,7 @@ test('open web URL on iOS device session without active app falls back to Safari
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -90,6 +92,7 @@ test('open web URL on iOS simulator session without active app falls back to Saf
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -136,6 +139,7 @@ test('open app and URL on existing iOS device session keeps app context', async 
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -184,6 +188,7 @@ test('open app on existing macOS session resolves and stores bundle id', async (
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -217,6 +222,7 @@ test('open rejects --surface on non-macOS devices', async () => {
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -269,6 +275,7 @@ test('open on existing macOS frontmost-app session preserves surface without --s
 
   try {
     const response = await handleSessionCommands({
+      createCommandSurface: testCreateCommandSurface,
       platformServices: daemonPlatformServicesFixture(),
       req: {
         token: 't',
@@ -338,6 +345,7 @@ test('open on existing iOS session refreshes unavailable simulator by name', asy
 
   const response = await withMockedPlatform('darwin', async () =>
     handleSessionCommands({
+      createCommandSurface: testCreateCommandSurface,
       platformServices: daemonPlatformServicesFixture(),
       req: {
         token: 't',
@@ -388,6 +396,7 @@ test('open app on existing Android session resolves and stores package id', asyn
   mockResolveAndroidPackage.mockResolvedValue('org.reactjs.native.example.RNCLI83');
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -433,6 +442,7 @@ test('open intent target on existing Android session clears stale package contex
   mockResolveAndroidPackage.mockResolvedValue(undefined);
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -487,6 +497,7 @@ test('open on existing Android session preserves a comparable freshness baseline
   mockResolveAndroidPackage.mockResolvedValue('com.android.settings');
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',

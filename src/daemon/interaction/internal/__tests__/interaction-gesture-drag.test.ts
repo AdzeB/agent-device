@@ -10,6 +10,7 @@ import { activateCompleteRefFrame, refFrameState } from '../../../ref-frame.ts';
 
 import { handleInteractionCommands } from '../../index.ts';
 import { gestureRuntimeBindingsFixture } from './gesture-runtime-bindings.fixtures.ts';
+import { testCreateCommandSurface } from '../../../__tests__/command-surface-fixture.ts';
 
 const contextFromFlags = () => ({});
 const captureSnapshotForSession = async ({
@@ -62,6 +63,7 @@ function makeDragSession(sessionName: string) {
 
 async function runDrag(sessionStore: ReturnType<typeof makeSessionStore>, sessionName: string) {
   return await handleInteractionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',

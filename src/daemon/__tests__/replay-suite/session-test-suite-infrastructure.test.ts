@@ -8,6 +8,7 @@ import type { DaemonResponse } from '../../daemon-request.ts';
 import { handleSessionCommands } from '../../handlers/__tests__/session-command-harness.ts';
 import { expectOkData, makeSessionStore } from './session-test-suite.fixtures.ts';
 import { mkdtempForTestSync } from '../../../__tests__/test-utils/tmp-dir.ts';
+import { testCreateCommandSurface } from '../command-surface-fixture.ts';
 
 vi.mock('../../snapshot-interactor-capture.ts', () => ({
   captureSnapshotWithInteractor: vi.fn(async () => {
@@ -22,6 +23,7 @@ test('test --json marks a typed live device claim as infrastructure without retr
 
   let attempts = 0;
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -70,6 +72,7 @@ test('test --json retries DEVICE_IN_USE without typed device-claim provenance', 
 
   let attempts = 0;
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',

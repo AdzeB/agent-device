@@ -6,6 +6,7 @@ import {
   type PlatformRuntimeOperations,
 } from './session-close-shutdown.fixtures.ts';
 import { mkdtempForTestSync } from '../../../../__tests__/test-utils/tmp-dir.ts';
+import { testCreateCommandSurface } from '../../../__tests__/command-surface-fixture.ts';
 
 const {
   handleSessionCommands,
@@ -72,6 +73,7 @@ test('close --shutdown calls shutdownSimulator for iOS simulator and includes re
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -138,6 +140,7 @@ test('close --shutdown keeps a selected provider-owned iOS simulator off local s
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -181,6 +184,7 @@ test('close --shutdown calls shutdownAndroidEmulator for Android emulator and in
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -225,6 +229,7 @@ test('close --shutdown is ignored for non-simulator iOS devices', async () => {
   );
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -264,6 +269,7 @@ test('close --shutdown is ignored for Android devices', async () => {
   );
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -311,6 +317,7 @@ test('close --shutdown returns success and failure payload when shutdownAndroidE
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -352,6 +359,7 @@ test('close --shutdown returns success and failure payload when shutdownSimulato
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',

@@ -29,6 +29,7 @@ import { mkdtempForTestSync } from '../../__tests__/test-utils/tmp-dir.ts';
 import { createAudioProbeAdmissionLedger } from '@agent-device/capture-kit/audio-probe-admission-ledger';
 import { createPerfCaptureAdmissionLedger } from '@agent-device/capture-kit/perf-capture-admission-ledger';
 import { createScreenRecordingAdmissionLedger } from '@agent-device/capture-kit/screen-recording-admission-ledger';
+import { testCreateCommandSurface } from './command-surface-fixture.ts';
 
 const SPECIALIZED_ROUTES = [
   'humanControl',
@@ -507,6 +508,7 @@ async function runCatalogCommandThroughHandlerChain(
       async () => [],
       async () =>
         await runRequestHandlerChain({
+          createCommandSurface: testCreateCommandSurface,
           platformServices: daemonPlatformServicesFixture(),
           req,
           sessionName: req.session,

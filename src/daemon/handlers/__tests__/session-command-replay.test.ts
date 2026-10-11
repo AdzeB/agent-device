@@ -8,6 +8,7 @@ import type { DaemonRequest } from '../../daemon-request.ts';
 
 import { replayScriptSourceBundleFor } from '../../../__tests__/test-utils/replay-script-source.ts';
 import { mkdtempForTestSync } from '../../../__tests__/test-utils/tmp-dir.ts';
+import { testCreateCommandSurface } from '../../__tests__/command-surface-fixture.ts';
 
 test('replay parses open --relaunch flag and replays open with relaunch semantics', async () => {
   const sessionStore = makeSessionStore();
@@ -17,6 +18,7 @@ test('replay parses open --relaunch flag and replays open with relaunch semantic
 
   const invoked: DaemonRequest[] = [];
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -56,6 +58,7 @@ test('replay parses runtime set flags and replays runtime command', async () => 
   const invoked: DaemonRequest[] = [];
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -96,6 +99,7 @@ test('replay parses inline open runtime flags and replays open with runtime payl
   const invoked: DaemonRequest[] = [];
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -141,6 +145,7 @@ test('replay delivers scroll --until and wait --raw flags to the dispatched step
 
   const invoked: DaemonRequest[] = [];
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -177,6 +182,7 @@ test('replay inherits parent device selectors for each invoked step', async () =
 
   const invoked: DaemonRequest[] = [];
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -217,6 +223,7 @@ test('replay inherits the parent web platform selector for each invoked step', a
 
   const invoked: DaemonRequest[] = [];
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -261,6 +268,7 @@ test('test --platform web reports no matching scripts, typed or untyped, because
   fs.writeFileSync(path.join(root, '02-android.ad'), 'context platform=android\nopen "Demo"\n');
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',

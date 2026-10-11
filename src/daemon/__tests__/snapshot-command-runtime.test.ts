@@ -11,6 +11,7 @@ import { dispatchSnapshotDiffViaRuntime } from '../snapshot-diff-runtime.ts';
 import { dispatchSnapshotViaRuntime } from '../snapshot-runtime.ts';
 import { legacyDispatchCapture } from './legacy-snapshot-capture-fixture.ts';
 import { snapshotRuntimeFixture } from './snapshot-runtime-fixture.ts';
+import { testCreateCommandSurface } from './command-surface-fixture.ts';
 
 /**
  * The capture double the snapshot runtime fixture's bound operation delegates to. Cancellation is
@@ -73,11 +74,13 @@ for (const command of ['snapshot', 'diff snapshot'] as const) {
       const running =
         command === 'snapshot'
           ? dispatchSnapshotViaRuntime({
+              createCommandSurface: testCreateCommandSurface,
               ...input,
               ...snapshotRuntimeFixture(requestId),
               platformServices: daemonPlatformServicesFixture(),
             })
           : dispatchSnapshotDiffViaRuntime({
+              createCommandSurface: testCreateCommandSurface,
               ...input,
               ...snapshotRuntimeFixture(requestId),
               platformServices: daemonPlatformServicesFixture(),
@@ -114,6 +117,7 @@ for (const change of ['unchanged', 'rebuild', 'replace'] as const) {
       };
     });
     const running = dispatchSnapshotViaRuntime({
+      createCommandSurface: testCreateCommandSurface,
       req: { command: 'snapshot', positionals: [], token: 't', session: address },
       sessionName: address,
       logPath: '/dev/null',
@@ -169,6 +173,7 @@ test('a composed snapshot refuses its supplied retired lifetime before facts or 
   captureMock.mockResolvedValue({ nodes: [], truncated: false, backend: 'uiautomator' });
   await expect(
     dispatchSnapshotViaRuntime({
+      createCommandSurface: testCreateCommandSurface,
       req: { command: 'snapshot', positionals: [], token: 't', session: 'default' },
       sessionName: address,
       sessionRef: ref,

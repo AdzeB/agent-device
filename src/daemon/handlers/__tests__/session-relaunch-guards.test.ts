@@ -12,10 +12,12 @@ import {
 import { handleSessionCommands } from './session-command-harness.ts';
 import { makeTestScreenRecordingResource } from '../../../__tests__/test-utils/screen-recording-live-handle.ts';
 import { mkdtempForTestSync } from '../../../__tests__/test-utils/tmp-dir.ts';
+import { testCreateCommandSurface } from '../../__tests__/command-surface-fixture.ts';
 
 test('open --relaunch rejects URL targets', async () => {
   const sessionStore = makeSessionStore();
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -41,6 +43,7 @@ test('open --relaunch rejects URL targets', async () => {
 test('open --relaunch fails without app when no session exists', async () => {
   const sessionStore = makeSessionStore();
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -66,6 +69,7 @@ test('open --relaunch fails without app when no session exists', async () => {
 test('open --relaunch rejects Android app binary paths', async () => {
   const sessionStore = makeSessionStore();
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -89,6 +93,7 @@ test('open --relaunch rejects Android app binary paths', async () => {
 test('open --relaunch rejects bare Android app binary filenames', async () => {
   const sessionStore = makeSessionStore();
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -123,6 +128,7 @@ test('open --relaunch rejects Android app binary paths for active sessions', asy
   sessionStore.publish('default', session);
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -146,6 +152,7 @@ test('open --relaunch rejects Android app binary paths for active sessions', asy
 test('open --relaunch rejects Android app binary paths before resolving a new device', async () => {
   const sessionStore = makeSessionStore();
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -190,6 +197,7 @@ test('open on in-use device returns DEVICE_IN_USE before readiness checks', asyn
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -245,6 +253,7 @@ test('open on device owned by recording session returns recording recovery hint'
   });
 
   const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',

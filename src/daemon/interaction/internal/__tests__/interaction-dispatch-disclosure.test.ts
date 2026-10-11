@@ -36,6 +36,7 @@ import {
   makeSession,
   makeStaleRefSession,
 } from './interaction-touch-fixtures.ts';
+import { testCreateCommandSurface } from '../../../__tests__/command-surface-fixture.ts';
 
 // contracts/fixtures/dispatch-disclosure.json, daemon and post-action guard rows: the daemon rows
 // drive a real `press` through the daemon interaction handler, inside the router's dispatch seam,
@@ -95,6 +96,7 @@ async function press({
   };
   sessionStore.publish(session.name, session);
   const response = await routeInteraction({
+    createCommandSurface: testCreateCommandSurface,
     req: { token: 't', session: session.name, command, positionals, flags },
     sessionName: session.name,
     sessionStore,
@@ -192,6 +194,7 @@ async function swipeRefusedOnSecondRepetition(): Promise<unknown> {
   const session = makeSession('dispatch-disclosure-swipe');
   sessionStore.publish(session.name, session);
   const response = await routeInteraction({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -225,6 +228,7 @@ async function gestureDragRefusedBeforeDispatch(): Promise<unknown> {
   expireRefFrame(session);
   sessionStore.publish(session.name, session);
   const response = await routeInteraction({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -283,6 +287,7 @@ async function refRefusedAfterAndroidRecovery(command: 'press' | 'gesture'): Pro
     openApp,
   };
   const response = await routeInteraction({
+    createCommandSurface: testCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req: {
       token: 't',
@@ -339,6 +344,7 @@ async function pressThenForegroundReadRefused(): Promise<unknown> {
     },
   };
   const response = await routeInteraction({
+    createCommandSurface: testCreateCommandSurface,
     req: { token: 't', session: session.name, command: 'press', positionals: ['50', '40'] },
     sessionName: session.name,
     sessionStore,
@@ -449,6 +455,7 @@ test('a plain Error a backend throws reaches the wire with dispatched unknown', 
   }) as unknown as typeof bindings.bindDevice;
   await assert.rejects(
     routeInteraction({
+      createCommandSurface: testCreateCommandSurface,
       req: { token: 't', session: session.name, command: 'press', positionals: ['@e1'], flags: {} },
       sessionName: session.name,
       sessionStore,
