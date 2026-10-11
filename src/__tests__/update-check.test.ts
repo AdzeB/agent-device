@@ -188,3 +188,73 @@ test('worker resets prompted state when it discovers a newer version', async () 
   assert.equal(cache.latestVersion, '0.13.0');
   assert.equal(cache.prompted, false);
 });
+
+test('a nightly build checks and recommends the nightly dist-tag', async () => {
+  const stateDir = makeTempStateDir();
+  cleanupPaths.push(stateDir);
+  const cachePath = path.join(stateDir, 'update-check.json');
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ version: '0.12.0-nightly.20261011.8' }),
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  await runUpdateCheckWorker({ cachePath, currentVersion: '0.12.0-nightly.20261010.7' });
+
+  assert.equal(fetchMock.mock.calls[0]?.[0], 'https://registry.npmjs.org/agent-device/nightly');
+  let stderr = '';
+  vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: unknown) => {
+    stderr += String(chunk);
+    return true;
+  }) as typeof process.stderr.write);
+  maybeRunUpgradeNotifier({
+    command: 'devices',
+    currentVersion: '0.12.0-nightly.20261010.7',
+    stateDir,
+    flags: {},
+  });
+  assert.match(
+    stderr,
+    /-> 0\.12\.0-nightly\.20261011\.8\. Run `npm install -g agent-device@nightly`/,
+  );
+});
+
+test('a cached version from the other channel is neither shown nor kept past a channel switch', () => {
+  vi.mocked(runCmdDetached).mockClear();
+  const stateDir = makeTempStateDir();
+  cleanupPaths.push(stateDir);
+  writeCache(stateDir, {
+    latestVersion: '0.12.0-nightly.20261011.8',
+    distTag: 'nightly',
+    checkedAt: '2026-03-30T10:00:00.000Z',
+  });
+  let stderr = '';
+  vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: unknown) => {
+    stderr += String(chunk);
+    return true;
+  }) as typeof process.stderr.write);
+
+  maybeRunUpgradeNotifier({ command: 'devices', currentVersion: '0.11.3', stateDir, flags: {} });
+
+  assert.equal(stderr, '');
+  assert.equal(vi.mocked(runCmdDetached).mock.calls.length, 1, 'the switch starts a fresh check');
+});
+
+test('a failed check after a channel switch records the new channel and drops the old version', async () => {
+  const stateDir = makeTempStateDir();
+  cleanupPaths.push(stateDir);
+  const cachePath = path.join(stateDir, 'update-check.json');
+  writeCache(stateDir, {
+    latestVersion: '0.12.0-nightly.20261011.8',
+    distTag: 'nightly',
+    checkedAt: '2026-03-30T10:00:00.000Z',
+  });
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+
+  await runUpdateCheckWorker({ cachePath, currentVersion: '0.11.3' });
+
+  const cache = readCache(stateDir);
+  assert.equal(cache.distTag, 'latest');
+  assert.equal(cache.latestVersion, undefined);
+  assert.equal(cache.checkedAt, '2026-03-31T10:00:00.000Z');
+});

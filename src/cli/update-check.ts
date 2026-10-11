@@ -12,6 +12,8 @@ const UPDATE_CHECK_CACHE_FILE = 'update-check.json';
 
 type UpdateCheckCache = {
   checkedAt?: string;
+  /** The dist-tag `latestVersion` was read from; a cache from before channels means `latest`. */
+  distTag?: string;
   latestVersion?: string;
   prompted?: boolean;
 };
@@ -42,7 +44,7 @@ export function maybeRunUpgradeNotifier(options: UpgradeNotifierOptions): void {
   if (shouldShowUpgradeNotice(cache, options.currentVersion)) {
     process.stderr.write(
       `Update available: ${PACKAGE_NAME} ${options.currentVersion} -> ${cache.latestVersion}. ` +
-        `Run \`npm install -g ${PACKAGE_NAME}@latest\` to upgrade the CLI.\n`,
+        `Run \`npm install -g ${PACKAGE_NAME}@${distTagFor(options.currentVersion)}\` to upgrade the CLI.\n`,
     );
     writeUpdateCheckCache(cachePath, {
       ...cache,
@@ -50,7 +52,7 @@ export function maybeRunUpgradeNotifier(options: UpgradeNotifierOptions): void {
     });
   }
 
-  if (shouldStartBackgroundCheck(cache, now)) {
+  if (shouldStartBackgroundCheck(cache, options.currentVersion, now)) {
     spawnBackgroundUpdateCheck(cachePath, options.currentVersion);
   }
 }
@@ -59,22 +61,28 @@ export async function runUpdateCheckWorker(options: UpdateCheckWorkerOptions): P
   const now = Date.now();
   const cache = readUpdateCheckCache(options.cachePath);
 
+  const distTag = distTagFor(options.currentVersion);
   try {
-    const latestVersion = (await fetchLatestPackageVersion()) ?? undefined;
+    const latestVersion = (await fetchLatestPackageVersion(distTag)) ?? undefined;
     if (!latestVersion || compareVersions(latestVersion, options.currentVersion) <= 0) {
-      writeUpdateCheckCache(options.cachePath, { checkedAt: new Date(now).toISOString() });
+      writeUpdateCheckCache(options.cachePath, { checkedAt: new Date(now).toISOString(), distTag });
       return;
     }
 
     writeUpdateCheckCache(options.cachePath, {
       checkedAt: new Date(now).toISOString(),
+      distTag,
       latestVersion,
       prompted: cache.latestVersion === latestVersion ? cache.prompted === true : false,
     });
   } catch {
+    // A failed check still records this channel, so a channel switch waits out the interval
+    // instead of retrying on every command, and never keeps the other channel's version.
+    const kept = cachedDistTag(cache) === distTag ? cache : {};
     writeUpdateCheckCache(options.cachePath, {
-      ...cache,
+      ...kept,
       checkedAt: new Date(now).toISOString(),
+      distTag,
     });
   }
 }
@@ -91,11 +99,17 @@ function shouldEnableUpgradeNotifier(options: UpgradeNotifierOptions): boolean {
 
 function shouldShowUpgradeNotice(cache: UpdateCheckCache, currentVersion: string): boolean {
   if (!cache.latestVersion) return false;
+  if (cachedDistTag(cache) !== distTagFor(currentVersion)) return false;
   if (compareVersions(cache.latestVersion, currentVersion) <= 0) return false;
   return cache.prompted !== true;
 }
 
-function shouldStartBackgroundCheck(cache: UpdateCheckCache, now: number): boolean {
+function shouldStartBackgroundCheck(
+  cache: UpdateCheckCache,
+  currentVersion: string,
+  now: number,
+): boolean {
+  if (cachedDistTag(cache) !== distTagFor(currentVersion)) return true;
   const checkedAt = parseTimestamp(cache.checkedAt);
   return checkedAt === undefined || now - checkedAt >= UPDATE_CHECK_INTERVAL_MS;
 }
@@ -105,6 +119,7 @@ function readUpdateCheckCache(cachePath: string): UpdateCheckCache {
     const raw = JSON.parse(fs.readFileSync(cachePath, 'utf8')) as UpdateCheckCache;
     return {
       checkedAt: typeof raw.checkedAt === 'string' ? raw.checkedAt : undefined,
+      distTag: typeof raw.distTag === 'string' ? raw.distTag : undefined,
       latestVersion: typeof raw.latestVersion === 'string' ? raw.latestVersion : undefined,
       prompted: raw.prompted === true,
     };
@@ -150,8 +165,17 @@ function spawnBackgroundUpdateCheck(cachePath: string, currentVersion: string): 
   ]);
 }
 
-async function fetchLatestPackageVersion(): Promise<string | undefined> {
-  const response = await fetch(`https://registry.npmjs.org/${PACKAGE_NAME}/latest`, {
+function cachedDistTag(cache: UpdateCheckCache): string {
+  return cache.distTag ?? 'latest';
+}
+
+/** A nightly build follows the `nightly` dist-tag; every other build follows `latest`. */
+function distTagFor(version: string): 'latest' | 'nightly' {
+  return version.includes('-nightly.') ? 'nightly' : 'latest';
+}
+
+async function fetchLatestPackageVersion(distTag: string): Promise<string | undefined> {
+  const response = await fetch(`https://registry.npmjs.org/${PACKAGE_NAME}/${distTag}`, {
     signal: AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS),
     headers: { accept: 'application/json' },
   });
