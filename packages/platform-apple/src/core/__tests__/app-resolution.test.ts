@@ -11,8 +11,10 @@ vi.mock('../simctl.ts', async (importOriginal) => ({
 import {
   detectSoleRunningIosSimulatorApp,
   findIosSimulatorInstalledApp,
+  resolveIosApp,
 } from '../app-resolution.ts';
 import type { DeviceInfo } from '@agent-device/kernel/device';
+import { AppError } from '@agent-device/kernel/errors';
 
 const bootedSimulator: DeviceInfo = {
   platform: 'apple',
@@ -28,8 +30,63 @@ beforeEach(() => {
     stdout: JSON.stringify({
       'com.example.demo': { CFBundleDisplayName: 'Demo' },
       'com.apple.Preferences': { CFBundleDisplayName: 'Settings' },
+      'com.booking.app': { CFBundleDisplayName: 'Booking.com' },
     }),
   });
+});
+
+test('resolveIosApp passes a dotted target through without listing apps by default', async () => {
+  assert.equal(await resolveIosApp(bootedSimulator, 'Booking.com'), 'Booking.com');
+  assert.equal(mockRunSimctl.mock.calls.length, 0);
+});
+
+test.for([
+  { label: 'a failed listapps', reply: { stdout: '', stderr: 'CoreSimulator error', exitCode: 1 } },
+  { label: 'an unparsable listapps answer', reply: { stdout: 'garbage', stderr: '', exitCode: 0 } },
+])(
+  'resolveIosApp reports $label as an enumeration failure, not a missing app',
+  async ({ reply }) => {
+    mockRunSimctl.mockResolvedValue(reply);
+    for (const [target, options] of [
+      ['com.example.unlisted', { installedOnly: true }],
+      ['Unlisted', {}],
+    ] as const) {
+      await assert.rejects(
+        () => resolveIosApp(bootedSimulator, target, options),
+        (error: unknown) =>
+          error instanceof AppError &&
+          error.code === 'COMMAND_FAILED' &&
+          error.details?.reason === 'app-list-unreadable',
+      );
+    }
+  },
+);
+
+test('resolveIosApp installedOnly re-checks a name an earlier resolution cached', async () => {
+  assert.equal(await resolveIosApp(bootedSimulator, 'Demo'), 'com.example.demo');
+  mockRunSimctl.mockResolvedValue({ stdout: JSON.stringify({}) });
+
+  assert.equal(await resolveIosApp(bootedSimulator, 'Demo'), 'com.example.demo');
+  await assert.rejects(
+    () => resolveIosApp(bootedSimulator, 'Demo', { installedOnly: true }),
+    (error: unknown) => error instanceof AppError && error.code === 'APP_NOT_INSTALLED',
+  );
+});
+
+test('resolveIosApp installedOnly matches installed bundle ids, then display names, else refuses', async () => {
+  const installedOnly = { installedOnly: true } as const;
+  assert.equal(
+    await resolveIosApp(bootedSimulator, 'com.example.demo', installedOnly),
+    'com.example.demo',
+  );
+  assert.equal(
+    await resolveIosApp(bootedSimulator, 'Booking.com', installedOnly),
+    'com.booking.app',
+  );
+  await assert.rejects(
+    () => resolveIosApp(bootedSimulator, 'com.example.missing', installedOnly),
+    (error: unknown) => error instanceof AppError && error.code === 'APP_NOT_INSTALLED',
+  );
 });
 
 test('findIosSimulatorInstalledApp verifies exact bundle ids and app-name aliases', async () => {
@@ -45,6 +102,20 @@ test('findIosSimulatorInstalledApp verifies exact bundle ids and app-name aliase
     await findIosSimulatorInstalledApp(bootedSimulator, 'com.example.missing'),
     undefined,
   );
+});
+
+test('findIosSimulatorInstalledApp answers not-here for an ambiguous name, an uninstalled alias target, or an unreadable app list', async () => {
+  mockRunSimctl.mockResolvedValue({
+    stdout: JSON.stringify({
+      'com.example.one': { CFBundleDisplayName: 'Twin' },
+      'com.example.two': { CFBundleDisplayName: 'Twin' },
+    }),
+  });
+  assert.equal(await findIosSimulatorInstalledApp(bootedSimulator, 'Twin'), undefined);
+  assert.equal(await findIosSimulatorInstalledApp(bootedSimulator, 'settings'), undefined);
+
+  mockRunSimctl.mockResolvedValue({ stdout: '', stderr: 'CoreSimulator error', exitCode: 1 });
+  assert.equal(await findIosSimulatorInstalledApp(bootedSimulator, 'com.example.one'), undefined);
 });
 
 test('findIosSimulatorInstalledApp does not probe a stopped simulator', async () => {
