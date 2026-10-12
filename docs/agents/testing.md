@@ -71,10 +71,9 @@ Before creating fixtures, look in `src/__tests__/test-utils/`. Import named buil
 that defines them (`session-factories.ts`, `device-fixtures.ts`, `store-factory.ts`); avoid importing
 unrelated helpers through a barrel. Shared `DeviceInfo`, session, snapshot, store, runtime-fact,
 and mocked-binary values belong in a sibling fixture module, not in repeated test literals.
-`PROPERTY_RUNS` and the interaction touch-point/rect arbitraries live in
-`@agent-device/selectors/snapshot-geometry-fixtures` — the canonical location root tests and the
-selectors package both build on — not in `src/__tests__/test-utils/`. `makeSnapshotState` itself
-canonically lives in `@agent-device/capture-kit/snapshot-state-fixtures`, re-exported from there.
+`PROPERTY_RUNS` and the touch-point/rect arbitraries live in
+`@agent-device/selectors/snapshot-geometry-fixtures`, not `src/__tests__/test-utils/`;
+`makeSnapshotState` lives in `@agent-device/capture-kit/snapshot-state-fixtures`.
 
 Use `mkdtempForTest` or `mkdtempForTestSync`. Global setup redirects `TMPDIR` for the run and
 removes it after every worker exits — skip per-test cleanup. An interrupted run may leave a
@@ -147,8 +146,7 @@ action with a literal gate id; `pnpm check:gate-manifest` verifies registration,
 path reachability, and routed device lanes. Raw shell text cannot declare ownership.
 
 New check: update the catalog and its executable model. Changed path ownership: plant a path that
-would previously be misrouted and watch the selector or manifest fail before fixing it. Workflow
-limitations (manual-only, opaque owners) belong in the gate declarations, not here.
+would previously be misrouted and watch the selector or manifest fail before fixing it.
 
 ## Concurrency torture lane
 
