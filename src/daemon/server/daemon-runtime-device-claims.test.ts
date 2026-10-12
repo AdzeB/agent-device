@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mkdtempForTestSync } from '../../__tests__/test-utils/tmp-dir.ts';
+import { platformResourceCleanup } from '../../platform-runtime-resource-cleanup.ts';
 
 vi.mock('../session-teardown.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../session-teardown.ts')>();
@@ -50,6 +51,7 @@ test('does not clear a claim after shutdown teardown rejects', async () => {
     sessionStore,
     stderr: { write: () => {} },
     afterSuccessfulTeardown,
+    platformCleanup: platformResourceCleanup,
   });
 
   expect(afterSuccessfulTeardown).not.toHaveBeenCalled();
@@ -67,6 +69,7 @@ test('does not clear a claim after shutdown teardown times out', async () => {
     sessionStore,
     stderr: { write: () => {} },
     afterSuccessfulTeardown,
+    platformCleanup: platformResourceCleanup,
   });
   await vi.advanceTimersByTimeAsync(5_000);
   await teardown;
