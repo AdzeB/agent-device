@@ -107,6 +107,7 @@ export const UNRANKED_ZONES: ReadonlySet<string> = new Set([
   'host-kit',
   'capture-kit',
   'provision-kit',
+  'test-kit',
   ...PLATFORMS.map((family) => `platform-${family}`),
   'provider-webdriver',
   'provider-limrun',
