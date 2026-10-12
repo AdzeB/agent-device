@@ -23,6 +23,7 @@ import {
   type RuntimeAdmissionBindings,
 } from './runtime-admission.ts';
 import { runtimeExecutionFromContext } from './snapshot-runtime-capture-input.ts';
+import type { QuerySelectorRuntimeOperations } from '@agent-device/contracts/selector-observation-runtime';
 import type { DaemonFailureResponse } from '@agent-device/kernel/contracts';
 
 /**
@@ -43,6 +44,12 @@ export type BoundGestureExecutor = Readonly<{
    * without one (Linux).
    */
   gestureViewport?: (context: DaemonCommandContext) => Promise<Rect>;
+  /**
+   * The owner's CONDITIONAL live selector read (#1542 off-screen rescue), present only when this
+   * gesture tier's use admitted it; the gesture rows' endpoints resolve through the same
+   * off-screen guard the touch rows do. Absence refuses on the capture's verdict unchanged.
+   */
+  querySelector?: QuerySelectorRuntimeOperations['querySelector'];
 }>;
 
 export type ResolvedGestureRuntime =
@@ -138,6 +145,9 @@ async function bindGestureTier(
         performPlan: async (gesturePlan, context) =>
           await runtime.operations.performGesturePlan(gesturePlanInput(gesturePlan, context)),
         ...selectGestureFrame(runtime),
+        ...(runtime.operations.querySelector
+          ? { querySelector: runtime.operations.querySelector }
+          : {}),
       };
     }
     case 'directional-fling': {
@@ -148,6 +158,9 @@ async function bindGestureTier(
             gesturePlanInput(gesturePlan, context),
           ),
         ...selectGestureFrame(runtime),
+        ...(runtime.operations.querySelector
+          ? { querySelector: runtime.operations.querySelector }
+          : {}),
       };
     }
     case 'multi-touch': {
@@ -158,6 +171,9 @@ async function bindGestureTier(
             gesturePlanInput(gesturePlan, context),
           ),
         ...selectGestureFrame(runtime),
+        ...(runtime.operations.querySelector
+          ? { querySelector: runtime.operations.querySelector }
+          : {}),
       };
     }
     case 'target-authored-drag': {
@@ -168,6 +184,9 @@ async function bindGestureTier(
             gesturePlanInput(gesturePlan, context),
           ),
         ...selectGestureFrame(runtime),
+        ...(runtime.operations.querySelector
+          ? { querySelector: runtime.operations.querySelector }
+          : {}),
       };
     }
   }

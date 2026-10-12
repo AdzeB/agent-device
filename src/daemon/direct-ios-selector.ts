@@ -6,8 +6,6 @@ import type { SessionState } from './session-state.ts';
 import { readSimpleSelectorTarget } from '@agent-device/selectors';
 import { asAppError, isRequestCanceledError } from '@agent-device/kernel/errors';
 import type { ElementSelectorTapOptions } from '@agent-device/contracts/interactor-types';
-import { queryAppleRuntimeSelector } from '../platform-runtime-apple-resources.ts';
-import type { AppleRunnerRequestOptions } from './apple-runner-options.ts';
 
 export type DirectIosSelectorTarget = ElementSelectorTapOptions & { raw: string };
 
@@ -43,40 +41,6 @@ export function deriveDirectIosNodeSelector(
   const label = node.label?.trim();
   if (label) return { key: 'label', value: label };
   return null;
-}
-
-export type DirectIosSelectorQueryResult = {
-  found: boolean;
-  text?: string;
-  node?: SnapshotNode;
-};
-
-export async function queryDirectIosSelector(
-  session: SessionState,
-  selector: Pick<DirectIosSelectorTarget, 'key' | 'value'>,
-  requestOptions: AppleRunnerRequestOptions,
-): Promise<DirectIosSelectorQueryResult> {
-  const data = await queryAppleRuntimeSelector(
-    session.device,
-    selector,
-    session.appBundleId,
-    requestOptions,
-  );
-  const found = data.found === true;
-  const node = readDirectIosSelectorNode(data);
-  return {
-    found,
-    ...(typeof data.text === 'string' ? { text: data.text } : {}),
-    ...(node ? { node } : {}),
-  };
-}
-
-function readDirectIosSelectorNode(data: Record<string, unknown>): SnapshotNode | undefined {
-  const nodes = data.nodes;
-  if (!Array.isArray(nodes)) return undefined;
-  const node = nodes[0];
-  if (!node || typeof node !== 'object') return undefined;
-  return node as SnapshotNode;
 }
 
 /** The runner's selector refusals: it resolved the selector and refused before any gesture. */
