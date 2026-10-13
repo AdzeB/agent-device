@@ -1,14 +1,19 @@
 import {
   MOVING_TARGET_GATE_SAMPLE_GAP_MS,
   movingTargetGateDecision,
-  movingTargetRectsStable,
-  targetStillMovingHint,
+  type MovingTargetBaseline,
   type MovingTargetGateDecision,
 } from '@agent-device/contracts/moving-target-gate';
 import { INTERACTION_ERROR_REASONS } from '@agent-device/selectors/interaction-error';
-import type { ResolvedInteractionTarget } from '@agent-device/contracts/interaction';
+import type {
+  InteractionTarget,
+  ResolvedInteractionTarget,
+  SurfaceScopedNodes,
+} from '@agent-device/contracts/interaction';
 import type { Rect, SnapshotNode } from '@agent-device/kernel/snapshot';
+import { areCapturedRectsAtSamePosition } from '@agent-device/kernel/rect-center';
 import { AppError, discloseDispatch } from '@agent-device/kernel/errors';
+import { shellQuoteIfNeeded } from '@agent-device/kernel/device-shell';
 import type {
   AgentDeviceRuntime,
   CommandContext,
@@ -17,8 +22,8 @@ import type {
 import { nodeRectByIdentity } from '@agent-device/ad-script';
 import { now, sleep } from '../../runtime-common.ts';
 import { captureInteractionSnapshot } from './interaction-snapshot-capture.ts';
-import { tryResolveRefNode } from './ref-target-resolution.ts';
-import { resolveInteractionTarget, type InteractionTarget } from './resolution.ts';
+import { surfaceScopedNodes } from './post-action-surface.ts';
+import { resolveInteractionTarget } from './resolution.ts';
 import type { ResolveInteractionTargetParams } from './interaction-resolution-request.ts';
 
 /**
@@ -53,7 +58,7 @@ export async function guardResolvedTargetAgainstMotion(
   // picked. Re-resolving under either swaps evidence for a different observation, so this asks
   // before spending the session read the answer would then discard.
   if (params.expectedResolvedTarget || params.preresolvedTarget) return resolved;
-  const gate = await readMovingTargetGate(runtime, options, resolved.node);
+  const gate = await readMovingTargetGate(runtime, options, resolved.node, resolved.preAction);
   if (!gate) return resolved;
   return await resolveAtRestTarget(runtime, options, params, resolved, gate);
 }
@@ -70,20 +75,47 @@ async function readMovingTargetGate(
   runtime: AgentDeviceRuntime,
   options: CommandContext,
   resolvedNode: SnapshotNode,
+  resolvedSurface: SurfaceScopedNodes | undefined,
 ): Promise<MovingTargetRecheck | undefined> {
   const baseline = await readGateBaseline(runtime, options);
   if (!baseline) return undefined;
-  // Screening is the one thing the press gets for free: the last action's own tree, never a new
-  // observation. `nodeRectByIdentity` answers it fail-closed — absent, ambiguous and unmeasurable
-  // all read as "not shown at rest" — because a guard whose failure mode is a refused tap must never
-  // grant rest on positional coincidence.
-  const carried = nodeRectByIdentity(baseline.tree.nodes, resolvedNode);
   const decision = movingTargetGateDecision({
     baselineFinishedAtMs: baseline.finishedAt,
-    targetShownAtRest: carried !== undefined && movingTargetRectsStable(carried, resolvedNode.rect),
+    targetShownAtRest: baselineShowsTargetAtRest(baseline, resolvedNode, resolvedSurface),
     nowMs: now(runtime),
   });
   return decision.kind === 'recheck' ? decision : undefined;
+}
+
+/**
+ * Whether the previous action's own tree already shows this target where this press resolved it —
+ * the one thing the press gets for free, since that tree is the observation the action resolved
+ * against and this asks nothing new of the surface.
+ *
+ * The surfaces have to be the same one before its positions mean anything: an iOS system sheet
+ * arriving over the app publishes a tree of a different surface, and a same-identity node at the
+ * same rect there is exactly the positional coincidence ADR 0014 refuses. Comparing
+ * `surfaceBundleId` draws the same line `post-action-surface.ts` draws between two captures.
+ *
+ * `nodeRectByIdentity` then answers fail-closed — absent, ambiguous and unmeasurable all read as
+ * "not shown at rest" — because a guard whose failure mode is a refused tap must never grant rest
+ * on a guess.
+ *
+ * The claim is an inference from one tree, not stability evidence: an animation that has not moved
+ * the control yet reads here exactly as a finished transition does, and no observation available at
+ * this instant separates them. The tier that carries evidence is `resolveAtRestTarget`, which spends
+ * two fresh observations and requires them to agree on a position and a surface. This one buys the
+ * case it can decide for free — the previous transition already finished, which is what the large
+ * majority of presses inside the window are — and sends everything else to be measured.
+ */
+function baselineShowsTargetAtRest(
+  baseline: MovingTargetBaseline,
+  resolvedNode: SnapshotNode,
+  resolvedSurface: SurfaceScopedNodes | undefined,
+): boolean {
+  if (baseline.tree.surfaceBundleId !== resolvedSurface?.surfaceBundleId) return false;
+  const carried = nodeRectByIdentity(baseline.tree.nodes, resolvedNode);
+  return carried !== undefined && areCapturedRectsAtSamePosition(carried, resolvedNode.rect);
 }
 
 /**
@@ -120,28 +152,54 @@ async function resolveAtRestTarget(
   const waitedFrom = now(runtime);
   await sleep(runtime, gate.waitMs);
   const first = await reObserveTarget(runtime, options, params);
-  if (!first.measured || !first.rect)
-    throw motionRefusal(resolved, undefined, now(runtime) - waitedFrom);
+  if (!first.measured) throw motionRefusal(resolved, undefined, now(runtime) - waitedFrom);
   await sleep(runtime, MOVING_TARGET_GATE_SAMPLE_GAP_MS);
-  const second = await reObserveTarget(runtime, options, params);
-  if (second.measured && movingTargetRectsStable(first.rect, second.rect)) return second.resolved;
-  throw motionRefusal(
-    resolved,
-    { firstRect: first.rect, secondRect: second.rect },
-    now(runtime) - waitedFrom,
-  );
+  const second = onSameSurface(first, await reObserveTarget(runtime, options, params));
+  if (second.measured && areCapturedRectsAtSamePosition(first.rect, second.rect))
+    return second.resolved;
+  throw motionRefusal(resolved, second.rect, now(runtime) - waitedFrom);
 }
 
-/** One look at the target, and whether that look actually measured the surface. */
-type MovingTargetObservation = {
+/**
+ * Rest is one position on one surface, which is why the screening refuses to compare positions
+ * across surfaces at all (#2438). A look taken on another presentation — a system sheet arriving
+ * during the sample gap can carry the same control at the same rect — therefore measures nothing
+ * about where this target came to rest, and is demoted to the shape that already means that: it
+ * cannot certify agreement, and no position from it is reported as somewhere the target moved to.
+ */
+function onSameSurface(
+  first: MovingTargetObservation & { measured: true },
+  next: MovingTargetObservation,
+): MovingTargetObservation {
+  return next.measured && next.surfaceBundleId === first.surfaceBundleId
+    ? next
+    : { measured: false, rect: undefined, resolved: next.resolved };
+}
+
+/** One look at the target: what it resolved to, and whether that look measured a position. */
+type MovingTargetObservation = MovingTargetMeasurement & {
   resolved: ResolvedInteractionTarget;
-  rect: Rect | undefined;
+};
+
+/** Whether a look produced a position of its own, or nothing to compare against. */
+type MovingTargetMeasurement =
+  /** The position this observation's own capture reported for the target, on that capture's surface. */
+  | MovingTargetMeasured
   /**
-   * Whether the rect came from the capture this observation took. A resolution that kept its
-   * authorized ref frame node instead measured nothing, and two of those would "agree" trivially —
-   * rest certified by a non-measurement, the one outcome the gate must never produce.
+   * No position of its own. Two of these would "agree" trivially — rest certified by a
+   * non-measurement, the one outcome the gate must never produce — so the first of them ends the
+   * recheck, and a refusal reports no `movedToRect` rather than a stale one.
    */
-  measured: boolean;
+  | { measured: false; rect: undefined };
+
+/**
+ * A look that measured the target: where it put it, and on which surface. The surface rides along
+ * because a rect is only comparable to one measured on the same presentation (#2438).
+ */
+type MovingTargetMeasured = {
+  measured: true;
+  rect: Rect;
+  surfaceBundleId: string | undefined;
 };
 
 /**
@@ -151,16 +209,9 @@ type MovingTargetObservation = {
  * A `@ref` resolution deliberately spends no capture (ADR 0014 binds a ref to its authorized frame),
  * so the ref branch takes the observation first: publishing it into the session is what lets
  * ADR 0014's reconciliation adopt the capture's coordinates for a same-identity node, which is the
- * sanctioned way a ref's position moves.
- *
- * Whether that adoption happened is already what the resolution reports: it publishes the tree it
- * resolved against as its `preAction`, and that tree IS this capture when the coordinates were
- * adopted. Reading provenance rather than re-matching the node answers the question the gate
- * actually asks — "did this position come from the capture I just took" — and keeps the answer
- * correct for the nodes whose identity is not unique in the tree (an unlabeled button row is one
- * role and no label), which is most of what a screen offers. A resolution that kept its authorized
- * frame node measured nothing here, and the gate refuses rather than comparing one stale rect to
- * itself.
+ * sanctioned way a ref's position moves. `measureRefObservation` then asks whether that adoption is
+ * what actually got dispatched — a resolution that kept its authorized frame node measured nothing
+ * here, and the gate refuses rather than comparing one stale rect to itself.
  */
 async function reObserveTarget(
   runtime: AgentDeviceRuntime,
@@ -169,20 +220,41 @@ async function reObserveTarget(
 ): Promise<MovingTargetObservation> {
   if (options.target.kind !== 'ref') {
     const resolved = await resolveInteractionTarget(runtime, options, params);
-    return { resolved, rect: resolvedRect(resolved), measured: true };
+    const rect = resolvedRect(resolved);
+    // A selector resolution measured its target on the surface it resolved against, which it
+    // publishes as `preAction` along with the tree.
+    const surfaceBundleId = resolved.preAction?.surfaceBundleId;
+    return rect
+      ? { measured: true, resolved, rect, surfaceBundleId }
+      : { measured: false, resolved, rect: undefined };
   }
   const { snapshot } = await captureInteractionSnapshot(runtime, options, true);
   const resolved = await resolveInteractionTarget(runtime, options, params);
-  const resolvedNodeRect = resolvedRect(resolved);
-  const inCapture = tryResolveRefNode(snapshot.nodes, options.target.ref, {
-    fallbackLabel: options.target.fallbackLabel ?? '',
-  });
-  const observedRect = inCapture.kind === 'resolved' ? inCapture.resolved.node.rect : undefined;
-  return {
-    resolved,
-    rect: observedRect,
-    measured: observedRect !== undefined && movingTargetRectsStable(observedRect, resolvedNodeRect),
-  };
+  return { resolved, ...measureRefObservation(surfaceScopedNodes(snapshot), resolved) };
+}
+
+/**
+ * Whether this look measured the target, stated over the provenance the resolution itself reports.
+ *
+ * Rect agreement alone is not enough, and this is the hole that makes it so: ADR 0014 keeps the
+ * authorized frame node when the captured node's identity differs, so a DIFFERENT control that took
+ * over the ref at the frame's own coordinates would produce two agreeing "observations" while the
+ * dispatch went to the stale point. The look measured something only when that reconciliation
+ * REPORTED reading the dispatched node out of the observation — the one account of what got
+ * dispatched that cannot drift from the rule it applied, whatever the rule becomes. The surface
+ * comes from the same capture through `surfaceScopedNodes`, the way the selector branch reads its
+ * resolution's `preAction`.
+ */
+function measureRefObservation(
+  capture: SurfaceScopedNodes,
+  resolved: ResolvedInteractionTarget,
+): MovingTargetMeasurement {
+  const rect = resolvedRect(resolved);
+  const measured =
+    rect !== undefined && 'adoptedFrom' in resolved && resolved.adoptedFrom === 'observation';
+  return measured
+    ? { measured: true, rect, surfaceBundleId: capture.surfaceBundleId }
+    : { measured: false, rect: undefined };
 }
 
 function resolvedRect(resolved: ResolvedInteractionTarget): Rect | undefined {
@@ -190,13 +262,37 @@ function resolvedRect(resolved: ResolvedInteractionTarget): Rect | undefined {
 }
 
 /**
- * The refusal, keyed on the shared reason constant and raised beside the guard that owns it. `rect`
- * is the position the caller's own resolution produced and `movedToRect` where the gate's
- * re-observations found the target instead — the pair that says which way the surface is going.
+ * The hint published beside every `target_still_moving` refusal, owned by the refusal's module so
+ * the reason cannot be published without its recovery.
+ *
+ * A selector re-resolves against a fresh capture and can be retried as-is. An `@ref` cannot survive
+ * the wait: the capture a `wait` takes retires the ref frame (ADR 0014), which is the same reason
+ * the off-screen guard sends its `@ref` refusals to a selector. The selector is quoted for the
+ * caller's shell the way the daemon's other recovery hints quote values (`shellQuoteIfNeeded`), so
+ * a label carrying an apostrophe cannot turn the suggested command into a copy-paste failure.
+ */
+function targetStillMovingHint(params: { selector: string | undefined }): string {
+  const reobserve = params.selector
+    ? `Run wait ${shellQuoteIfNeeded(params.selector)} and retry with the same selector`
+    : 'Run snapshot -i and retry with a selector (text=/id=) rather than this @ref — re-observing retires the ref frame';
+  return (
+    'The target was still moving when the transition window after the previous action ran out, so no resting ' +
+    `position could be confirmed and nothing was tapped. ${reobserve}; or pass --settle to have the action itself ` +
+    'wait for the UI to go quiet.'
+  );
+}
+
+/**
+ * The refusal, keyed on the reason the whole interaction surface shares and raised beside the guard
+ * that owns it. `rect` is the position the caller's own resolution produced and `movedToRect` where
+ * the last re-observation found the target — the pair that says which way the surface is going.
+ * `movedToRect` is the one optional member: a re-observation that measured nothing (the ref kept its
+ * authorized frame node) has no position to name, and an absent value is the honest report rather
+ * than a stale one.
  */
 function motionRefusal(
   resolved: Exclude<ResolvedInteractionTarget, { kind: 'point' }>,
-  disagreement: { firstRect: Rect; secondRect: Rect | undefined } | undefined,
+  movedToRect: Rect | undefined,
   waitedMs: number,
 ): Error {
   const selector = resolved.target.kind === 'selector' ? resolved.target.selector : undefined;
@@ -211,7 +307,7 @@ function motionRefusal(
         reason: INTERACTION_ERROR_REASONS.targetStillMoving,
         ...(selector !== undefined ? { selector } : { ref }),
         ...(resolved.node?.rect ? { rect: resolved.node.rect } : {}),
-        ...(disagreement?.secondRect ? { movedToRect: disagreement.secondRect } : {}),
+        ...(movedToRect ? { movedToRect } : {}),
         waitedMs,
         hint: targetStillMovingHint({ selector }),
       },
