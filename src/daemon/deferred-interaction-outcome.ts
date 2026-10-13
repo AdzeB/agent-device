@@ -1,8 +1,10 @@
 import type { CommandFlags } from '@agent-device/contracts/command';
+import type { SettleObservation, SurfaceScopedNodes } from '@agent-device/contracts/interaction';
 import type { PostOpenObservation } from '@agent-device/contracts/application-lifecycle-runtime';
 import type { SnapshotCaptureAnnotations } from '@agent-device/contracts/capture';
 import { isApplePlatform, isMobilePlatform } from '@agent-device/kernel/device';
 import type { SnapshotState } from '@agent-device/kernel/snapshot';
+import type { MovingTargetBaseline } from '@agent-device/contracts/moving-target-gate';
 import {
   captureAndroidFreshnessRecoveredAttempt,
   getActiveAndroidSnapshotFreshness,
@@ -24,7 +26,7 @@ import {
   runPostGestureStabilityLoop,
   type PostGestureStabilityOutcome,
 } from '@agent-device/capture-kit/post-gesture-stability';
-import type { SessionState } from './session-state.ts';
+import type { DeferredSurface, SessionState } from './session-state.ts';
 
 /**
  * The deferred interaction outcome: the daemon's answer to "did that mutation
@@ -57,6 +59,17 @@ export type DeferredInteractionOutcomeMark = {
   positionals: string[];
   flags: CommandFlags | undefined;
   androidFreshnessBaseline?: SnapshotState | undefined;
+  /**
+   * The tree this mutation resolved its target against, when it resolved one (#3471). Feeds the
+   * moving-target baseline; absent for the routes that dispatch without a daemon tree.
+   */
+  preActionTree?: SurfaceScopedNodes | undefined;
+  /**
+   * The action's own `--settle` observation, when it ran one (#3471). Its `diff` is the load-bearing
+   * field: the runtime attaches it only when the loop converged AND stored its settled tree within
+   * one surface, which is exactly when that published tree may stand as the baseline.
+   */
+  settle?: SettleObservation | undefined;
 };
 
 export function markDeferredInteractionOutcome(
@@ -69,21 +82,45 @@ export function markDeferredInteractionOutcome(
     positionals,
     flags,
     androidFreshnessBaseline,
+    preActionTree,
+    settle,
   } = params;
   if (isNavigationSensitiveAction(action)) {
     markAndroidSnapshotFreshness(session, action, androidFreshnessBaseline ?? session.snapshot);
   }
-  markPostGestureStabilization(session, action, positionals, flags);
+  // The two post-action mechanisms are complementary, and this is the seam that keeps them apart.
+  // A gesture-shaped mutation hands its unsettled surface to the capture side: every following
+  // capture runs the quiet-window loop before it returns a tree, so the moving-target gate would
+  // only re-do that wait. A mutation that marks no stabilization — the press whose own effect was
+  // an animation — is the case nothing else watches, and is exactly what the gate is for. It also
+  // never displaces a stabilization some earlier mutation still owes: an `@ref` press spends no
+  // capture, so a scroll's owed loop can still be pending here, and erasing it would drop the
+  // #1542/#1600 unsettled-tree check the scroll bought.
+  if (markSurfaceStabilization(session, action, positionals, flags)) return;
+  if (pendingSurfaceStabilization(session)) return;
+  markMovingTargetBaseline(session, preActionTree, settle?.diff !== undefined);
 }
 
-function markPostGestureStabilization(
+/** Narrows a published capture to the shape a baseline keeps, so a stored tree never smuggles in more. */
+function movingTargetRestTree(snapshot: SnapshotState | undefined): SurfaceScopedNodes | undefined {
+  if (!snapshot) return undefined;
+  return {
+    nodes: snapshot.nodes,
+    ...(snapshot.iosSystemSurfaceBundleId
+      ? { surfaceBundleId: snapshot.iosSystemSurfaceBundleId }
+      : {}),
+  };
+}
+
+/** Whether this mutation left an unsettled surface for the capture side to steady. */
+function markSurfaceStabilization(
   session: SessionState,
   action: string,
   positionals: string[] = [],
   flags?: CommandFlags,
-): void {
-  if (!supportsPostGestureStabilization(session.device)) return;
-  if (!isPostGestureStabilizingAction(action, positionals, flags)) return;
+): boolean {
+  if (!supportsPostGestureStabilization(session.device)) return false;
+  if (!isPostGestureStabilizingAction(action, positionals, flags)) return false;
   // No extra capture: `session.snapshot` is still whatever was captured
   // before this gesture dispatched (this call happens post-dispatch,
   // pre-capture — the last known pre-action snapshot). An empty signature is
@@ -93,7 +130,8 @@ function markPostGestureStabilization(
   const baselineSignature = requiresPostGestureBaselineDistrust(session.device)
     ? buildInteractionSurfaceSignature(session.snapshot?.nodes ?? [])
     : undefined;
-  session.postGestureStabilization = {
+  session.deferredSurface = {
+    kind: 'stabilize',
     action,
     positionals,
     markedAt: Date.now(),
@@ -106,6 +144,70 @@ function markPostGestureStabilization(
         }
       : {}),
   };
+  return true;
+}
+
+/**
+ * Records the tree a finished mutation acted through, stamped at the instant it finished (#3471) —
+ * the `recheck` variant of the session's deferred surface, for the mutation that marks no
+ * stabilization: the press whose own effect was an animation, which nothing else watches.
+ *
+ * `preActionTree` is the observation the action resolved its target against, and is required: a
+ * mutation that resolved nothing has no tree to describe where things were, and substituting an
+ * older snapshot would attribute to this action a surface it never looked at. A tree that names no
+ * nodes records nothing either, for the same reason — an empty tree would make every later target
+ * read as newly arrived, which is a claim about motion no action here ever observed. That is also
+ * why the routes that dispatch with no tree of their own leave the session idle: a raw coordinate
+ * unless `--verify`/`--settle` made it capture one, a Maestro direct-selector tap, `back`, an app
+ * open. The ordinary navigate-then-tap step pays the gate nothing.
+ *
+ * `restProved` switches the tree to the session's published one, and is set only when the action's
+ * own settle loop converged AND stored its settled tree. Everything else keeps the pre-action tree,
+ * a timed-out loop included: the session's snapshot may hold a freshness capture, a `@ref` press's
+ * authorized frame, a lone `--verify` capture, or the newest read of a surface that never quieted,
+ * and none of those proves rest. Preferring it because it merely differs from the tree the action
+ * resolved against is the same forbidden substitution, from the other side.
+ */
+function markMovingTargetBaseline(
+  session: SessionState,
+  preActionTree: SurfaceScopedNodes | undefined,
+  restProved: boolean,
+): void {
+  const tree = restProved ? movingTargetRestTree(session.snapshot) : preActionTree;
+  if (!tree || tree.nodes.length === 0) {
+    retireMovingTargetBaseline(session);
+    return;
+  }
+  session.deferredSurface = {
+    kind: 'recheck',
+    baseline: { finishedAt: Date.now(), tree },
+  };
+}
+
+/**
+ * Retires the `recheck` variant only, from ADR 0014's device side-effect seam. A gate out of evidence
+ * goes idle rather than reconstructing a baseline from another source. A pending stabilization is
+ * left alone: the seam fires on the way INTO every device op, including the gesture that just marked
+ * one, and the capture side still owes that loop.
+ */
+export function retireMovingTargetBaseline(session: SessionState): void {
+  if (session.deferredSurface?.kind !== 'recheck') return;
+  session.deferredSurface = undefined;
+}
+
+/**
+ * The baseline the #3471 gate screens a freshly resolved rect against, or nothing when the session
+ * is idle or owes the capture-side loop instead. The tree is carried to the command layer because
+ * the gate judges a new rect against the tree the PREVIOUS action acted through — the `snapshot`
+ * beside it is the newest observation, which is the one thing that cannot show a target having
+ * moved.
+ */
+export function movingTargetBaseline(
+  session: SessionState | undefined,
+): MovingTargetBaseline | undefined {
+  return session?.deferredSurface?.kind === 'recheck'
+    ? session.deferredSurface.baseline
+    : undefined;
 }
 
 /**
@@ -123,12 +225,28 @@ export function markPostOpenStabilization(
   if (!isApplePlatform(session.device.platform)) return;
   if (!supportsPostGestureStabilization(session.device)) return;
   if (observation === undefined || observation === 'observable') return;
-  session.postGestureStabilization = { action: 'open', positionals: [], markedAt: Date.now() };
+  session.deferredSurface = {
+    kind: 'stabilize',
+    action: 'open',
+    positionals: [],
+    markedAt: Date.now(),
+  };
 }
 
-function clearPostGestureStabilization(session: SessionState | undefined): void {
-  if (!session?.postGestureStabilization) return;
-  session.postGestureStabilization = undefined;
+function clearSurfaceStabilization(session: SessionState | undefined): void {
+  if (session?.deferredSurface?.kind !== 'stabilize') return;
+  session.deferredSurface = undefined;
+}
+
+/**
+ * The one read of the pending capture-side stabilization. The boolean below is what callers outside
+ * this module ask; this is the record itself, for the loop that has to run it and for the tests that
+ * pin what a marker stored. Nothing else narrows the variant.
+ */
+export function pendingSurfaceStabilization(
+  session: SessionState | undefined,
+): Extract<DeferredSurface, { kind: 'stabilize' }> | undefined {
+  return session?.deferredSurface?.kind === 'stabilize' ? session.deferredSurface : undefined;
 }
 
 /**
@@ -139,7 +257,7 @@ function clearPostGestureStabilization(session: SessionState | undefined): void 
  * implementation.
  */
 export function isPostGestureStabilizationPending(session: SessionState | undefined): boolean {
-  return Boolean(session?.postGestureStabilization);
+  return pendingSurfaceStabilization(session) !== undefined;
 }
 
 export type DeferredOutcomeSnapshotAttempt = {
@@ -223,7 +341,7 @@ export async function capturePostGestureStabilizedResult<T>(params: {
   initial?: T;
 }): Promise<PostGestureStabilityOutcome<T>> {
   const { session, capture, readSnapshot } = params;
-  const pending = session?.postGestureStabilization;
+  const pending = pendingSurfaceStabilization(session);
   if (!session || !supportsPostGestureStabilization(session.device) || !pending) {
     return { value: params.initial ?? (await capture()) };
   }
@@ -257,7 +375,7 @@ export async function capturePostGestureStabilizedResult<T>(params: {
       },
     });
   } finally {
-    clearPostGestureStabilization(session);
+    clearSurfaceStabilization(session);
   }
 }
 

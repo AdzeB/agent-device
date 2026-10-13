@@ -8,6 +8,7 @@ import {
   type RefFrameState,
 } from './ref-frame-slot.ts';
 import type { SessionState } from './session-state.ts';
+import { retireMovingTargetBaseline } from './deferred-interaction-outcome.ts';
 
 const runtimeRevisions = new WeakMap<SessionState, number>();
 const outdatedObservations = new WeakSet<SnapshotState>();
@@ -93,6 +94,9 @@ export function expireRefFrame(session: SessionState): void {
   markSessionSnapshotOutdated(session);
   session.refFrame = expiredRefFrame(refFrame(session));
   session.snapshotScopeSource = undefined;
+  // #3471: a side effect no resolved target was aimed through leaves a tree predating an unmeasured
+  // change, so it cannot screen a later press.
+  retireMovingTargetBaseline(session);
 }
 
 /**
