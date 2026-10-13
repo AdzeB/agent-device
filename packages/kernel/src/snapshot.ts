@@ -246,6 +246,24 @@ export type SnapshotPresentationFlagInput = SnapshotOptionFlagFields<
   (typeof SNAPSHOT_PRESENTATION_OPTION_KEYS)[number]
 >;
 
+/**
+ * The bounded, non-actionable description of the element that occludes a covered node. It carries
+ * only what the occlusion scan observed — presented role, an optional clipped accessible name, and
+ * the cover's rect — and deliberately no ref: the cover may be a container the snapshot never
+ * issues refs for, and naming it is diagnosis, not an invitation to target it.
+ */
+export type SnapshotCoveringNode = {
+  /** The cover's presented role, from the same table the text presenter reads (`formatRole`). */
+  kind: string;
+  /** The cover's accessible name, trimmed and clipped to {@link SNAPSHOT_COVERING_LABEL_MAX_LENGTH}. */
+  label?: string;
+  /** The cover's positive rect as the scan measured it. */
+  rect?: Rect;
+};
+
+/** Upper bound for a covering-node label carried in diagnostics; longer names are clipped. */
+export const SNAPSHOT_COVERING_LABEL_MAX_LENGTH = 80;
+
 export type RawSnapshotNode = {
   index: number;
   type?: string;
@@ -297,6 +315,16 @@ export type RawSnapshotNode = {
   hiddenContentAbove?: boolean;
   hiddenContentBelow?: boolean;
   interactionBlocked?: 'covered';
+  /**
+   * Bounded description of the element the geometric occlusion scan found drawing on top of this
+   * node, published together with `interactionBlocked: 'covered'` so a refusal can name the culprit
+   * instead of only the fact of coverage. Absent when the covered decision came from a
+   * backend-policy annotation that reports a boolean, and when the cover the scan found is an
+   * anonymous container no reader could recognize; both refusals keep the generic recovery rather
+   * than guessing a culprit. This is a description, not an authorization: it carries no ref and is
+   * never an actionable target.
+   */
+  coveredBy?: SnapshotCoveringNode;
   presentationHints?: string[];
   /**
    * Backend-minted ref for this node, when the capture backend already assigns a
