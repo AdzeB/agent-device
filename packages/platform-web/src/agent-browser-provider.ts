@@ -268,11 +268,16 @@ async function captureAgentBrowserSnapshot(
   );
 }
 
+/**
+ * The backend's own `--compact` is deliberately not requested: it removes an element with no ref
+ * TOGETHER WITH the text under it, so a status region that just announced something never reaches
+ * the projection at all. The empty structural lines it existed to hide are dropped by
+ * `parseSnapshotDraftNodes` instead, which can tell an empty container from the text inside it.
+ */
 function buildSnapshotArgs(options: WebSnapshotOptions | undefined): string[] {
   return [
     'snapshot',
     ...(options?.interactiveOnly ? ['--interactive'] : []),
-    ...(options?.raw ? [] : ['--compact']),
     ...(typeof options?.depth === 'number' ? ['--depth', String(options.depth)] : []),
     ...(options?.scope ? ['--selector', options.scope] : []),
   ];
