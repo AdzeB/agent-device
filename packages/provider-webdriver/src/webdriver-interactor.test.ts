@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
+import { createSnapshotVisibility } from '@agent-device/contracts/snapshot';
+import { resolveKeyboardTapOcclusion } from '@agent-device/contracts/tap-keyboard-occlusion';
 import { buildGesturePlan } from '@agent-device/contracts/gesture-plan';
 import { AppError } from '@agent-device/kernel/errors';
 import { createCloudWebDriverCapabilities } from './capabilities.ts';
@@ -901,3 +903,94 @@ for (const failure of ['invalid', 'unavailable'] as const) {
     assert.equal(calls, 2);
   });
 }
+
+test('snapshot carries a bounded visibility probe on both Appium platforms', async () => {
+  for (const backend of ['android', 'xctest'] as const) {
+    for (const visible of [true, false, 'unsupported', 'failed'] as const) {
+      const controller = new AbortController();
+      const probe = vi.fn(async () => {
+        if (visible === 'failed') throw new AppError('COMMAND_FAILED', 'grid failure');
+        return visible;
+      });
+      const interactor = createWebDriverInteractor({
+        client: {
+          source: async () =>
+            backend === 'android'
+              ? ANDROID_ONBOARDING_SOURCE
+              : '<AppiumAUT><XCUIElementTypeApplication x="0" y="0" width="390" height="844" /></AppiumAUT>',
+          isKeyboardShown: probe,
+        } as unknown as WebDriverClient,
+        backend,
+        capabilities: createCloudWebDriverCapabilities({
+          provider: 'test',
+          platform: backend === 'android' ? 'android' : 'ios',
+        }),
+      });
+      const result = await interactor.snapshot({ signal: controller.signal });
+      const keyboard = 'stage' in result ? result.acquisition.keyboard : result.keyboard;
+      assert.deepEqual(
+        keyboard,
+        typeof visible === 'boolean'
+          ? { kind: 'visibility-only', visible }
+          : { kind: 'unmeasurable', reason: `keyboard-visibility-probe-${visible}` },
+      );
+      assert.deepEqual(probe.mock.calls, [[500, controller.signal]]);
+    }
+  }
+});
+
+test('snapshot cancellation during an optional keyboard probe is not swallowed', async () => {
+  const controller = new AbortController();
+  const interactor = createWebDriverInteractor({
+    client: {
+      source: async () => ANDROID_ONBOARDING_SOURCE,
+      isKeyboardShown: async () => {
+        controller.abort();
+        throw controller.signal.reason;
+      },
+    } as unknown as WebDriverClient,
+    backend: 'android',
+    capabilities: createCloudWebDriverCapabilities({ provider: 'test', platform: 'android' }),
+  });
+  await assert.rejects(
+    interactor.snapshot({ signal: controller.signal }),
+    (error: unknown) => error === controller.signal.reason,
+  );
+});
+
+test.each([true, false, 'failed'] as const)(
+  'Android probe %s preserves tap-time docked IME derivation with a tree-resolved viewport',
+  async (visibility) => {
+    const interactor = createWebDriverInteractor({
+      client: {
+        source: async () =>
+          '<hierarchy><node class="android.widget.FrameLayout" resource-id="com.android.systemui:id/status_bar" bounds="[0,0][1080,100]"/><node class="android.widget.FrameLayout" bounds="[0,100][1080,2400]"><node class="android.widget.Button" text="Form" bounds="[100,1800][300,1840]"/></node><node class="android.widget.FrameLayout" package="com.google.android.inputmethod.latin" bounds="[0,1500][1080,2400]"><node class="android.widget.FrameLayout" package="com.google.android.inputmethod.latin" resource-id="android:id/content" bounds="[0,1500][1080,2274]"/><node class="android.view.View" package="com.google.android.inputmethod.latin" resource-id="android:id/navigationBarBackground" bounds="[0,2274][1080,2400]"/></node></hierarchy>',
+        isKeyboardShown: async () => {
+          if (visibility === 'failed') throw new Error('probe failed');
+          return visibility;
+        },
+      } as unknown as WebDriverClient,
+      backend: 'android',
+      capabilities: createCloudWebDriverCapabilities({ provider: 'test', platform: 'android' }),
+    });
+    const snapshot = await interactor.snapshot();
+    assert.ok(!('stage' in snapshot));
+    assert.ok(snapshot.nodes);
+    const form = snapshot.nodes.find((node) => node.label === 'Form')!;
+    assert.equal(
+      resolveKeyboardTapOcclusion({
+        nodes: snapshot.nodes,
+        node: form,
+        viewport: createSnapshotVisibility(snapshot.nodes).resolveViewport(form.rect!),
+        point: { x: 200, y: 1820 },
+        keyboard: snapshot.keyboard,
+      }).kind,
+      'occluded',
+    );
+    assert.equal(
+      snapshot.nodes.find((node) => node.bundleId === 'com.google.android.inputmethod.latin')
+        ?.keyboardOwned,
+      true,
+    );
+  },
+);

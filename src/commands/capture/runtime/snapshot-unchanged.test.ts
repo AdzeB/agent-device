@@ -84,6 +84,8 @@ test.each<Partial<SnapshotNode>>([
   { appName: 'Example' },
   { windowTitle: 'Compose' },
   { surface: 'app' },
+  { keyboardOwned: true },
+  { keyboardOwned: false },
   { hiddenContentAbove: true },
   { hiddenContentBelow: true },
   { interactionBlocked: 'covered' },
@@ -92,6 +94,9 @@ test.each<Partial<SnapshotNode>>([
   const current = snapshot('Create', { nodes: [{ ...previous.nodes[0]!, ...change }] });
 
   expect(buildUnchangedSnapshotMetadata({ previous, current, options: {} })).toBeUndefined();
+  expect(
+    buildUnchangedSnapshotMetadata({ previous: current, current: previous, options: {} }),
+  ).toBeUndefined();
 });
 
 test.each<Partial<SnapshotNode>>([

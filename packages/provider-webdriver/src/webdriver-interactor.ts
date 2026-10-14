@@ -47,6 +47,7 @@ const TEXT_ENTRY_READINESS_POLL_MS = 100;
  * WebDriver client's much longer default request timeout.
  */
 const TEXT_ENTRY_PROBE_TIMEOUT_MS = 1_500;
+const SNAPSHOT_KEYBOARD_PROBE_TIMEOUT_MS = 500;
 
 const SNAPSHOT_VIEWPORT_PROBE_TIMEOUT_MS = 500;
 
@@ -329,11 +330,15 @@ class WebDriverInteractor implements Interactor {
     const viewportBefore =
       this.backend === 'android' ? await this.readAndroidSnapshotViewport(signal) : undefined;
     const source = await this.readSource(signal);
+    signal?.throwIfAborted();
+    const visibility = await this.readSnapshotKeyboardVisibility(signal);
     if (this.backend === 'xctest') {
       const { acquireWebDriverIosSnapshot } = await import('./webdriver-ios-snapshot.ts');
-      return acquireWebDriverIosSnapshot(source, this.targetId);
+      return acquireWebDriverIosSnapshot(source, this.targetId, visibility);
     }
     const { parseWebDriverAndroidSnapshotNodes } = await import('./webdriver-android-source.ts');
+    const { acquireProviderKeyboard } =
+      await import('@agent-device/contracts/tap-keyboard-occlusion');
     const nodes = parseWebDriverAndroidSnapshotNodes(source);
     const viewportAfter =
       viewportBefore === undefined ? undefined : await this.readAndroidSnapshotViewport(signal);
@@ -347,7 +352,7 @@ class WebDriverInteractor implements Interactor {
     return {
       backend: 'android' as const,
       producer: 'appium-source' as const,
-      nodes,
+      ...acquireProviderKeyboard({ nodes, viewport: null, visibility }),
       ...(viewport === undefined ? {} : { viewport }),
     };
   }
@@ -367,6 +372,22 @@ class WebDriverInteractor implements Interactor {
     } catch {
       signal?.throwIfAborted();
       return undefined;
+    }
+  }
+
+  private async readSnapshotKeyboardVisibility(
+    signal?: AbortSignal,
+  ): Promise<boolean | 'unsupported' | 'failed'> {
+    try {
+      const visibility = await this.client.isKeyboardShown(
+        SNAPSHOT_KEYBOARD_PROBE_TIMEOUT_MS,
+        signal,
+      );
+      signal?.throwIfAborted();
+      return visibility;
+    } catch {
+      signal?.throwIfAborted();
+      return 'failed';
     }
   }
 
