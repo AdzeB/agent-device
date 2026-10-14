@@ -811,6 +811,29 @@ function hasExplicitMetroRuntimeOverrides(explicitFlagKeys: Set<FlagKey>): boole
   return false;
 }
 
+type CliDaemonTransportSetup = {
+  command: string;
+  flags: CliFlags;
+  replayTestReporterRuntime?: ReplayTestReporterRuntime;
+  commandProgress: CommandProgressState;
+  transport: CliDaemonTransport;
+};
+
+/**
+ * A remote connection reads each daemon reply for the leases its request ended, and forgets the
+ * stored lease when the reply names it.
+ */
+function createCliDaemonTransport(options: CliDaemonTransportSetup): AgentDeviceDaemonTransport {
+  const send = createCliProgressTransport(options);
+  if (!options.flags.remoteConfig) return send;
+  return async (req, context) => {
+    const response = await send(req, context);
+    const { forgetEndedProxyLease } = await import('./cli/connection/ended-lease.ts');
+    forgetEndedProxyLease(options.flags, response);
+    return response;
+  };
+}
+
 /**
  * The human CLI renders streamed progress itself: `test` hands its events to the
  * replay-test reporter, every other command streams `command` lines to stderr
@@ -818,13 +841,7 @@ function hasExplicitMetroRuntimeOverrides(explicitFlagKeys: Set<FlagKey>): boole
  * doctor summary does not repeat checks progress already printed). `--json` opts
  * out of progress entirely, so it installs no sink.
  */
-function createCliDaemonTransport(options: {
-  command: string;
-  flags: CliFlags;
-  replayTestReporterRuntime?: ReplayTestReporterRuntime;
-  commandProgress: CommandProgressState;
-  transport: CliDaemonTransport;
-}): AgentDeviceDaemonTransport {
+function createCliProgressTransport(options: CliDaemonTransportSetup): AgentDeviceDaemonTransport {
   const { command, flags, replayTestReporterRuntime, transport } = options;
   if (flags.json) return createClientDaemonTransport(transport);
   const onProgress =

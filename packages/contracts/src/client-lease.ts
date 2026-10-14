@@ -21,6 +21,15 @@ export type Lease = {
   expiresAt?: number;
 };
 
+/**
+ * A session lease a daemon request ended. A reply to a request that ended leases lists them once in
+ * `endedLeases` at response level: in `data` on success, in `error.details` on failure. A `close`,
+ * a `batch` close step, a `replay` or `test` script's close, and `test` session cleanup each end the
+ * lease they close with, unless it was allocated with `retainOnClose`. A daemon older than this
+ * field omits it.
+ */
+export type EndedLease = { leaseId: string; outcome: 'released' };
+
 export type LeaseOptions = AgentDeviceRequestOverrides &
   AgentDeviceSelectionOptions & {
     ttlMs?: number;

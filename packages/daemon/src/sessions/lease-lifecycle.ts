@@ -152,14 +152,17 @@ export function resolveSessionLeaseForRequest(params: {
   );
 }
 
-/** Releases the lease a closing session holds, unless its owner allocated it with `retainOnClose`. */
+/**
+ * Releases the lease a closing session holds, unless its owner allocated it with `retainOnClose`.
+ * `endedLeaseId` names the lease the close ended, including one that was already inactive.
+ */
 export async function releaseSessionLease(params: {
   session: SessionState;
   leaseRegistry: LeaseRegistry;
   leaseLifecycleProvider?: LeaseLifecycleProvider;
-}): Promise<Record<string, unknown> | undefined> {
+}): Promise<{ endedLeaseId?: string; providerData?: Record<string, unknown> }> {
   const lease = params.session.lease;
-  if (!lease) return undefined;
+  if (!lease) return {};
   const releaseRequest = leaseScopeToReleaseRequest({
     leaseId: lease.leaseId,
     tenantId: lease.tenantId,
@@ -181,7 +184,7 @@ export async function releaseSessionLease(params: {
         retained: true,
       },
     });
-    return undefined;
+    return {};
   }
   const providerData = activeLease
     ? await params.leaseLifecycleProvider?.release?.(activeLease)
@@ -200,5 +203,5 @@ export async function releaseSessionLease(params: {
       released: result.released,
     },
   });
-  return providerData;
+  return { endedLeaseId: lease.leaseId, ...(providerData ? { providerData } : {}) };
 }

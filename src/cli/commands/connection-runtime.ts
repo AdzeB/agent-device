@@ -580,7 +580,7 @@ export async function stopReactDevtoolsCleanup(options: {
 }
 
 /** The host allocated a `macos-app` lease and ends it itself; a tenant never releases it. */
-function isHostAllocatedLease(state: RemoteConnectionState): boolean {
+export function isHostAllocatedLease(state: RemoteConnectionState): boolean {
   return state.leaseBackend === 'macos-app';
 }
 

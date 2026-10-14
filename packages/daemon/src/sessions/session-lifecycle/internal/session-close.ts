@@ -10,6 +10,7 @@ import { resolveCommandDevice } from '../../../resources/session-device-resoluti
 import { expireRefFrame } from '../../../core/ref-frame.ts';
 import type { LeaseRegistry } from '../../../resources/lease-registry.ts';
 import { releaseSessionLease } from '../../lease-lifecycle.ts';
+import { recordEndedLease } from '../../../core/request-ended-leases.ts';
 import {
   hasRepairPlatformCloseReceipt,
   isRepairArmedSession,
@@ -116,12 +117,15 @@ async function prepareRepairClose(params: {
 }
 
 async function releaseProviderLeaseForClose(params: {
+  req: DaemonRequest;
   session: SessionState;
   leaseRegistry: LeaseRegistry;
   leaseLifecycleProvider: LeaseLifecycleProvider | undefined;
 }): Promise<{ providerData?: Record<string, unknown>; response?: DaemonResponse }> {
   try {
-    return { providerData: await releaseSessionLease(params) };
+    const { endedLeaseId, providerData } = await releaseSessionLease(params);
+    if (endedLeaseId) recordEndedLease(params.req, endedLeaseId);
+    return { providerData };
   } catch (error) {
     const normalized = normalizeError(error);
     return {
@@ -324,6 +328,7 @@ async function runCloseTeardownAndRelease(params: {
   });
   let session = sessionStore.requireCurrent(ref);
   const leaseRelease = await releaseProviderLeaseForClose({
+    req,
     session,
     leaseRegistry,
     leaseLifecycleProvider,
