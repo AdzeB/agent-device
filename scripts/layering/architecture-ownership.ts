@@ -1,4 +1,8 @@
+import { isDaemonHandlerFile } from './daemon-layers.ts';
 import { DAEMON_SOURCE_ROOT } from './tracked-sources.ts';
+
+/** The handler surface as a shape rule: any `<layer>/handlers/` folder, owning layer agnostic. */
+const DAEMON_HANDLER_TARGET_SHAPES = [isDaemonHandlerFile] as const;
 
 type FacadeDeclaration = Readonly<{
   root: string;
@@ -10,11 +14,18 @@ export type LogicalModulePolicy = Readonly<{
   roots: readonly string[];
   forbiddenTargetRoots: readonly string[];
   internalForbiddenTargetRoots?: readonly string[];
+  /**
+   * Shape-based forbidden targets, paired with (never replacing) the path-root arrays: e.g.
+   * `isDaemonHandlerFile` guards the handler surface wherever a `<layer>/handlers/` folder lives,
+   * so a handler folder under a layer nobody listed is still off-limits.
+   */
+  forbiddenTargetShapes?: readonly ((file: string) => boolean)[];
+  internalForbiddenTargetShapes?: readonly ((file: string) => boolean)[];
   facade?: FacadeDeclaration;
 }>;
 
 const DAEMON_SESSION_LIFECYCLE_FACADE = {
-  root: 'packages/daemon/src/session-lifecycle/index.ts',
+  root: 'packages/daemon/src/sessions/session-lifecycle/index.ts',
   exports: [
     'SessionCloseCommandInput',
     'SessionInventoryCommandInput',
@@ -26,7 +37,7 @@ const DAEMON_SESSION_LIFECYCLE_FACADE = {
 } as const;
 
 const DAEMON_SESSION_OBSERVABILITY_FACADE = {
-  root: 'packages/daemon/src/session-observability/index.ts',
+  root: 'packages/daemon/src/sessions/session-observability/index.ts',
   exports: ['SessionObservabilityCommandInput', 'handleSessionObservabilityCommands'],
 } as const;
 
@@ -71,7 +82,7 @@ export const INTERACTION_RETIRED_HANDLER_PATHS = [
 ] as const;
 
 const DAEMON_INTERACTION_FACADE = {
-  root: 'packages/daemon/src/interaction/index.ts',
+  root: 'packages/daemon/src/execution/interaction/index.ts',
   exports: [
     'FindRouteInput',
     'InteractionRouteInput',
@@ -142,21 +153,22 @@ export const LOGICAL_MODULE_POLICIES = [
   },
   {
     name: 'daemon-session-lifecycle',
-    roots: ['packages/daemon/src/session-lifecycle/'],
-    forbiddenTargetRoots: ['packages/daemon/src/handlers/'],
+    roots: ['packages/daemon/src/sessions/session-lifecycle/'],
+    forbiddenTargetRoots: [],
+    forbiddenTargetShapes: DAEMON_HANDLER_TARGET_SHAPES,
     facade: DAEMON_SESSION_LIFECYCLE_FACADE,
   },
   {
     name: 'daemon-interaction',
-    roots: ['packages/daemon/src/interaction/'],
+    roots: ['packages/daemon/src/execution/interaction/'],
     forbiddenTargetRoots: [],
-    internalForbiddenTargetRoots: ['packages/daemon/src/handlers/'],
+    internalForbiddenTargetShapes: DAEMON_HANDLER_TARGET_SHAPES,
     facade: DAEMON_INTERACTION_FACADE,
   },
   {
     name: 'daemon-session-observability',
-    roots: ['packages/daemon/src/session-observability/'],
-    forbiddenTargetRoots: ['packages/daemon/src/handlers/'],
+    roots: ['packages/daemon/src/sessions/session-observability/'],
+    forbiddenTargetShapes: DAEMON_HANDLER_TARGET_SHAPES,
     facade: DAEMON_SESSION_OBSERVABILITY_FACADE,
   },
 ] as const satisfies readonly LogicalModulePolicy[];
@@ -192,7 +204,7 @@ export const ARCHITECTURE_OWNERSHIP = {
     {
       name: 'request-runtime-binding',
       kind: 'capability',
-      root: 'packages/daemon/src/request-runtime-binding.ts',
+      root: 'packages/daemon/src/core/request-runtime-binding.ts',
       exports: [
         'BindDeviceRuntime',
         'BindExactDeviceRuntime',
@@ -207,7 +219,7 @@ export const ARCHITECTURE_OWNERSHIP = {
     {
       name: 'session-script-publication',
       kind: 'capability',
-      root: 'packages/daemon/src/session-script-publication-capability.ts',
+      root: 'packages/daemon/src/core/session-script-publication-capability.ts',
       exports: [
         'abortAuthoringOnSecondOpen',
         'applyRecordedSaveScriptFlags',
@@ -226,13 +238,13 @@ export const ARCHITECTURE_OWNERSHIP = {
     {
       name: 'session-state-shape',
       kind: 'live-state-shape',
-      root: 'packages/daemon/src/session-state.ts',
+      root: 'packages/daemon/src/core/session-state.ts',
       exports: ['SessionState'],
     },
     {
       name: 'session-store-authority',
       kind: 'live-state-authority',
-      root: 'packages/daemon/src/session-store.ts',
+      root: 'packages/daemon/src/core/session-store.ts',
       exports: ['SessionStore'],
     },
   ],

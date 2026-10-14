@@ -79,7 +79,7 @@ function makeChainParams(req: DaemonRequest) {
 
 test('route owner files match the production module loaders', () => {
   const source = fs.readFileSync(
-    new URL('../../../packages/daemon/src/request-handler-chain.ts', import.meta.url),
+    new URL('../../../packages/daemon/src/sessions/request-handler-chain.ts', import.meta.url),
     'utf8',
   );
   const definitions = [
@@ -95,15 +95,18 @@ test('route owner files match the production module loaders', () => {
     );
 
   assert.equal(definitions.length + 1, Object.keys(ownerFiles).length);
+  // The loaders are relative to the chain module, which lives in a layer folder; resolve them
+  // the same way the runtime does instead of assuming the package root.
+  const CHAIN_DIR = 'packages/daemon/src/sessions/';
   for (const [, route, modulePath] of definitions) {
     assert.ok(route && modulePath);
     assert.equal(
       ownerFiles[route as keyof typeof ownerFiles],
-      `packages/daemon/src/${modulePath.slice(2)}`,
+      path.posix.normalize(`${CHAIN_DIR}${modulePath}`),
     );
   }
   assert.ok(genericModulePath && genericRouteMatches);
-  assert.equal(ownerFiles.generic, `packages/daemon/src/${genericModulePath.slice(2)}`);
+  assert.equal(ownerFiles.generic, path.posix.normalize(`${CHAIN_DIR}${genericModulePath}`));
 
   assert.ok(
     !/ownerFile/.test(source),
@@ -114,14 +117,17 @@ test('route owner files match the production module loaders', () => {
 test('request handler chain keeps interaction routes out of its eager import closure', () => {
   const chainFile = path.resolve(
     import.meta.dirname,
-    '../../../packages/daemon/src/request-handler-chain.ts',
+    '../../../packages/daemon/src/sessions/request-handler-chain.ts',
   );
   const closure = eagerClosureOf(chainFile);
 
   assert.ok(closure.length > 20, 'eager closure walk must reach the request chain');
   assert.equal(
     closure.includes(
-      path.resolve(import.meta.dirname, '../../../packages/daemon/src/interaction/index.ts'),
+      path.resolve(
+        import.meta.dirname,
+        '../../../packages/daemon/src/execution/interaction/index.ts',
+      ),
     ),
     false,
     'interaction routes must stay behind the request chain lazy import',
@@ -131,12 +137,12 @@ test('request handler chain keeps interaction routes out of its eager import clo
 test('interaction facade keeps route implementations out of its eager import closure', () => {
   const facadeFile = path.resolve(
     import.meta.dirname,
-    '../../../packages/daemon/src/interaction/index.ts',
+    '../../../packages/daemon/src/execution/interaction/index.ts',
   );
   const closure = eagerClosureOf(facadeFile);
   const snapshotComposition = path.resolve(
     import.meta.dirname,
-    '../../../packages/daemon/src/snapshot-runtime-capture-input.ts',
+    '../../../packages/daemon/src/core/snapshot-runtime-capture-input.ts',
   );
 
   assert.ok(
@@ -147,7 +153,7 @@ test('interaction facade keeps route implementations out of its eager import clo
   for (const routeModule of ['find.ts', 'interaction.ts']) {
     const routePath = path.resolve(
       import.meta.dirname,
-      `../../../packages/daemon/src/interaction/internal/${routeModule}`,
+      `../../../packages/daemon/src/execution/interaction/internal/${routeModule}`,
     );
     assert.equal(
       fs.existsSync(routePath),
