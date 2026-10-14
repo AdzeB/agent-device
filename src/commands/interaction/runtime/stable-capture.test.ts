@@ -326,6 +326,76 @@ test('settle confirms a tiny modal replacement through a partial post-action pro
   );
 });
 
+test('a dismissal confirmation is not dropped by a later empty projection', async () => {
+  // A confirmation is a fact about the transition, so once armed it holds the floor for the rest of
+  // the run: later captures that cannot support the comparison (here, empty projections that match
+  // each other) never return the run to the caller's shorter window.
+  const { runtime } = transitionRuntime({
+    settledAtMs: 0,
+    emptyProjectionAtCaptures: [2, 3],
+  });
+
+  const outcome = await runStableCaptureLoop(
+    runtime,
+    { session: 'default' },
+    {
+      quietMs: 150,
+      timeoutMs: 5_000,
+      broadTransitionBaselineNodes: elementThreadsNoticeSnapshot.nodes,
+    },
+  );
+
+  assert.equal(outcome.settled, true);
+  assert.ok(
+    outcome.waitedMs >= 1_500,
+    `empty projection disarmed the confirmation: settled after ${outcome.waitedMs}ms`,
+  );
+  assert.ok(
+    outcome.lastCapture!.snapshot.nodes.length > 0,
+    'settled on an empty projection instead of the dismissed screen',
+  );
+});
+
+// The two arming inputs that belong to the capture, not to the run: the viewport-root completeness
+// and the declared capture backend. A dismissal of anything bigger than an alert or sheet (the
+// `<= TINY_STABLE_TREE_NODE_COUNT` escape hatch) has to meet BOTH before the confirmation may arm,
+// and a mid-animation first read that misses either one leaves the question open for the next
+// capture rather than settling the run on its plain window. These captures declare no producer, so
+// that plain window is the 500 ms default; the 1.5 s floor is what the assertions tell apart.
+const MID_ANIMATION_FIRST_CAPTURES: Array<
+  [string, NonNullable<Parameters<typeof transitionRuntime>[0]>]
+> = [
+  ['a rootless first capture', { rootlessUntilMs: 400 }],
+  ['an empty first capture', { emptyProjectionAtCaptures: [1] }],
+  ['a first capture read through another channel', { otherChannelAtCaptures: [1] }],
+];
+for (const [label, midAnimation] of MID_ANIMATION_FIRST_CAPTURES) {
+  test(`settle arms the confirmation on the first rooted XCTest capture after ${label}`, async () => {
+    const { runtime } = transitionRuntime({ settledAtMs: 0, ...midAnimation });
+
+    const outcome = await runStableCaptureLoop(
+      runtime,
+      { session: 'default' },
+      {
+        timeoutMs: 5_000,
+        // A full-screen settings table: the tiny-presented-baseline escape hatch does not apply, so
+        // arming depends entirely on the captures below.
+        broadTransitionBaselineNodes: elementSettingsSnapshot([1_138, 1_423, 2_144, 2_434]).nodes,
+      },
+    );
+
+    assert.equal(outcome.settled, true);
+    assert.equal(
+      outcome.lastCapture?.snapshot.nodes.some((node) => node.label === 'action file'),
+      false,
+    );
+    assert.ok(
+      outcome.waitedMs >= 1_500,
+      `${label} ruled the confirmation out for the run: settled after ${outcome.waitedMs}ms`,
+    );
+  });
+}
+
 test('settle keeps the default quiet window for a larger partial projection', async () => {
   const { runtime } = transitionRuntime({ omitViewportRoot: true, settledAtMs: 1_200 });
 
@@ -458,6 +528,12 @@ function transitionRuntime(
     omitViewportRoot?: boolean;
     settledAtMs?: number;
     sessionSnapshot?: SnapshotState;
+    /** 1-based capture indices that answer with an empty projection (mid-animation read). */
+    emptyProjectionAtCaptures?: number[];
+    /** Captures taken before this deadline omit the viewport root (mid-animation read). */
+    rootlessUntilMs?: number;
+    /** 1-based capture indices that declare a non-XCTest capture channel. */
+    otherChannelAtCaptures?: number[];
   } = {},
 ) {
   const captureBackend = options.captureBackend ?? 'tree';
@@ -476,17 +552,36 @@ function transitionRuntime(
       captureSnapshot: async () => {
         const keepsBaseline = options.firstCaptureKeepsBaseline === true && captures === 0;
         captures += 1;
+        if (options.emptyProjectionAtCaptures?.includes(captures)) {
+          return {
+            snapshot: withCaptureBackend(
+              { ...elementSettledRoomSnapshot, nodes: [] },
+              captureBackend,
+            ),
+          };
+        }
         const snapshot = keepsBaseline
           ? elementThreadsNoticeSnapshot
           : withCaptureBackend(
               elapsedMs < settledAtMs ? elementTransientRoomSnapshot : elementSettledRoomSnapshot,
               captureBackend,
             );
+        const rootless =
+          options.omitViewportRoot === true ||
+          (options.rootlessUntilMs !== undefined && elapsedMs < options.rootlessUntilMs);
+        const declaresOtherChannel = options.otherChannelAtCaptures?.includes(captures) === true;
+        const rootlessSnapshot = rootless
+          ? { ...snapshot, nodes: snapshot.nodes.slice(1) }
+          : snapshot;
         return {
           snapshot: withoutSnapshotBackend(
-            options.omitViewportRoot === true
-              ? { ...snapshot, nodes: snapshot.nodes.slice(1) }
-              : snapshot,
+            declaresOtherChannel
+              ? {
+                  ...rootlessSnapshot,
+                  backend: 'android' as const,
+                  producer: 'android-uiautomator' as const,
+                }
+              : rootlessSnapshot,
             options.omitSnapshotBackend === true,
           ),
         };

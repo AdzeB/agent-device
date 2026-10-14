@@ -27,6 +27,7 @@ import {
   DEFAULT_STABLE_QUIET_MS,
   DEFAULT_STABLE_TIMEOUT_MS,
   runStableCaptureLoop,
+  type StableCaptureLoopResult,
   TINY_STABLE_TREE_HINT,
   TINY_STABLE_TREE_NODE_COUNT,
 } from './stable-capture.ts';
@@ -126,27 +127,49 @@ async function settleAfterAction(
   options: CommandContext,
   params: SettleParams & { baseline: SurfaceScopedNodes; actionPoint?: Point },
 ): Promise<SettleOutcome> {
-  const quietMs = params.quietMs ?? DEFAULT_STABLE_QUIET_MS;
+  // The loop resolves an unrequested window from the capture that pays it, so the window is only
+  // known once one is taken. `base` carries the general default for the pre-capture shape the
+  // observation still has to report; once the loop returns, its own window replaces it, including on
+  // a failure while the outcome is read.
   const timeoutMs = params.timeoutMs ?? DEFAULT_STABLE_TIMEOUT_MS;
-  const base: SettleObservation = { settled: false, waitedMs: 0, captures: 0, quietMs, timeoutMs };
+  const base: SettleObservation = {
+    settled: false,
+    waitedMs: 0,
+    captures: 0,
+    quietMs: params.quietMs ?? DEFAULT_STABLE_QUIET_MS,
+    timeoutMs,
+  };
+  let outcome: StableCaptureLoopResult | undefined;
   try {
-    const outcome = await runStableCaptureLoop(runtime, options, {
-      quietMs,
+    outcome = await runStableCaptureLoop(runtime, options, {
+      ...(params.quietMs === undefined ? {} : { quietMs: params.quietMs }),
       timeoutMs,
       resetBudgetOnPrivateAxRecovery: true,
       broadTransitionBaselineNodes: params.baseline.nodes,
     });
+    if (outcome.failure) return settleUnavailable(base, outcome.quietMs, outcome.failure.error);
     return await readSettledOutcome(runtime, options, params, base, outcome);
   } catch (error) {
-    // Never fail the action over the observation: report that settling itself
-    // broke and let the caller fall back to an explicit snapshot.
-    return {
-      observation: {
-        ...base,
-        hint: `Settle observation unavailable (${error instanceof Error ? error.message : String(error)}). The action itself succeeded; take a snapshot to observe the result.`,
-      },
-    };
+    return settleUnavailable(base, outcome?.quietMs ?? base.quietMs, error);
   }
+}
+
+/**
+ * Never fail the action over the observation: report that settling itself broke, with the window the
+ * run held, and let the caller fall back to an explicit snapshot.
+ */
+function settleUnavailable(
+  base: SettleObservation,
+  quietMs: number,
+  error: unknown,
+): SettleOutcome {
+  return {
+    observation: {
+      ...base,
+      quietMs,
+      hint: `Settle observation unavailable (${error instanceof Error ? error.message : String(error)}). The action itself succeeded; take a snapshot to observe the result.`,
+    },
+  };
 }
 
 /** Turns a finished stable-capture loop into the settled observation payload. */
@@ -162,6 +185,9 @@ async function readSettledOutcome(
     settled: outcome.settled,
     waitedMs: outcome.waitedMs,
     captures: outcome.captures,
+    // The window the loop actually ran. For an unrequested settle that is the one its own captures
+    // priced, which `base` cannot know because it is built before the first read.
+    quietMs: outcome.quietMs,
   };
   if (!outcome.lastCapture) {
     return {
