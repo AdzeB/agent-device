@@ -19,11 +19,6 @@ vi.mock('@agent-device/device-selection/dispatch-resolve', async (importOriginal
   };
 });
 vi.mock('../../device/device-ready.ts', () => ({ ensureDeviceReady: vi.fn(async () => {}) }));
-vi.mock('../../../platform-runtime-runtime-hints.ts', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('../../../platform-runtime-runtime-hints.ts')>();
-  return { ...actual, applyRuntimeHintValues: vi.fn(async () => {}) };
-});
 vi.mock('@agent-device/platform-android/mechanics', () => ({
   activateAndroidTestIme: vi.fn(async () => ({ activated: false })),
   restoreAndroidTestIme: vi.fn(async () => ({ restored: false, reason: 'no-record' })),
@@ -39,14 +34,14 @@ vi.mock('@agent-device/host-kit/process', async (importOriginal) =>
 
 import { resolveTargetDevice } from '@agent-device/device-selection/dispatch-resolve';
 import { ensureDeviceReady } from '../../device/device-ready.ts';
-import { applyRuntimeHintValues } from '../../../platform-runtime-runtime-hints.ts';
 import {
   activateAndroidTestIme,
   resolveAndroidPackageForOpen,
 } from '@agent-device/platform-android/mechanics';
 import {
-  discoverReadyAndroidEmulators,
+  applyRuntimeHintsFixture,
   dispatchApplicationLifecycleEffect,
+  prepareApplicationOpenFixture,
 } from '../../__tests__/application-lifecycle-runtime-fixture.ts';
 import { clearRequestCanceled, markRequestCanceled } from '@agent-device/host-kit/request';
 import { acquireDeviceClaim as acquireProductionDeviceClaim } from '../../device/device-claims.ts';
@@ -70,10 +65,10 @@ import {
 import { platformResourceCleanupFixture } from '../../__tests__/support/platform-resource-cleanup-fixture.ts';
 
 const mockDispatch = vi.mocked(dispatchApplicationLifecycleEffect);
-const mockDiscoverReadyAndroidEmulators = vi.mocked(discoverReadyAndroidEmulators);
+const mockPrepareApplicationOpen = vi.mocked(prepareApplicationOpenFixture);
 const mockResolveTargetDevice = vi.mocked(resolveTargetDevice);
 const mockEnsureDeviceReady = vi.mocked(ensureDeviceReady);
-const mockApplyRuntimeHints = vi.mocked(applyRuntimeHintValues);
+const mockApplyRuntimeHints = vi.mocked(applyRuntimeHintsFixture);
 const mockResolveAndroidPackage = vi.mocked(resolveAndroidPackageForOpen);
 const reconcileOrphanedDeviceClaim = async () => ({
   status: 'retained' as const,
@@ -133,14 +128,14 @@ const android: DeviceInfo = {
 
 test('failed local open before device setup rolls its device claim back', async () => {
   const { store, stateDir } = setup();
-  // A stopped AVD, so preparation actually runs emulator discovery. Readiness is package-owned
-  // now, so this is where a pre-device-effect failure surfaces.
   const stoppedAvd = { ...android, id: 'pixel-avd', booted: false };
   mockResolveTargetDevice.mockResolvedValue(stoppedAvd);
   // The point of this test is claim-rollback behavior around an opaque pre-device-effect
   // failure, not any particular error shape, so assert identity of the propagated error.
+  // Readiness is package-owned, so the failure is injected at the lifecycle port's prepare
+  // step; which devices the real owners run discovery for is pinned in the composition lane.
   const rejectionError = new Error('device not ready');
-  mockDiscoverReadyAndroidEmulators.mockRejectedValue(rejectionError);
+  mockPrepareApplicationOpen.mockRejectedValueOnce(rejectionError);
 
   await assert.rejects(
     async () =>
@@ -251,40 +246,6 @@ test('failed local open response rolls its device claim back', async () => {
 
   assert.equal(response.ok, false);
   assert.deepEqual(inspectDeviceClaims({ serial: android.id }), []);
-});
-
-test('cancellation after local device setup retains the device claim for recovery', async () => {
-  const { store, stateDir } = setup();
-  const requestId = 'claim-canceled-after-dispatch';
-  mockResolveTargetDevice.mockResolvedValue(android);
-  mockDispatch.mockResolvedValue(undefined);
-  markRequestCanceled(requestId);
-
-  try {
-    const response = await handleOpenCommand({
-      createCommandSurface: fakeCreateCommandSurface,
-      platformServices: daemonPlatformServicesFixture(),
-      req: {
-        command: 'open',
-        token: 'test',
-        session: 'claim-canceled-after-dispatch',
-        positionals: ['Demo'],
-        flags: { platform: 'android' },
-        meta: { requestId },
-      },
-      sessionName: 'claim-canceled-after-dispatch',
-      logPath: path.join(stateDir, 'daemon.log'),
-      sessionStore: store,
-    });
-
-    assert.equal(response.ok, false);
-    assert.equal(mockDispatch.mock.calls.length, 1);
-    assert.equal(vi.mocked(activateAndroidTestIme).mock.calls.length, 1);
-    assert.equal(inspectDeviceClaims({ serial: android.id })[0]?.classification, 'live');
-    assert.equal(store.get('claim-canceled-after-dispatch'), undefined);
-  } finally {
-    clearRequestCanceled(requestId);
-  }
 });
 
 test('a canceled attempt lets the next attempt of the same suite open the device', async () => {

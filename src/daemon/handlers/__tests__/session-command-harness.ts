@@ -22,7 +22,10 @@ import type { PlatformRuntimeOperations } from '@agent-device/contracts/platform
 import type { TargetShutdownResult } from '@agent-device/contracts/device';
 import { isIosFamily, type DeviceInfo } from '@agent-device/kernel/device';
 import { beforeEach, vi } from 'vitest';
-import { applicationLifecycleRuntimeFixture } from '../../__tests__/application-lifecycle-runtime-fixture.ts';
+import {
+  applicationLifecycleRuntimeFixture,
+  type LifecycleOperationsLoader,
+} from '../../__tests__/application-lifecycle-runtime-fixture.ts';
 import { withClientReplayScriptSources } from '@agent-device/replay-port/replay-script-source-fixtures';
 import { createUnavailableRuntimeFactsForTest } from '@agent-device/test-kit/runtime-operation-facts';
 import { platformResourceCleanupFixture } from '../../__tests__/support/platform-resource-cleanup-fixture.ts';
@@ -63,8 +66,12 @@ export const mockDeployMaterializedAppRuntime = vi.fn(
 export const mockPushNotificationRuntime = vi.fn(
   async (_input: PushNotificationInput): Promise<PushNotificationResult> => ({}),
 );
-export const mockBindDeviceRuntime = vi.fn(async (device: DeviceInfo, use) =>
-  narrowDeviceBinding(await readinessBinding(device), use),
+export const mockBindDeviceRuntime = vi.fn(
+  async (
+    device: DeviceInfo,
+    use,
+    loadLifecycleOperations: LifecycleOperationsLoader = applicationLifecycleRuntimeFixture,
+  ) => narrowDeviceBinding(await readinessBinding(device, loadLifecycleOperations), use),
 );
 
 beforeEach(() => {
@@ -92,15 +99,26 @@ beforeEach(() => {
   mockBindDeviceRuntime.mockClear();
 });
 
-/** Unit-handler default is explicitly fail-closed; production must inject exact-owner recovery. */
+/**
+ * Unit-handler default is explicitly fail-closed; production must inject exact-owner recovery.
+ * `lifecycleOperationsLoader` points the harness bindings at another lifecycle-ops fixture —
+ * root composition suites pass the real composed fixture per call, exactly like the gateway
+ * factories take theirs; calls without it keep the canned port fixture default.
+ */
 export async function handleSessionCommands(
-  params: Omit<SessionCommandInput, 'reconcileOrphanedDeviceClaim'>,
+  params: Omit<SessionCommandInput, 'reconcileOrphanedDeviceClaim'> &
+    Readonly<{ lifecycleOperationsLoader?: LifecycleOperationsLoader }>,
 ): ReturnType<typeof handleProductionSessionCommands> {
+  const { lifecycleOperationsLoader, ...commandParams } = params;
   return await handleProductionSessionCommands({
-    ...params,
+    ...commandParams,
     req: await withClientReplayScriptSources(params.req),
     inspectFacts: params.inspectFacts ?? mockInspectDeviceRuntimeFacts,
-    bindDevice: params.bindDevice ?? mockBindDeviceRuntime,
+    bindDevice:
+      params.bindDevice ??
+      (lifecycleOperationsLoader === undefined
+        ? mockBindDeviceRuntime
+        : (device, use) => mockBindDeviceRuntime(device, use, lifecycleOperationsLoader)),
     platformResourceCleanup: params.platformResourceCleanup ?? platformResourceCleanupFixture(),
     reconcileOrphanedDeviceClaim: async () => ({
       status: 'retained',
@@ -116,7 +134,7 @@ export async function handleSessionCommands(
 export const readinessDeviceRuntimeGateway: DeviceRuntimeGateway<PlatformRuntimeOperations> =
   Object.freeze({
     inspectFacts: async (device: DeviceInfo) => readinessFacts(device),
-    bind: async ({ device }) => await readinessBinding(device),
+    bind: async ({ device }) => await readinessBinding(device, applicationLifecycleRuntimeFixture),
     shutdown: async () => {},
   });
 
@@ -171,9 +189,10 @@ function operationAvailability(supported: boolean): typeof available | typeof un
 
 async function readinessBinding(
   device: DeviceInfo,
+  loadLifecycleOperations: LifecycleOperationsLoader,
 ): Promise<DeviceBinding<PlatformRuntimeOperations>> {
   const facts = readinessFacts(device);
-  const lifecycle = await applicationLifecycleRuntimeFixture(
+  const lifecycle = await loadLifecycleOperations(
     device,
     new AbortController().signal,
     async () => await mockShutdownTargetRuntime(),

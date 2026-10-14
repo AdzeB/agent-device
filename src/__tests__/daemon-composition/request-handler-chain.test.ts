@@ -1,4 +1,4 @@
-import { daemonPlatformServicesFixture } from '../../daemon/__tests__/platform-services-fixture.ts';
+import { composedPlatformServicesFixture } from './platform-services-fixture.ts';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +22,7 @@ import {
   unavailableBindExactDevice,
   unavailableDeviceRuntimeGateway,
   unavailableInspectFacts,
-} from '../../daemon/__tests__/test-device-runtime-gateway.ts';
+} from '../../daemon/__tests__/support/unavailable-device-runtime-gateway.ts';
 import { createAudioProbeAdmissionLedger } from '@agent-device/capture-kit/audio-probe-admission-ledger';
 import { createPerfCaptureAdmissionLedger } from '@agent-device/capture-kit/perf-capture-admission-ledger';
 import { createScreenRecordingAdmissionLedger } from '@agent-device/capture-kit/screen-recording-admission-ledger';
@@ -50,7 +50,7 @@ function makeChainParams(req: DaemonRequest) {
     logPath: '/tmp/agent-device-request-chain.log',
     sessionStore,
     leaseRegistry: new LeaseRegistry(),
-    platformServices: daemonPlatformServicesFixture(),
+    platformServices: composedPlatformServicesFixture(),
     invoke: async (): Promise<DaemonResponse> => ({ ok: true, data: {} }),
     providerScope: {},
     bindDevice: unavailableBindDevice,
@@ -321,7 +321,7 @@ test('duration-less public coordinate swipe retains Linux drag behavior', async 
     async () =>
       await handleInteractionCommands({
         createCommandSurface: testCreateCommandSurface,
-        platformServices: daemonPlatformServicesFixture(),
+        platformServices: composedPlatformServicesFixture(),
         inspectFacts: bindings.inspectFacts,
         bindDevice: bindings.bindDevice,
         req: {

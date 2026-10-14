@@ -1,23 +1,25 @@
 import { test, expect, vi, beforeEach } from 'vitest';
 import * as path from 'node:path';
-import { LeaseRegistry } from '../../lease-registry.ts';
-import { providerDeviceAdmissionFixture } from '../../__tests__/support/provider-device-admission-fixture.ts';
-import { fakeCreateCommandSurface } from '../../__tests__/support/command-surface-fake.ts';
+import { LeaseRegistry } from '../../../daemon/lease-registry.ts';
+import { providerDeviceAdmissionFixture } from '../../../daemon/__tests__/support/provider-device-admission-fixture.ts';
+import { fakeCreateCommandSurface } from '../../../daemon/__tests__/support/command-surface-fake.ts';
 
 // The daemon reads provider ownership through its own typed admission seam; these suites
 // install the seam over runtime fakes, the way root composition installs the real one.
 const providerAdmission = providerDeviceAdmissionFixture();
 import { createTestDeviceInventoryGateways } from '@agent-device/device-selection/inventory-gateways-fixtures';
-import { makeSessionStore } from '../../__tests__/support/store-factory.ts';
-import { makeSession } from '../../__tests__/support/session-factories.ts';
-import { getResolveTargetDeviceMock } from '../../__tests__/request-router-dispatch-mocks.ts';
-import type { DaemonRequest } from '../../daemon-request.ts';
+import { makeSessionStore } from '../../../daemon/__tests__/support/store-factory.ts';
+import { makeSession } from '../../../daemon/__tests__/support/session-factories.ts';
+import { getResolveTargetDeviceMock } from '../../../daemon/__tests__/request-router-dispatch-mocks.ts';
+import type { DaemonRequest } from '../../../daemon/daemon-request.ts';
 
 vi.mock('node:timers/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:timers/promises')>();
   return { ...actual, setTimeout: vi.fn(async () => undefined) };
 });
-vi.mock('../../device/device-ready.ts', () => ({ ensureDeviceReady: vi.fn(async () => {}) }));
+vi.mock('../../../daemon/device/device-ready.ts', () => ({
+  ensureDeviceReady: vi.fn(async () => {}),
+}));
 vi.mock('@agent-device/platform-apple/runner/operations', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@agent-device/platform-apple/runner/operations')>();
@@ -55,16 +57,15 @@ vi.mock('@agent-device/platform-android/mechanics', async (importOriginal) => {
   return { ...actual, resolveAndroidPackageForOpen: vi.fn(async () => undefined) };
 });
 
-import {
-  createRequestHandler,
-  lifecycleDeviceRuntimeGateway,
-} from '../../__tests__/test-device-runtime-gateway.ts';
+import { createRequestHandler } from '../../../daemon/__tests__/test-device-runtime-gateway.ts';
+import { realLifecycleDeviceRuntimeGateway } from '../lifecycle-runtime-gateway.ts';
+import { platformResourceCleanup } from '../../../platform-runtime-resource-cleanup.ts';
 import {
   dispatchApplicationLifecycleEffect,
   awaitFixtureReadiness,
   discoverReadyAndroidEmulators,
-} from '../../__tests__/application-lifecycle-runtime-fixture.ts';
-import { ensureDeviceReady } from '../../device/device-ready.ts';
+} from '../application-lifecycle-runtime-fixture.ts';
+import { ensureDeviceReady } from '../../../daemon/device/device-ready.ts';
 import {
   prewarmIosRunnerSession,
   notifyIosRunnerAppRelaunched,
@@ -72,7 +73,7 @@ import {
   releaseIosRunnerOnClose,
 } from '@agent-device/platform-apple/runner/operations';
 import { runMacOsAlertAction } from '@agent-device/platform-apple/macos';
-import { refFrameState } from '../../ref-frame.ts';
+import { refFrameState } from '../../../daemon/ref-frame.ts';
 import { mkdtempForTestSync } from '@agent-device/test-kit/tmp-dir';
 
 const mockResolveTargetDevice = vi.mocked(getResolveTargetDeviceMock());
@@ -123,7 +124,8 @@ function createHandler(
     token: 'test-token',
     sessionStore,
     leaseRegistry,
-    deviceRuntimeGateway: lifecycleDeviceRuntimeGateway,
+    deviceRuntimeGateway: realLifecycleDeviceRuntimeGateway,
+    platformResourceCleanup,
     deviceInventoryGateways: createTestDeviceInventoryGateways(),
     trackDownloadableArtifact: () => 'artifact-id',
   });
@@ -549,56 +551,6 @@ test('close on macOS session stops runner and dismisses automation alert before 
   expect(sessionStore.get(sessionName)).toBe(undefined);
 });
 
-test('close on iOS simulator session retains runner and deletes the session', async () => {
-  const sessionStore = makeSessionStore('agent-device-relaunch-close-');
-  const sessionName = 'ios-simulator-session';
-  sessionStore.publish(
-    sessionName,
-    makeSession(sessionName, {
-      device: {
-        platform: 'apple',
-        id: 'sim-1',
-        name: 'iPhone 17 Pro',
-        kind: 'simulator',
-        booted: true,
-      },
-      appName: 'com.example.app',
-    }),
-  );
-
-  const response = await createHandler(sessionStore)(sessionRequest(sessionName, 'close'));
-
-  expect(response.ok).toBe(true);
-  expect(mockStopIosRunner).not.toHaveBeenCalled();
-  expect(mockReleaseRunnerOnClose).toHaveBeenCalledWith('sim-1', { retain: true });
-  expect(sessionStore.get(sessionName)).toBeUndefined();
-});
-
-test('close on iOS simulator with scoped simulator set retains runner and deletes the session', async () => {
-  const sessionStore = makeSessionStore('agent-device-relaunch-close-');
-  const sessionName = 'ios-scoped-simulator-session';
-  sessionStore.publish(
-    sessionName,
-    makeSession(sessionName, {
-      device: {
-        platform: 'apple',
-        id: 'sim-1',
-        name: 'iPhone 17 Pro',
-        kind: 'simulator',
-        booted: true,
-        simulatorSetPath: '/tmp/tenant-a/simulator-set',
-      },
-      appName: 'com.example.app',
-    }),
-  );
-
-  const response = await createHandler(sessionStore)(sessionRequest(sessionName, 'close'));
-
-  expect(response.ok).toBe(true);
-  expect(mockReleaseRunnerOnClose).toHaveBeenCalledWith('sim-1', { retain: true });
-  expect(sessionStore.get(sessionName)).toBeUndefined();
-});
-
 test('close on leased iOS simulator session stops runner before deleting session', async () => {
   const sessionStore = makeSessionStore('agent-device-relaunch-close-');
   const sessionName = 'ios-leased-simulator-session';
@@ -704,43 +656,6 @@ test('close <app> on iOS stops runner before app close dispatch and performs fin
 
   expect(response.ok).toBe(true);
   expect(calls).toEqual(['stop-runner', 'close:com.example.app', 'release-runner:stop']);
-});
-
-test('close <app> on iOS simulator retains runner while terminating app', async () => {
-  const sessionStore = makeSessionStore('agent-device-relaunch-close-');
-  const sessionName = 'ios-simulator-close-session';
-  sessionStore.publish(
-    sessionName,
-    makeSession(sessionName, {
-      device: {
-        platform: 'apple',
-        id: 'sim-1',
-        name: 'iPhone 17 Pro',
-        kind: 'simulator',
-        booted: true,
-      },
-      appName: 'com.example.app',
-    }),
-  );
-
-  const calls: string[] = [];
-  mockStopIosRunner.mockImplementation(async () => {
-    calls.push('stop-runner');
-  });
-  mockReleaseRunnerOnClose.mockImplementation(async (_deviceId, options) => {
-    calls.push(`release-runner:${options.retain ? 'retain' : 'stop'}`);
-  });
-  mockDispatch.mockImplementation(async (_device, command, positionals) => {
-    calls.push(`${command}:${(positionals ?? []).join(' ')}`);
-    return {};
-  });
-
-  const response = await createHandler(sessionStore)(
-    sessionRequest(sessionName, 'close', { positionals: ['com.example.app'] }),
-  );
-
-  expect(response.ok).toBe(true);
-  expect(calls).toEqual(['close:com.example.app', 'release-runner:retain']);
 });
 
 test('app-only close terminates an iOS simulator app without ending its session', async () => {

@@ -18,17 +18,26 @@ import {
   createRequestHandler as createProductionRequestHandler,
   type RequestRouterDeps,
 } from '../request-router.ts';
-import type { BindDeviceRuntime, BindExactDeviceRuntime } from '../request-runtime-binding.ts';
+import type { BindDeviceRuntime } from '../request-runtime-binding.ts';
 import type { DeviceInfo } from '@agent-device/kernel/device';
-import { applicationLifecycleRuntimeFixture } from './application-lifecycle-runtime-fixture.ts';
+import {
+  applicationLifecycleRuntimeFixture,
+  type LifecycleOperationsLoader,
+} from './application-lifecycle-runtime-fixture.ts';
 import { createUnavailableRuntimeFactsForTest } from '@agent-device/test-kit/runtime-operation-facts';
 import { withClientReplayScriptSources } from '@agent-device/replay-port/replay-script-source-fixtures';
 import type { DaemonInvokeFn } from '../daemon-request.ts';
 import { clearAndroidObservationFixture } from './android-observation-fixture.ts';
-import { daemonPlatformServicesFixture } from './platform-services-fixture.ts';
-import { createClaimRecoveryGateway } from '../../platform-runtime-claim-recovery.ts';
-import { platformResourceCleanup } from '../../platform-runtime-resource-cleanup.ts';
+import {
+  daemonClaimRecoveryGatewayFixture,
+  daemonPlatformServicesFixture,
+} from './platform-services-fixture.ts';
+import { platformResourceCleanupFixture } from './support/platform-resource-cleanup-fixture.ts';
 import { providerCredentialsFixture } from './support/provider-credentials-fixture.ts';
+import {
+  unavailableBinding,
+  unavailableDeviceRuntimeGateway,
+} from './support/unavailable-device-runtime-gateway.ts';
 
 const unavailable = Object.freeze({
   available: false as const,
@@ -50,7 +59,11 @@ function lifecycleFactsForTest(device: DeviceInfo): ApplicationLifecycleOperatio
   });
 }
 
-async function lifecycleBindingForTest(device: DeviceInfo) {
+async function lifecycleBindingForTest(
+  device: DeviceInfo,
+  loadLifecycleOperations: LifecycleOperationsLoader = applicationLifecycleRuntimeFixture,
+  signal?: AbortSignal,
+) {
   const lifecycleFacts = lifecycleFactsForTest(device);
   const base = createUnavailableRuntimeFactsForTest(device, localRuntimeOwner(device.platform));
   return {
@@ -67,7 +80,9 @@ async function lifecycleBindingForTest(device: DeviceInfo) {
     },
     operations: {
       ...availableApplicationLifecycleOperations(
-        await applicationLifecycleRuntimeFixture(device),
+        // The request's signal reaches the loader so a canceled request aborts the bound
+        // lifecycle operations instead of handing them a fresh, uncontended signal.
+        await loadLifecycleOperations(device, signal),
         lifecycleFacts,
       ),
       // The gesture family rides along: replay flows drive `scroll`/`swipe` through this gateway,
@@ -81,13 +96,27 @@ async function lifecycleBindingForTest(device: DeviceInfo) {
   };
 }
 
-/** Opt-in lifecycle fixture: commands bind the real root host after fact admission. */
+/** Opt-in lifecycle fixture: commands bind the canned lifecycle port after fact admission. */
 export const lifecycleDeviceRuntimeGateway: DeviceRuntimeGateway<PlatformRuntimeOperations> =
   Object.freeze({
     inspectFacts: async (device) => (await lifecycleBindingForTest(device)).facts,
-    bind: async ({ device }) => await lifecycleBindingForTest(device),
+    bind: async ({ device, scope }) =>
+      await lifecycleBindingForTest(device, applicationLifecycleRuntimeFixture, scope.signal),
     shutdown: async () => {},
   });
+
+/** The same gateway shape bound to a caller-supplied lifecycle-ops loader (root composition lanes pass the real fixture). */
+export function createLifecycleDeviceRuntimeGateway(
+  loadLifecycleOperations: LifecycleOperationsLoader,
+): DeviceRuntimeGateway<PlatformRuntimeOperations> {
+  return Object.freeze({
+    inspectFacts: async (device) =>
+      (await lifecycleBindingForTest(device, loadLifecycleOperations)).facts,
+    bind: async ({ device, scope }) =>
+      await lifecycleBindingForTest(device, loadLifecycleOperations, scope.signal),
+    shutdown: async () => {},
+  });
+}
 
 /**
  * A fresh, unfrozen `lifecycleDeviceRuntimeGateway`-equivalent whose `inspectFacts`/`bind` are
@@ -96,12 +125,16 @@ export const lifecycleDeviceRuntimeGateway: DeviceRuntimeGateway<PlatformRuntime
  * would leak call counts between tests in other files) — call this per test that needs to observe
  * fact-inspection/binding call counts through the router seam.
  */
-export function createLifecycleDeviceRuntimeGatewaySpies() {
+export function createLifecycleDeviceRuntimeGatewaySpies(
+  loadLifecycleOperations: LifecycleOperationsLoader = applicationLifecycleRuntimeFixture,
+) {
   const inspectFacts = vi.fn(
-    async (device: DeviceInfo) => (await lifecycleBindingForTest(device)).facts,
+    async (device: DeviceInfo) =>
+      (await lifecycleBindingForTest(device, loadLifecycleOperations)).facts,
   );
   const bind = vi.fn(
-    async (request: DeviceBindingRequest) => await lifecycleBindingForTest(request.device),
+    async (request: DeviceBindingRequest) =>
+      await lifecycleBindingForTest(request.device, loadLifecycleOperations, request.scope.signal),
   );
   const gateway: DeviceRuntimeGateway<PlatformRuntimeOperations> = {
     inspectFacts,
@@ -110,22 +143,6 @@ export function createLifecycleDeviceRuntimeGatewaySpies() {
   };
   return { gateway, inspectFacts, bind };
 }
-
-export const unavailableDeviceRuntimeGateway: DeviceRuntimeGateway<PlatformRuntimeOperations> =
-  Object.freeze({
-    inspectFacts: async (device) => (await unavailableBinding(device)).facts,
-    bind: async ({ device }) => {
-      const owner = localRuntimeOwner(device.platform);
-      return {
-        device,
-        owner,
-        facts: createUnavailableRuntimeFactsForTest(device, owner),
-        operations: {},
-        [Symbol.asyncDispose]: async () => {},
-      };
-    },
-    shutdown: async () => {},
-  });
 
 /**
  * Spies for the gesture surface a router-level test drives. They replace the retired
@@ -190,39 +207,6 @@ async function gestureBinding(device: DeviceInfo) {
   } as unknown as Awaited<ReturnType<DeviceRuntimeGateway<PlatformRuntimeOperations>['bind']>>;
 }
 
-async function unavailableBinding(device: DeviceInfo) {
-  return await unavailableDeviceRuntimeGateway.bind({
-    device,
-    intent: { kind: 'ordinary' },
-    scope: {
-      signal: new AbortController().signal,
-      diagnostics: { emit: () => {} },
-      progress: { report: () => {} },
-    },
-  });
-}
-
-export const unavailableBindDevice: BindDeviceRuntime = async (device, use) =>
-  narrowDeviceBinding(await unavailableBinding(device), use);
-
-export const unavailableInspectFacts = unavailableDeviceRuntimeGateway.inspectFacts;
-
-export const unavailableBindExactDevice: BindExactDeviceRuntime = async (
-  device,
-  owner,
-  fence,
-  use,
-  scope,
-) =>
-  narrowDeviceBinding(
-    await unavailableDeviceRuntimeGateway.bind({
-      device,
-      intent: { kind: 'exact-owner', owner, fence },
-      scope,
-    }),
-    use,
-  );
-
 export function createRequestHandler(
   deps: Omit<
     RequestRouterDeps,
@@ -239,12 +223,12 @@ export function createRequestHandler(
     deviceRuntimeGateway = unavailableDeviceRuntimeGateway,
     providerCredentials = providerCredentialsFixture({}, path.dirname(deps.logPath)),
     platformServices = daemonPlatformServicesFixture(),
-    claimRecoveryGateway = createClaimRecoveryGateway,
+    claimRecoveryGateway = daemonClaimRecoveryGatewayFixture(),
     ...rest
   } = deps;
   const handle = createProductionRequestHandler({
     androidObservation: clearAndroidObservationFixture,
-    platformResourceCleanup,
+    platformResourceCleanup: platformResourceCleanupFixture(),
     ...rest,
     platformServices,
     claimRecoveryGateway,

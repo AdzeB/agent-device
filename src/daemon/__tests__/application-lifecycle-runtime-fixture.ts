@@ -1,20 +1,16 @@
+import { vi } from 'vitest';
+import {
+  bindDirectApplicationLifecycle,
+  bindLocalApplicationLifecycleInteractor,
+} from '@agent-device/contracts/application-lifecycle-interaction';
 import type {
   ApplicationLifecycleExecution,
   ApplicationLifecycleRuntimeOperations,
+  RuntimeHintsApplicationInput,
 } from '@agent-device/contracts/application-lifecycle-runtime';
-import type { DeviceBinding } from '@agent-device/contracts/platform-runtime';
-import type {
-  PlatformRuntimeHost,
-  PlatformRuntimeOperations,
-} from '@agent-device/contracts/platform-runtime-operations';
 import type { Interactor, RunnerContext } from '@agent-device/contracts/interactor-types';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import type { TargetShutdownResult } from '@agent-device/contracts/device';
-import { vi } from 'vitest';
-import { createAndroidApplicationTools } from '../../platform-runtime-android-application-tools.ts';
-import { createAppleApplicationTools } from '../../platform-runtime-apple-application-tools.ts';
-import { createComposedPlatformRuntimeGateway } from '../../platform-runtime-gateway.ts';
-import { platformRuntimeModules } from '../../platform-runtime.ts';
 
 type LifecycleEffectContext = ApplicationLifecycleExecution &
   Readonly<{
@@ -24,30 +20,19 @@ type LifecycleEffectContext = ApplicationLifecycleExecution &
   }>;
 
 /**
- * Handler tests observe an admitted lifecycle effect through this test-only seam. It is not a
- * wrapper around the retired command dispatcher: package lifecycle tests own dispatch mechanics,
- * while handler tests assert facts admission, binding, session policy, and error precedence.
- */
-/**
- * Readiness discovery, as a seam. It reports the device under test as an already-running emulator
- * so lifecycle fixtures never launch or poll a boot; a test that needs a pre-effect readiness
- * failure rejects this instead.
- */
-/**
  * A platform-neutral readiness pause point. Package-owned readiness runs inside the admitted
  * binding, so a router-level test that needs to hold an open mid-readiness awaits this instead of
- * a per-platform host call.
+ * a per-platform host call. A daemon-lane test that needs a readiness FAILURE rejects
+ * `prepareApplicationOpenFixture` (the port's prepare step), which is where the canned answer
+ * surfaces to the open flow.
  */
 export const awaitFixtureReadiness = vi.fn(async (_device: DeviceInfo): Promise<void> => undefined);
 
-export const discoverReadyAndroidEmulators = vi.fn(async (readyDevice: DeviceInfo) => [
-  {
-    ...readyDevice,
-    id: readyDevice.id.startsWith('emulator-') ? readyDevice.id : `emulator-${readyDevice.id}`,
-    booted: true,
-  },
-]);
-
+/**
+ * Handler tests observe an admitted lifecycle open/close through this spy: package lifecycle
+ * suites own dispatch mechanics, while handler tests assert facts admission, binding, session
+ * policy, and error precedence around this call.
+ */
 export const dispatchApplicationLifecycleEffect = vi.fn(
   async (
     _device: DeviceInfo,
@@ -59,9 +44,98 @@ export const dispatchApplicationLifecycleEffect = vi.fn(
 );
 
 /**
- * Handler fixtures enter each package through its public runtime module. The only test double is
- * the final interactor effect, so handler tests exercise package-owned lifecycle sequencing
- * without reaching into a package implementation or recreating a root lifecycle dispatcher.
+ * Loads the lifecycle operations a test binding builds: the daemon default is the canned port
+ * fixture, and root composition lanes pass their real composed fixture. The gateway factories and
+ * the session-command harness both take it as a parameter; nothing installs it into a module global.
+ */
+export type LifecycleOperationsLoader = (
+  device: DeviceInfo,
+  signal?: AbortSignal,
+  shutdownTarget?: (device: DeviceInfo) => Promise<TargetShutdownResult>,
+) => Promise<ApplicationLifecycleRuntimeOperations>;
+
+/** The runtime-hint asks as the fixture answers them, at the port, with the bound device. */
+export const applyRuntimeHintsFixture = vi.fn(
+  async (_input: RuntimeHintsApplicationInput & Readonly<{ device: DeviceInfo }>) => undefined,
+);
+export const clearRuntimeHintsFixture = vi.fn(
+  async (_input: RuntimeHintsApplicationInput & Readonly<{ device: DeviceInfo }>) => undefined,
+);
+
+/** The fixture's canned `prepareAppleRunner` answer, spied at the port. */
+const prepareAppleRunnerFixture = vi.fn(
+  async (): Promise<{
+    runner: Record<string, unknown>;
+    connectMs: number;
+    healthCheckMs: number;
+  }> => ({ runner: { currentUptimeMs: 42 }, connectMs: 3, healthCheckMs: 3 }),
+);
+
+/**
+ * The canned `resolveOpenTarget` answer: the contract's canonical direct-lifecycle resolution for
+ * the fixture owner (a dotted, non-deep-link target is the bundle id; otherwise the session's
+ * current one), reached through the `directResolve` the fixture passes in. No open-target, surface,
+ * or platform rule lives here — the real owners' resolution rules (apple/android target identity,
+ * macOS frontmost surfaces, Safari and deep-link fallbacks) are pinned under
+ * `src/__tests__/daemon-composition/` (`session-open-target.test.ts` and siblings). A daemon suite
+ * that needs a different bundle id answers per case through this spy.
+ */
+export const resolveOpenTargetFixture = vi.fn(
+  async (
+    _device: DeviceInfo,
+    directResolve: NonNullable<ApplicationLifecycleRuntimeOperations['resolveOpenTarget']>,
+    input: Parameters<NonNullable<ApplicationLifecycleRuntimeOperations['resolveOpenTarget']>>[0],
+  ) => await directResolve(input),
+);
+
+/**
+ * The canned `prepareApplicationOpen` answer: pause at the fixture's readiness seam and succeed.
+ * The per-platform readiness sequencing (android discovery for a stopped AVD, simulator cold boot)
+ * is the composed owners' rule, pinned under `src/__tests__/daemon-composition/`.
+ */
+export const prepareApplicationOpenFixture = vi.fn(async (device: DeviceInfo): Promise<void> => {
+  await awaitFixtureReadiness(device);
+});
+
+/**
+ * The canned `openApplication` answer: run the contract's canonical direct lifecycle (the `direct`
+ * operations the fixture passes in) with the fact-admitted runtime hints applied at the port when
+ * the open requests them. A hinted relaunch closes first, then applies the hints, then opens —
+ * the same order the apple/android owners sequence, so daemon suites cannot encode a reversed
+ * lifecycle. Relaunch identity, runner prewarm policy, and post-open observation are the composed
+ * owners' rules, pinned under `src/__tests__/daemon-composition/`.
+ */
+const openApplicationFixture = vi.fn(
+  async (
+    _device: DeviceInfo,
+    direct: ApplicationLifecycleRuntimeOperations,
+    input: Parameters<ApplicationLifecycleRuntimeOperations['openApplication']>[0],
+  ) => {
+    if (input.applyRuntimeHints) {
+      // The direct owner's close-before-relaunch happens inside its open; a hinted relaunch
+      // must close before the hints land, so take the close here and open as a fresh launch.
+      if (input.relaunch && input.target !== undefined) {
+        await direct.closeApplication({
+          positionals: [input.appBundleId ?? input.target],
+          surface: input.surface,
+          execution: input.execution,
+        });
+        await input.applyRuntimeHints({ appId: input.appBundleId, values: input.runtimeHints });
+        return await direct.openApplication({ ...input, relaunch: false });
+      }
+      await input.applyRuntimeHints({ appId: input.appBundleId, values: input.runtimeHints });
+    }
+    return await direct.openApplication(input);
+  },
+);
+
+/**
+ * The `ApplicationLifecycleRuntimeOperations` port as the daemon suites need it: the contract's
+ * canonical direct lifecycle over the fixture interactor's spies, with open-target resolution,
+ * readiness, open sequencing, runtime hints, and runner preparation answered by port spies whose
+ * canned answers carry no platform rule. The real apple/android sequencing (boot, runner prewarm
+ * policy, relaunch identity, post-open observation) belongs to the platform packages and is pinned
+ * under `src/__tests__/daemon-composition/`.
  */
 export async function applicationLifecycleRuntimeFixture(
   device: DeviceInfo,
@@ -73,154 +147,38 @@ export async function applicationLifecycleRuntimeFixture(
     stderr: '',
   }),
 ): Promise<ApplicationLifecycleRuntimeOperations> {
-  const gateway = createComposedPlatformRuntimeGateway({
-    modules: platformRuntimeModules,
-    loadHost: async () => fixtureHost(device, shutdownTarget),
+  const direct = bindDirectApplicationLifecycle({
+    owner: 'lifecycle-fixture',
+    openTargetIdentity: 'bundle-id',
+    // The fixture owner's canned open does not replace a running application, so relaunch closes
+    // first — the contract's own knob, not a per-platform copy of the real owners' choices.
+    closeBeforeRelaunch: true,
+    binding: bindLocalApplicationLifecycleInteractor({
+      device,
+      signal,
+      resolveInteractor: async (target, runner) =>
+        applicationLifecycleFixtureInteractor(target, runner),
+    }),
   });
-  const binding = await gateway.bind({
-    device,
-    intent: { kind: 'ordinary' },
-    scope: { signal, diagnostics: { emit: () => {} }, progress: { report: () => {} } },
+  const directResolveOpenTarget = direct.resolveOpenTarget;
+  return Object.freeze({
+    ...direct,
+    resolveOpenTarget: async (input) =>
+      await resolveOpenTargetFixture(device, directResolveOpenTarget, input),
+    prepareApplicationOpen: async () => {
+      await prepareApplicationOpenFixture(device);
+    },
+    openApplication: async (input) => await openApplicationFixture(device, direct, input),
+    applyRuntimeHints: async (input) => {
+      await applyRuntimeHintsFixture({ device, ...input });
+    },
+    clearRuntimeHints: async (input) => {
+      await clearRuntimeHintsFixture({ device, ...input });
+    },
+    finalizeApplicationClose: async (input) =>
+      input.shutdownTarget ? { shutdown: await shutdownTarget(device) } : {},
+    prepareAppleRunner: async () => await prepareAppleRunnerFixture(),
   });
-  return lifecycleOperations(binding);
-}
-
-function lifecycleOperations(
-  binding: DeviceBinding<PlatformRuntimeOperations>,
-): ApplicationLifecycleRuntimeOperations {
-  const operations = binding.operations;
-  const keys = [
-    'resolveOpenTarget',
-    'prepareApplicationOpen',
-    'openApplication',
-    'applyRuntimeHints',
-    'clearRuntimeHints',
-    'closeApplication',
-    'finalizeApplicationClose',
-    'prepareAppleRunner',
-    'configureProviderPortReverse',
-  ] as const satisfies readonly (keyof ApplicationLifecycleRuntimeOperations)[];
-  const selected = Object.fromEntries(
-    keys.flatMap((key) => {
-      const operation = operations[key];
-      return operation ? [[key, operation]] : [];
-    }),
-  );
-  return Object.freeze(selected) as ApplicationLifecycleRuntimeOperations;
-}
-
-function fixtureHost(
-  readyDevice: DeviceInfo,
-  shutdownTarget: (device: DeviceInfo) => Promise<TargetShutdownResult>,
-): PlatformRuntimeHost {
-  let simulatorState = readyDevice.booted === false ? 'Shutdown' : 'Booted';
-  const localInteractors = Object.freeze({
-    resolve: async (device: DeviceInfo, runner: RunnerContext): Promise<Interactor> =>
-      applicationLifecycleFixtureInteractor(device, runner),
-  });
-  return {
-    localInteractors,
-    appleApplications: createAppleApplicationTools(),
-    androidApplications: createAndroidApplicationTools(),
-    deviceShutdown: Object.freeze({
-      apple: Object.freeze({
-        shutdownTarget: async (device: DeviceInfo) => await shutdownTarget(device),
-      }),
-      android: Object.freeze({
-        shutdownTarget: async (device: DeviceInfo) => await shutdownTarget(device),
-      }),
-      close: Object.freeze({
-        canShutdownTarget: async (device: DeviceInfo) =>
-          (device.platform === 'apple' && device.kind === 'simulator') ||
-          (device.platform === 'android' && device.kind === 'emulator'),
-        shutdownTarget: async (device: DeviceInfo) => await shutdownTarget(device),
-      }),
-    }),
-    // Readiness is package-owned; these handler fixtures exercise lifecycle dispatch, so the
-    // narrow ports report an already-ready device instead of booting anything.
-    deviceReadiness: Object.freeze({
-      applePhysical: Object.freeze({
-        ensureConnected: async (_device: DeviceInfo, signal: AbortSignal) => {
-          signal.throwIfAborted();
-        },
-      }),
-      appleAutomation: Object.freeze({
-        keepHot: () => undefined,
-        markBooted: () => {},
-        wasRecentlyObservedBooted: async () => false,
-      }),
-      androidEmulator: Object.freeze({
-        discover: async (_request: unknown, signal: AbortSignal) => {
-          signal.throwIfAborted();
-          await awaitFixtureReadiness(readyDevice);
-          return await discoverReadyAndroidEmulators(readyDevice);
-        },
-        launch: () => 1,
-        terminate: async () => undefined,
-      }),
-    }),
-    // Readiness reads the device's own boot state, so a `booted: false` fixture still exercises
-    // the cold-boot path (and its runner-cache prewarm hook) before settling.
-    appleTools: Object.freeze({
-      isXcrunAvailable: async () => true,
-      run: async (request: Readonly<{ args: readonly string[] }>) => {
-        await awaitFixtureReadiness(readyDevice);
-        if (request.args.includes('boot')) {
-          simulatorState = 'Booted';
-          return { stdout: '', stderr: '', exitCode: 0 };
-        }
-        return {
-          stdout: JSON.stringify({
-            devices: { fixture: [{ udid: readyDevice.id, state: simulatorState }] },
-          }),
-          stderr: '',
-          exitCode: 0,
-        };
-      },
-    }),
-    commands: Object.freeze({
-      which: async (executable: string) => executable,
-      run: async () => ({ stdout: '1', stderr: '', exitCode: 0 }),
-    }),
-    toolchains: Object.freeze({ prepare: async () => undefined }),
-    clock: Object.freeze({
-      now: () => Date.now(),
-      sleep: async () => undefined,
-    }),
-    processTransports: Object.freeze({
-      resolve: async () => ({ mode: 'local' as const }),
-    }),
-    networkTransports: Object.freeze({
-      resolve: async () => ({ mode: 'local' as const }),
-    }),
-    screenRecording: Object.freeze({
-      apple: Object.freeze({
-        availability: async () => ({
-          available: false as const,
-          hint: 'Screen recording is outside this lifecycle fixture.',
-        }),
-      }),
-      android: Object.freeze({ resolve: async () => ({}) }),
-      web: Object.freeze({ resolve: async () => undefined }),
-    }),
-    audioProbe: Object.freeze({
-      hostCapture: Object.freeze({
-        info: Object.freeze({
-          source: 'system-audio' as const,
-          backend: 'fixture',
-          sourceCount: 0,
-          notes: () => [],
-        }),
-        start: async () => {
-          throw new Error('Audio probe is outside this lifecycle fixture.');
-        },
-        inspectProcess: async () => 'missing' as const,
-        terminateProcess: async () => 'already-missing' as const,
-      }),
-      web: Object.freeze({ resolve: async () => undefined }),
-      ownedProcesses: Object.freeze({ replace: () => {}, clear: () => {} }),
-    }),
-  } as unknown as PlatformRuntimeHost;
 }
 
 export function applicationLifecycleFixtureInteractor(

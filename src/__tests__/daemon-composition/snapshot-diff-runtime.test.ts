@@ -1,4 +1,4 @@
-import { daemonPlatformServicesFixture } from '../../daemon/__tests__/platform-services-fixture.ts';
+import { composedPlatformServicesFixture } from './platform-services-fixture.ts';
 import { expect, test, vi } from 'vitest';
 import {
   type DeviceBinding,
@@ -21,7 +21,7 @@ import type {
 } from '../../daemon/request-runtime-binding.ts';
 import { dispatchSnapshotDiffViaRuntime } from '../../daemon/snapshot-diff-runtime.ts';
 import { expectRefusesUnavailableExactOwnerFact } from '../../daemon/__tests__/runtime-binding-conformance.ts';
-import { unavailableDeviceRuntimeGateway } from '../../daemon/__tests__/test-device-runtime-gateway.ts';
+import { unavailableDeviceRuntimeGateway } from '../../daemon/__tests__/support/unavailable-device-runtime-gateway.ts';
 import { testCreateCommandSurface } from './command-surface-fixture.ts';
 
 const available = Object.freeze({ available: true } as const);
@@ -132,7 +132,7 @@ test.each([
 
     const response = await dispatchSnapshotDiffViaRuntime({
       createCommandSurface: testCreateCommandSurface,
-      platformServices: daemonPlatformServicesFixture(),
+      platformServices: composedPlatformServicesFixture(),
       req: {
         command: 'diff',
         positionals: ['snapshot'],
@@ -193,7 +193,7 @@ test('preserves initialized, unchanged, and changed diff results through one bou
   const run = async () =>
     await dispatchSnapshotDiffViaRuntime({
       createCommandSurface: testCreateCommandSurface,
-      platformServices: daemonPlatformServicesFixture(),
+      platformServices: composedPlatformServicesFixture(),
       req: {
         command: 'diff',
         positionals: ['snapshot'],
@@ -243,7 +243,7 @@ test('a sparse internal diff capture returns no screenshot fallback artifact', a
 
   const response = await dispatchSnapshotDiffViaRuntime({
     createCommandSurface: testCreateCommandSurface,
-    platformServices: daemonPlatformServicesFixture(),
+    platformServices: composedPlatformServicesFixture(),
     req: { command: 'diff', positionals: ['snapshot'], token: 't', session: 'diff-runtime' },
     sessionName: 'diff-runtime',
     logPath: '/tmp/diff-runtime.log',
