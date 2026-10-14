@@ -176,6 +176,7 @@ function sourceNodeFromAttributes(
       ? androidValueFacts(type, attrs)
       : { value: nonEmptyWebDriverAttribute(attrs.value) }),
     identifier: firstWebDriverAttribute(attrs, ['resource-id', 'id', 'accessibility-id', 'name']),
+    ...(platform === 'android' && attrs.package ? { bundleId: attrs.package } : {}),
     rect,
     ...sourceStateFacts(attrs, rect, platform),
     ...(field === undefined ? {} : field.facts),

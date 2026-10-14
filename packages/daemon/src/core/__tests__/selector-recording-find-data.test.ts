@@ -40,3 +40,20 @@ test('a read that resolved to a ref still publishes it', () => {
 
   expect(data.ref).toBe('@e9');
 });
+
+test('public selector nodes retain bar membership while dropping private settle provenance', () => {
+  const node = { index: 0, systemBar: 'status' as const, systemChrome: true as const };
+  for (const result of [
+    { kind: 'attrs' as const, node },
+    { kind: 'text' as const, text: 'Clock', node },
+    { kind: 'list' as const, matches: [{ node }] },
+  ]) {
+    const data = toDaemonFindData(result) as {
+      node?: Record<string, unknown>;
+      matches?: Array<{ node: Record<string, unknown> }>;
+    };
+    const published = result.kind === 'list' ? data.matches?.[0]?.node : data.node;
+    expect(published?.systemBar).toBe('status');
+    expect(published).not.toHaveProperty('systemChrome');
+  }
+});
