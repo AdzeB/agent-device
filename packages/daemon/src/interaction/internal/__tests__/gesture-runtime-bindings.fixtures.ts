@@ -1,7 +1,15 @@
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 import type { BoundDeviceRuntime, RuntimeFacts } from '@agent-device/contracts/platform-runtime';
 import type { PlatformRuntimeOperations } from '@agent-device/contracts/platform-runtime-operations';
 import type { Rect } from '@agent-device/kernel/snapshot';
+import type {
+  GesturePlanInput,
+  GestureViewportInput,
+} from '@agent-device/contracts/gesture-runtime';
+import type {
+  CaptureSnapshotInput,
+  SnapshotResult,
+} from '@agent-device/contracts/snapshot-runtime';
 import type {
   BindDeviceRuntime,
   InspectDeviceRuntimeFacts,
@@ -26,14 +34,25 @@ export function gestureRuntimeBindingsFixture(
       ? ({ available: false, reason: 'unsupported-platform-leaf' } as const)
       : available;
   const operationSpies = {
-    captureSnapshot: vi.fn(async () => ({ backend: 'xctest' as const, nodes: [] })),
-    performGesturePlan: vi.fn(async () => ({})),
-    performDirectionalFlingPlan: vi.fn(async () => ({})),
-    performMultiTouchGesturePlan: vi.fn(async () => ({})),
-    performTargetAuthoredDrag: vi.fn(async () => ({})),
+    captureSnapshot: vi.fn(async () => ({
+      backend: 'xctest' as const,
+      nodes: [],
+    })) as unknown as Mock<(input: CaptureSnapshotInput) => Promise<SnapshotResult>>,
+    performGesturePlan: vi.fn(async () => ({})) as Mock<
+      (input: GesturePlanInput) => Promise<Record<string, never>>
+    >,
+    performDirectionalFlingPlan: vi.fn(async () => ({})) as Mock<
+      (input: GesturePlanInput) => Promise<Record<string, never>>
+    >,
+    performMultiTouchGesturePlan: vi.fn(async () => ({})) as Mock<
+      (input: GesturePlanInput) => Promise<Record<string, never>>
+    >,
+    performTargetAuthoredDrag: vi.fn(async () => ({})) as Mock<
+      (input: GesturePlanInput) => Promise<Record<string, never>>
+    >,
     gestureViewport: vi.fn(
-      async () => options.viewport ?? ({ x: 0, y: 0, width: 400, height: 800 } as Rect),
-    ),
+      async () => options.viewport ?? { x: 0, y: 0, width: 400, height: 800 },
+    ) as Mock<(input: GestureViewportInput) => Promise<Rect>>,
   };
   const facts = {
     device: { family: 'apple', kind: 'simulator', providerMode: 'local' },
@@ -48,7 +67,7 @@ export function gestureRuntimeBindingsFixture(
     },
   } as unknown as RuntimeFacts<PlatformRuntimeOperations>;
   const inspectFacts = vi.fn(async () => facts) as unknown as InspectDeviceRuntimeFacts &
-    ReturnType<typeof vi.fn>;
+    Mock<() => Promise<RuntimeFacts<PlatformRuntimeOperations>>>;
   const bindDevice = vi.fn(
     async () =>
       ({
@@ -57,6 +76,6 @@ export function gestureRuntimeBindingsFixture(
           Object.entries(operationSpies).filter(([name]) => !unavailable.has(name)),
         ),
       }) as unknown as BoundDeviceRuntime<never>,
-  ) as unknown as BindDeviceRuntime & ReturnType<typeof vi.fn>;
+  ) as unknown as BindDeviceRuntime & Mock<() => Promise<BoundDeviceRuntime<never>>>;
   return { ...operationSpies, facts, inspectFacts, bindDevice };
 }

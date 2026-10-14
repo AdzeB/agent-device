@@ -171,7 +171,7 @@ test('composition policy does not pin local platform-module identifier spelling'
 test('external consumers use root facades with static imports only at the interactor seam', () => {
   const staticImport = validSources();
   staticImport.set(
-    'src/daemon/not-the-root.ts',
+    'packages/daemon/src/not-the-root.ts',
     "import { applePlatformMetadata } from '@agent-device/platform-apple';",
   );
   assert.match(
@@ -184,7 +184,7 @@ test('external consumers use root facades with static imports only at the intera
     "void import('@agent-device/platform-apple');",
   ]) {
     const sources = validSources();
-    sources.set('src/daemon/not-the-root.ts', statement);
+    sources.set('packages/daemon/src/not-the-root.ts', statement);
     assert.match(
       messages(sources).join('\n'),
       /production static imports of '@agent-device\/platform-apple' are limited to/,
@@ -231,7 +231,7 @@ test('external consumers use root facades with static imports only at the intera
 
   const reExport = validSources();
   reExport.set(
-    'src/daemon/not-the-root.ts',
+    'packages/daemon/src/not-the-root.ts',
     "export { applePlatformMetadata } from '@agent-device/platform-apple';",
   );
   assert.match(
@@ -241,7 +241,7 @@ test('external consumers use root facades with static imports only at the intera
 
   const deep = validSources();
   deep.set(
-    'src/daemon/not-the-root.ts',
+    'packages/daemon/src/not-the-root.ts',
     "import { implementation } from '@agent-device/platform-apple/internal';",
   );
   assert.match(
@@ -267,8 +267,8 @@ test('only the canonical composition root may import the private provider compos
   assert.deepEqual(checkPlatformPackagePolicy(sources, declarations()), []);
 
   sources.set(
-    'src/daemon/request-router.ts',
-    "import { providerScope } from '../platform-runtime/request-providers.ts';",
+    'packages/daemon/src/request-router.ts',
+    "import { providerScope } from '../../../src/platform-runtime/request-providers.ts';",
   );
   assert.match(
     messages(sources).join('\n'),
@@ -280,7 +280,7 @@ test('the apple runner mechanics facet subpaths are the enumerated exception', (
   // The façade subpath is the facet's consumer seam: root code may import it.
   const sources = validSources();
   sources.set(
-    'src/daemon/selector-runtime.ts',
+    'packages/daemon/src/selector-runtime.ts',
     "import type { RunnerCommand } from '@agent-device/platform-apple/runner';",
   );
   assert.deepEqual(checkPlatformPackagePolicy(sources, declarations()), []);
@@ -392,7 +392,7 @@ test('the Android mechanics facet is the named consumer seam and adb host wiring
   const allowed = validSources();
   allowed.set('src/core/interactors/android.ts', mechanicsImport);
   allowed.set('src/sdk/android-adb.ts', mechanicsImport);
-  allowed.set('src/daemon/handlers/session.test.ts', mechanicsImport);
+  allowed.set('packages/daemon/src/handlers/__tests__/session.test.ts', mechanicsImport);
   allowed.set('src/platform-runtime-android-adb-host.ts', hostImport);
   assert.deepEqual(
     messages(allowed).filter((message) => message.includes('may import')),
@@ -400,14 +400,14 @@ test('the Android mechanics facet is the named consumer seam and adb host wiring
   );
 
   const denied = validSources();
-  denied.set('src/daemon/handlers/session.ts', mechanicsImport);
+  denied.set('packages/daemon/src/handlers/session.ts', mechanicsImport);
   assert.match(
     messages(denied).join('\n'),
     /only src\/platform-runtime\.ts or its governed request-provider composition submodule may import '@agent-device\/platform-android\/mechanics'/,
   );
 
   const deniedHost = validSources();
-  deniedHost.set('src/daemon/handlers/session.ts', hostImport);
+  deniedHost.set('packages/daemon/src/handlers/session.ts', hostImport);
   assert.match(
     messages(deniedHost).join('\n'),
     /only src\/platform-runtime\.ts or its governed request-provider composition submodule may import '@agent-device\/platform-android\/adb-host'/,
@@ -435,7 +435,10 @@ test('the Android test-only fixture subpaths accept test consumers and deny prod
     "import { createAndroidSnapshotCapture } from '@agent-device/platform-android/snapshot-capture-fixtures';";
   const allowed = validSources();
   allowed.set('src/__tests__/android-ui-hierarchy.test.ts', fixtureImport);
-  allowed.set('src/daemon/__tests__/android-system-dialog-occlusion.test.ts', fixtureImport);
+  allowed.set(
+    'packages/daemon/src/__tests__/android-system-dialog-occlusion.test.ts',
+    fixtureImport,
+  );
   allowed.set('test/integration/provider-scenarios/android.test.ts', fixtureImport);
   assert.deepEqual(
     messages(allowed).filter((message) => message.includes('may import')),
@@ -473,7 +476,10 @@ test('platform packages cannot escape to root, daemon, siblings, or raw process 
   // spawning at runtime, so test files (which fake process primitives) and
   // type-only imports (the runner host port names ChildProcess) are exempt.
   const planted = [
-    ["import type { DaemonRequest } from '../../../src/daemon/types.ts';", 'probe.test.ts'],
+    [
+      "import type { DaemonRequest } from '../../../packages/daemon/src/types.ts';",
+      'probe.test.ts',
+    ],
     ["export { x } from '../../../src/core/x.ts';", 'probe.test.ts'],
     ["void import('@agent-device/platform-android');", 'probe.test.ts'],
     ["import { spawn } from 'node:child_process';", 'probe.ts'],

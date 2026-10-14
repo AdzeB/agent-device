@@ -31,8 +31,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseImports } from './model.ts';
-import { listTrackedPackageManifests, listTrackedProductionSources } from './tracked-sources.ts';
+import { parseImports, resolveWorkspaceSpecifier } from './model.ts';
+import {
+  DAEMON_SOURCE_ROOT,
+  listTrackedPackageManifests,
+  listTrackedProductionSources,
+} from './tracked-sources.ts';
 
 export type PackageBoundaryViolation = {
   rule: string;
@@ -66,9 +70,30 @@ export type SpecifierSite = {
  * layering model's own parser, so static/dynamic/side-effect/re-export sites
  * and both quote styles are covered by one scanner instead of a private regex
  * that silently missed double-quoted routes.
+ *
+ * `vi.mock`/`vi.doMock`/`vi.mockActual`/`vi.unmock`/`vi.importActual` join the sweep
+ * by literal scan: they are plain call expressions the AST import parser never
+ * visits, yet the loader resolves their specifier and instantiates that module under
+ * test — the same double-instance route a relative tunnel takes. `importOriginal
+ * <typeof import('...')>` needs no extra branch; the parser already sees it as a
+ * TSImportType.
  */
+const VI_MOCK_CALL_RE =
+  /\bvi\.(?:mock|doMock|mockActual|unmock|importActual)\(\s*(['"])([^'"\n]*)\1/g;
+
 export function specifierSites(file: string, source: string): SpecifierSite[] {
-  return parseImports(source).map((edge) => ({ file, line: edge.line, specifier: edge.spec }));
+  const sites: SpecifierSite[] = parseImports(source).map((edge) => ({
+    file,
+    line: edge.line,
+    specifier: edge.spec,
+  }));
+  for (const match of source.matchAll(VI_MOCK_CALL_RE)) {
+    const line = source.slice(0, match.index).split('\n').length;
+    const specifier = match[2]!;
+    if (!sites.some((site) => site.line === line && site.specifier === specifier))
+      sites.push({ file, line, specifier });
+  }
+  return sites.sort((a, b) => a.line - b.line);
 }
 
 /**
@@ -143,6 +168,57 @@ function packageByName(packages: readonly WorkspacePackage[], name: string) {
   return packages.find((pkg) => pkg.name === name);
 }
 
+/**
+ * A specifier is named by the exports map when it matches a named key or resolves
+ * through a `*` pattern entry. Delegates to `resolveWorkspaceSpecifier` so every
+ * consumer (this rule, the layering edges, the depgraph, mutation ownership, and
+ * the Stryker alias table) applies one Node-exports semantics, not a private scan.
+ */
+function namedByExports(target: WorkspacePackage, specifier: string): boolean {
+  return resolveWorkspaceSpecifier(specifier, target.exportTargets) !== undefined;
+}
+
+const TEST_CONSUMER_RE = /(^|\/)__tests__\/|\.test\.[cm]?[jt]sx?$|(?:^|\/)test\//;
+
+/**
+ * The one file vocabulary for "this file consumes test data": the root `test/` tree, a
+ * package-local `test/` harness tree, `*.test.*` files, and `__tests__/` trees (root or
+ * nested). Both test-data gates call this — the `./testing/` façade check and the
+ * TEST_ONLY_FIXTURE_SUBPATHS predicate — so what counts as a test consumer is one rule,
+ * not two spellings that drift. Pinned by an accept/deny table in
+ * `package-boundaries-facade.test.ts`.
+ */
+export function isTestConsumerFile(file: string): boolean {
+  return TEST_CONSUMER_RE.test(file);
+}
+
+/**
+ * Façade policy (ADR-0033 amendment): a package publishes test data only under its
+ * `./testing/` namespace — named `./testing/<fixture>` entries and per-folder
+ * `./testing/<dir>/*` patterns — and only test files may import it. The gate is the
+ * namespace, not a pattern entry: narrowing the surface to exact keys must not
+ * smuggle a fixture past the test-file rule. Production code that reaches a fixture
+ * through the package boundary is production code depending on a test double — it
+ * must inject the real port instead.
+ */
+function checkTestDataOnlySites(
+  site: SpecifierSite,
+  target: WorkspacePackage,
+): PackageBoundaryViolation | undefined {
+  if (!site.specifier.startsWith(`${target.name}/testing/`)) return undefined;
+  if (!namedByExports(target, site.specifier)) return undefined;
+  if (isTestConsumerFile(site.file)) return undefined;
+  return {
+    rule: 'R11 package-boundaries',
+    file: site.file,
+    line: site.line,
+    message:
+      `'${site.specifier}' resolves through ${target.dir}/package.json#exports './testing/' ` +
+      `namespace, which publishes test data to test files only. '${site.file}' is not a test ` +
+      `file: import a production subpath or inject the port.`,
+  };
+}
+
 function specifierPackageName(specifier: string): string | undefined {
   const match = /^(@[^/]+\/[^/]+)/.exec(specifier);
   return match?.[1];
@@ -182,12 +258,6 @@ export const TEST_ONLY_FIXTURE_SUBPATHS: ReadonlySet<string> = new Set([
   '@agent-device/replay-port/replay-script-source-fixtures',
 ]);
 
-// Root `test/`, package-local `packages/<pkg>/test/`, *.test.ts, and __tests__ trees are test
-// consumers; anything else is production. Mirrors R13's non-production predicate.
-function isTestConsumerFile(file: string): boolean {
-  return /(?:^|\/)test\//.test(file) || file.endsWith('.test.ts') || file.includes('/__tests__/');
-}
-
 /** Consumer side of `TEST_ONLY_FIXTURE_SUBPATHS`. */
 function importsTestOnlyFixtureFromProduction(file: string, specifier: string): boolean {
   return TEST_ONLY_FIXTURE_SUBPATHS.has(specifier) && !isTestConsumerFile(file);
@@ -203,8 +273,7 @@ export const CLIENT_ONLY_SUBPATHS: ReadonlySet<string> = new Set([
   '@agent-device/replay-port/source-discovery',
 ]);
 
-const DAEMON_SOURCE_FILE = /^(?:src\/daemon|packages\/daemon\/src)\//;
-// The daemon process also runs its root entry and composition root, outside the daemon tree.
+// The daemon process also runs its root entry and composition root, outside the daemon package.
 const DAEMON_PROCESS_ROOT_FILES: ReadonlySet<string> = new Set([
   'src/daemon.ts',
   'src/daemon-composition.ts',
@@ -213,7 +282,7 @@ const DAEMON_PROCESS_ROOT_FILES: ReadonlySet<string> = new Set([
 function importsClientOnlyFromDaemon(file: string, specifier: string): boolean {
   return (
     CLIENT_ONLY_SUBPATHS.has(specifier) &&
-    (DAEMON_SOURCE_FILE.test(file) || DAEMON_PROCESS_ROOT_FILES.has(file)) &&
+    (file.startsWith(DAEMON_SOURCE_ROOT) || DAEMON_PROCESS_ROOT_FILES.has(file)) &&
     !isTestConsumerFile(file)
   );
 }
@@ -308,7 +377,12 @@ export function checkPackageInternalSites(
           `in ${pkg.dir}/package.json ${pkg.workspaceDependencyField}.`,
       });
     }
-    if (!compiled && !target.exportTargets.has(site.specifier)) {
+    const testDataOnly = checkTestDataOnlySites(site, target);
+    if (testDataOnly) {
+      violations.push(testDataOnly);
+      continue;
+    }
+    if (!compiled && !namedByExports(target, site.specifier)) {
       violations.push({
         rule: 'R11 package-boundaries',
         file: site.file,
@@ -399,7 +473,12 @@ export function checkRootSites(
           `package.json devDependencies.`,
       });
     }
-    if (!compiled && !target.exportTargets.has(site.specifier)) {
+    const testDataOnly = checkTestDataOnlySites(site, target);
+    if (testDataOnly) {
+      violations.push(testDataOnly);
+      continue;
+    }
+    if (!compiled && !namedByExports(target, site.specifier)) {
       violations.push({
         rule: 'R11 package-boundaries',
         file: site.file,
