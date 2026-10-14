@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import type {
   CloseApplicationFinalizationInput,
+  CloseApplicationInput,
   LocalApplicationInteractorHost,
   OpenApplicationInput,
 } from '@agent-device/contracts/application-lifecycle-runtime';
@@ -9,6 +10,13 @@ import type { Interactor, SnapshotOptions } from '@agent-device/contracts/intera
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { AppError, createRequestCanceledError } from '@agent-device/kernel/errors';
 import { bindAndroidApplicationLifecycle } from './lifecycle.ts';
+import { killAndroidApp } from './app-lifecycle.ts';
+
+vi.mock('./app-lifecycle.ts', () => ({
+  killAndroidApp: vi.fn(async () => {}),
+}));
+
+const mockKillAndroidApp = vi.mocked(killAndroidApp);
 
 const device: DeviceInfo = {
   platform: 'android',
@@ -21,6 +29,7 @@ const device: DeviceInfo = {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  mockKillAndroidApp.mockClear();
 });
 
 type LifecycleFixture = Readonly<{
@@ -255,6 +264,16 @@ function finalizationInput(
   };
 }
 
+function closeInput(overrides: Partial<CloseApplicationInput> = {}): CloseApplicationInput {
+  return {
+    positionals: ['com.example.app'],
+    appBundleId: 'com.example.app',
+    surface: 'app',
+    execution: {},
+    ...overrides,
+  };
+}
+
 test('an Android relaunch closes the requested package before opening it', async () => {
   const { calls, lifecycle } = createLifecycle({ openedAppBundleId: 'com.android.settings' });
 
@@ -375,4 +394,31 @@ test('an ordinary close tells the restore no emulator kill is coming', async () 
 
   expect(sequence).toEqual(['restore:false']);
   expect(result).toEqual({});
+});
+
+test('kill mode kills the target without resolving an interactor', async () => {
+  const { calls, lifecycle } = createLifecycle();
+
+  await lifecycle.closeApplication(closeInput({ mode: 'kill' }));
+
+  expect(calls).toEqual([]);
+  expect(mockKillAndroidApp).toHaveBeenCalledExactlyOnceWith(device, 'com.example.app');
+});
+
+test('a close without a mode force-stops through the interactor', async () => {
+  const { calls, lifecycle } = createLifecycle();
+
+  await lifecycle.closeApplication(closeInput());
+
+  expect(calls).toEqual(['close:com.example.app']);
+  expect(mockKillAndroidApp).not.toHaveBeenCalled();
+});
+
+test('kill mode without any target fails instead of reading as success', async () => {
+  const { lifecycle } = createLifecycle();
+
+  await expect(
+    lifecycle.closeApplication(closeInput({ mode: 'kill', positionals: [] })),
+  ).rejects.toMatchObject({ code: 'INVALID_ARGS' });
+  expect(mockKillAndroidApp).not.toHaveBeenCalled();
 });

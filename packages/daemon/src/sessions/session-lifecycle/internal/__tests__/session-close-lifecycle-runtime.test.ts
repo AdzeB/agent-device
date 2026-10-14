@@ -5,6 +5,7 @@ import path from 'node:path';
 import { SessionStore } from '../../../../core/session-store.ts';
 import type { DaemonRequest, DaemonResponse } from '../../../../core/daemon-request.ts';
 import type { SessionState } from '../../../../core/session-state.ts';
+import type { CloseApplicationInput } from '@agent-device/contracts/application-lifecycle-runtime';
 import {
   activateCompleteRefFrame,
   readSessionRuntimeRevision,
@@ -53,6 +54,7 @@ async function close(params: {
   sessionStore: SessionStore;
   positionals?: string[];
   internal?: DaemonRequest['internal'];
+  bindDevice?: Parameters<typeof handleSessionCommands>[0]['bindDevice'];
 }) {
   return await handleSessionCommands({
     createCommandSurface: fakeCreateCommandSurface,
@@ -62,6 +64,7 @@ async function close(params: {
     logPath: path.join(mkdtempForTestSync('daemon'), 'daemon.log'),
     sessionStore: params.sessionStore,
     invoke: noopInvoke,
+    bindDevice: params.bindDevice,
   });
 }
 
@@ -170,6 +173,54 @@ test('close expires the ref frame immediately before its admitted platform mutat
 
   expect(response?.ok).toBe(true);
   expect(mockDispatch).toHaveBeenCalledOnce();
+});
+
+test('an app-only kill close carries mode kill while a stop close carries none', async () => {
+  const sessionStore = makeSessionStore();
+  const sessionName = 'android-app-only-kill-carries-mode';
+  const device = {
+    platform: 'android' as const,
+    id: 'emulator-5554',
+    name: 'Pixel',
+    kind: 'emulator' as const,
+    target: 'mobile' as const,
+    booted: true,
+  };
+  const session = makeSession(sessionName, device);
+  session.appBundleId = 'com.example.app';
+  sessionStore.publish(sessionName, session);
+  const seenModes: Array<CloseApplicationInput['mode']> = [];
+  const bindDevice: Parameters<typeof close>[0]['bindDevice'] = async (boundDevice, use) => {
+    const binding = await mockBindDeviceRuntime(boundDevice, use);
+    return {
+      ...binding,
+      operations: {
+        ...binding.operations,
+        closeApplication: async (input: CloseApplicationInput) => {
+          seenModes.push(input.mode);
+        },
+      },
+    };
+  };
+
+  const killed = await close({
+    sessionName,
+    sessionStore,
+    positionals: ['com.example.app'],
+    internal: { closeAppOnly: true, killApp: true },
+    bindDevice,
+  });
+  const stopped = await close({
+    sessionName,
+    sessionStore,
+    positionals: ['com.example.app'],
+    internal: { closeAppOnly: true },
+    bindDevice,
+  });
+
+  expect(killed?.ok).toBe(true);
+  expect(stopped?.ok).toBe(true);
+  expect(seenModes).toEqual(['kill', undefined]);
 });
 
 test('app-only close expires the rebuilt record after admission, preserving the captured snapshot', async () => {

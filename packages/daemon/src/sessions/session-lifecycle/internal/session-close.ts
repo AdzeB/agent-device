@@ -156,6 +156,7 @@ async function dispatchTargetedPlatformClose(params: {
       outPath: req.flags?.out,
       appBundleId: session.appBundleId,
       surface: session.surface ?? 'app',
+      ...(req.internal?.killApp === true ? { mode: 'kill' as const } : {}),
       execution: applicationLifecycleExecutionFromRequest(req, logPath, session.trace?.outPath),
     });
     return undefined;
@@ -449,6 +450,7 @@ async function closeWithoutSession(params: {
     outPath: req.flags?.out,
     surface: 'app',
     ensureReady: true,
+    ...(req.internal?.killApp === true ? { mode: 'kill' as const } : {}),
     execution: applicationLifecycleExecutionFromRequest(req, logPath),
   });
   return {
