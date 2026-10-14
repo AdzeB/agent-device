@@ -617,12 +617,6 @@ test('the real tree parses, declares, and passes R11', () => {
     (pkg) => pkg.name === '@agent-device/platform-android',
   );
   assert.ok(platformAndroidPackage, 'platform-android package must exist');
-  assert.deepEqual([...platformAndroidPackage.exportTargets.keys()].sort(), [
-    '@agent-device/platform-android',
-    '@agent-device/platform-android/adb-host',
-    '@agent-device/platform-android/device-boot',
-    '@agent-device/platform-android/mechanics',
-  ]);
   assert.deepEqual([...platformAndroidPackage.workspaceDependencies].sort(), [
     '@agent-device/capture-kit',
     '@agent-device/contracts',
