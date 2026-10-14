@@ -33,6 +33,20 @@ export function buildDaemonHttpAuthHeaders(token: string | undefined): Record<st
   };
 }
 
+/** The tenant id every daemon route accepts, trimmed, or `undefined` when it breaks the rule. */
+export function normalizeTenantId(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const value = raw.trim();
+  if (!value) return undefined;
+  if (!/^[a-zA-Z0-9._-]{1,128}$/.test(value)) return undefined;
+  return value;
+}
+
+/** Whether `sessionName` lies beneath the `<tenant>:` prefix tenant isolation names sessions with. */
+export function isTenantOwnedSessionName(tenant: string, sessionName: string): boolean {
+  return sessionName.startsWith(`${tenant}:`);
+}
+
 export function buildDaemonHttpTenantHeaders(tenantId: string | undefined): Record<string, string> {
   const normalizedTenantId = tenantId?.trim();
   if (!normalizedTenantId) return {};
