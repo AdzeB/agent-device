@@ -6,18 +6,18 @@ import {
   unavailableBindExactDevice,
 } from '../../__tests__/test-device-runtime-gateway.ts';
 import { createScreenRecordingAdmissionLedger } from '@agent-device/capture-kit/screen-recording-admission-ledger';
-import { platformResourceCleanup } from '../../../platform-runtime-resource-cleanup.ts';
+import { platformResourceCleanupFixture } from '../../__tests__/support/platform-resource-cleanup-fixture.ts';
 import type { SessionCommandParams } from '../session-command-input.ts';
 import { handleReplayTestCommand } from '../session-replay-command.ts';
 import { daemonPlatformServicesFixture } from '../../__tests__/platform-services-fixture.ts';
 import { makeSessionStore } from './session-test-harness.ts';
 import { mkdtempForTestSync } from '@agent-device/test-kit/tmp-dir';
-import { testCreateCommandSurface } from '../../__tests__/command-surface-fixture.ts';
+import { fakeCreateCommandSurface } from '../../__tests__/support/command-surface-fake.ts';
 
 test('replay test handler threads the complete video owner into the application command', async () => {
   const root = mkdtempForTestSync('agent-device-replay-handler-video-');
   const params: SessionCommandParams = {
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: fakeCreateCommandSurface,
     req: {
       token: 'token',
       session: 'default',
@@ -46,7 +46,7 @@ test('replay test handler threads the complete video owner into the application 
       status: 'retained' as const,
       reason: 'handler-test' as const,
     }),
-    platformResourceCleanup,
+    platformResourceCleanup: platformResourceCleanupFixture(),
   };
 
   const response = await handleReplayTestCommand(params);

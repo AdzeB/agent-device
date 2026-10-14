@@ -65,7 +65,7 @@ import {
   bindLifecycleRuntime,
   inspectLifecycleRuntimeFacts,
 } from '../application-lifecycle-runtime-harness.ts';
-import { platformResourceCleanup } from '../../../platform-runtime-resource-cleanup.ts';
+import { platformResourceCleanupFixture } from '../support/platform-resource-cleanup-fixture.ts';
 import {
   captureSnapshotThroughLegacyDispatchFixture,
   legacyDispatchCapture,
@@ -79,7 +79,7 @@ function handleCloseCommand(
 ) {
   return handleProductionCloseCommand({
     ...params,
-    platformResourceCleanup,
+    platformResourceCleanup: platformResourceCleanupFixture(),
     inspectFacts: inspectLifecycleRuntimeFacts,
     bindDevice: bindLifecycleRuntime,
   });

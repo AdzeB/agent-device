@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { createScreenRecordingAdmissionLedger } from '@agent-device/capture-kit/screen-recording-admission-ledger';
 import { LeaseRegistry } from '../../lease-registry.ts';
-import { platformResourceCleanup } from '../../../platform-runtime-resource-cleanup.ts';
+import { platformResourceCleanupFixture } from '../support/platform-resource-cleanup-fixture.ts';
 import { SessionStore } from '../../session-store.ts';
 import { makeIosSession } from '../support/session-factories.ts';
 import { maestroScriptSourceBundleFor } from '../../../__tests__/test-utils/replay-script-source.ts';
@@ -20,7 +20,7 @@ import {
 } from '../../handlers/session-replay-command.ts';
 import type { SessionCommandParams } from '../../handlers/session-command-input.ts';
 import * as maestro from '@agent-device/maestro';
-import { testCreateCommandSurface } from '../command-surface-fixture.ts';
+import { fakeCreateCommandSurface } from '../support/command-surface-fake.ts';
 
 const spy = vi.spyOn(maestro, 'executeMaestroFlow');
 
@@ -73,7 +73,7 @@ async function runWithNetworkFlag(publicNetworkOnly: boolean | undefined) {
   // the asserted path: dropping it in the handler must fail this test, since an
   // unset field reads as trusted and a remote flow would run evalScript.
   const response = await handleReplayCommand({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: fakeCreateCommandSurface,
     platformServices: daemonPlatformServicesFixture(),
     req,
     sessionName: 'default',
@@ -143,7 +143,7 @@ async function runWithTestNetworkFlag(publicNetworkOnly: boolean | undefined) {
     },
     retainDeviceExecutionLock: async () => {},
     throwIfCanceled: () => {},
-    platformResourceCleanup,
+    platformResourceCleanup: platformResourceCleanupFixture(),
   } as unknown as SessionCommandParams);
 
   if (!response) throw new Error('Expected replay test response');

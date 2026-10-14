@@ -38,7 +38,6 @@ vi.mock('@agent-device/platform-android/mechanics', async (importOriginal) => {
   return {
     ...actual,
     cleanupAndroidNativePerfSession: vi.fn(async () => {}),
-    stopAndroidSnapshotHelperSessionForDevice: vi.fn(async () => {}),
   };
 });
 vi.mock('@agent-device/capture-kit/recording-video', () => ({
@@ -52,17 +51,14 @@ import {
   mockShutdownTargetRuntime,
 } from '../../../handlers/__tests__/session-command-harness.ts';
 import { teardownSessionResources as teardownProductionSessionResources } from '../../../session-teardown.ts';
-import { platformResourceCleanup } from '../../../../platform-runtime-resource-cleanup.ts';
+import { platformResourceCleanupFixture } from '../../../__tests__/support/platform-resource-cleanup-fixture.ts';
 import { LeaseRegistry } from '../../../lease-registry.ts';
 import { runCmd } from '@agent-device/host-kit/command';
 import {
   flushDiagnosticsToSessionFile,
   withDiagnosticsScope,
 } from '@agent-device/host-kit/diagnostics';
-import {
-  cleanupAndroidNativePerfSession,
-  stopAndroidSnapshotHelperSessionForDevice,
-} from '@agent-device/platform-android/mechanics';
+import { cleanupAndroidNativePerfSession } from '@agent-device/platform-android/mechanics';
 import {
   releaseIosRunnerOnClose,
   stopIosRunnerSession,
@@ -92,9 +88,6 @@ const mockRunCmd = vi.mocked(runCmd);
 const mockDispatchCommand = vi.mocked(dispatchApplicationLifecycleEffect);
 const mockCleanupAppleXctracePerfCapture = vi.mocked(cleanupAppleXctracePerfCapture);
 const mockCleanupAndroidNativePerfSession = vi.mocked(cleanupAndroidNativePerfSession);
-const mockStopAndroidSnapshotHelperSessionForDevice = vi.mocked(
-  stopAndroidSnapshotHelperSessionForDevice,
-);
 const mockStopIosRunnerSession = vi.mocked(stopIosRunnerSession);
 const mockReleaseRunnerOnClose = vi.mocked(releaseIosRunnerOnClose);
 
@@ -103,7 +96,7 @@ const teardownSessionResources = (
 ) =>
   teardownProductionSessionResources({
     ...request,
-    platformCleanup: request.platformCleanup ?? platformResourceCleanup,
+    platformCleanup: request.platformCleanup ?? platformResourceCleanupFixture(),
   });
 
 const noopInvoke = async (_req: DaemonRequest): Promise<DaemonResponse> => ({
@@ -263,7 +256,6 @@ export const sessionCloseShutdownFixture = Object.freeze({
   mockInspectDeviceRuntimeFacts,
   mockShutdownTargetRuntime,
   mockRunCmd,
-  mockStopAndroidSnapshotHelperSessionForDevice,
   mockReleaseRunnerOnClose,
   mockStopIosRunnerSession,
   narrowDeviceBinding,
