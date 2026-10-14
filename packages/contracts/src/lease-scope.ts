@@ -219,9 +219,15 @@ export function leaseScopeToLeaseRpcParams(
  * producer and the daemon's consumer read the SAME list and cannot drop a sibling the provider needs.
  */
 const LEASE_ALLOCATE_PROVIDER_FLAG_KEYS = [
-  // Device selection the lease-lifecycle provider needs to create the session.
+  // Device selection the lease-lifecycle provider needs to create the session, and a proxy daemon
+  // needs to pick the device when the request names no `deviceKey`.
   'platform',
+  'target',
   'device',
+  'udid',
+  'serial',
+  'iosSimulatorDeviceSet',
+  'androidDeviceAllowlist',
   // The Cloud provider profile fields; pinned exhaustive against that vocabulary below.
   'providerApp',
   'providerOsVersion',
@@ -298,6 +304,24 @@ export function buildLeaseDiagnosticsContext(
     clientId: leaseScope.clientId,
   });
   return Object.keys(context).length > 0 ? context : undefined;
+}
+
+/** The `deviceKey` a proxy lease binds a device under: its public platform, target, and id. */
+export function leaseDeviceKey(device: { platform: string; target?: string; id: string }): string {
+  return `${device.platform}:${device.target ?? 'mobile'}:${device.id}`;
+}
+
+/**
+ * The raw fields a {@link leaseDeviceKey} key was written from, or `undefined` for a malformed key.
+ * The id is everything after the second `:`, so an id may itself contain `:`.
+ */
+export function parseLeaseDeviceKey(
+  key: string | undefined,
+): { platform: string; target: string; id: string } | undefined {
+  const match = /^([^:]+):([^:]+):(.+)$/.exec(key ?? '');
+  if (!match) return undefined;
+  const [, platform, target, id] = match;
+  return { platform: platform!, target: target!, id: id! };
 }
 
 export function isProxyLeaseScope(scope: LeaseScope): boolean {

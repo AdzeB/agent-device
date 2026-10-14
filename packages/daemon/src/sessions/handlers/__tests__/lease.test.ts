@@ -5,6 +5,9 @@ import { LeaseRegistry } from '../../../resources/lease-registry.ts';
 import type { DaemonRequest } from '../../../core/daemon-request.ts';
 import { makeSessionStore } from '../../../__tests__/support/store-factory.ts';
 import type { DeviceLease } from '@agent-device/contracts/device';
+import type { DeviceInfo } from '@agent-device/kernel/device';
+import { withTestDeviceInventory } from '@agent-device/device-selection/inventory-gateways-fixtures';
+import { IOS_SIMULATOR, TVOS_SIMULATOR } from '@agent-device/test-kit/device-fixtures';
 import { AppError } from '@agent-device/kernel/errors';
 import {
   clearRequestCanceled,
@@ -448,4 +451,100 @@ test('a tenant cannot allocate a macos-app lease', async () => {
       error.code === 'UNAUTHORIZED' && error.details?.reason === 'MACOS_APP_LEASE_HOST_ALLOCATED',
   );
   assert.deepEqual(registry.listActiveLeases(), []);
+});
+
+const SECOND_IOS_SIMULATOR: DeviceInfo = {
+  ...IOS_SIMULATOR,
+  id: 'sim-2',
+  name: 'iPhone 16',
+};
+
+function proxyAllocateRequest(
+  flags: DaemonRequest['flags'],
+  meta: Partial<NonNullable<DaemonRequest['meta']>> = {},
+): DaemonRequest {
+  return {
+    token: 'token',
+    session: 'default',
+    command: 'lease_allocate',
+    positionals: [],
+    flags,
+    meta: {
+      tenantId: 'tenant-a',
+      runId: 'run-1',
+      leaseBackend: 'ios-instance',
+      leaseProvider: 'proxy',
+      clientId: 'client-1',
+      ...meta,
+    },
+  };
+}
+
+async function allocateAgainstInventory(
+  request: DaemonRequest,
+  devices: readonly DeviceInfo[],
+): Promise<{ lease: DeviceLease; inventoryReads: number }> {
+  let inventoryReads = 0;
+  const response = await withTestDeviceInventory(
+    {
+      local: async () => {
+        inventoryReads += 1;
+        return devices;
+      },
+    },
+    async () =>
+      await handleLeaseCommands({
+        req: request,
+        sessionName: request.session,
+        sessionStore: makeSessionStore('agent-device-proxy-allocate-by-spec-'),
+        leaseRegistry: new LeaseRegistry(),
+      }),
+  );
+  assert.ok(response?.ok);
+  return { lease: response.data?.lease as DeviceLease, inventoryReads };
+}
+
+test('a proxy allocation that names no device picks one by its selectors and binds its deviceKey', async () => {
+  const devices = [SECOND_IOS_SIMULATOR, IOS_SIMULATOR, TVOS_SIMULATOR];
+
+  const byName = await allocateAgainstInventory(
+    proxyAllocateRequest({ platform: 'ios', device: 'iPhone 17 Pro' }),
+    devices,
+  );
+  assert.equal(byName.lease.deviceKey, 'ios:mobile:sim-1');
+
+  const byTarget = await allocateAgainstInventory(
+    proxyAllocateRequest({ platform: 'ios', target: 'tv' }),
+    devices,
+  );
+  assert.equal(byTarget.lease.deviceKey, 'ios:tv:tv-sim-1');
+});
+
+test('a proxy allocation with no matching device fails the way a client-side pick does', async () => {
+  await assert.rejects(
+    allocateAgainstInventory(proxyAllocateRequest({ platform: 'ios', device: 'Pixel 9' }), [
+      IOS_SIMULATOR,
+    ]),
+    (error: AppError) => error.code === 'DEVICE_NOT_FOUND',
+  );
+});
+
+test('an allocation that names its device, names no spec, or is not a proxy lease, binds no picked device', async () => {
+  const exact = await allocateAgainstInventory(
+    proxyAllocateRequest({ platform: 'ios' }, { deviceKey: 'ios:mobile:sim-2' }),
+    [IOS_SIMULATOR, SECOND_IOS_SIMULATOR],
+  );
+  assert.equal(exact.lease.deviceKey, 'ios:mobile:sim-2');
+  assert.equal(exact.inventoryReads, 0);
+
+  const local = await allocateAgainstInventory(
+    proxyAllocateRequest({ platform: 'ios' }, { leaseProvider: undefined, clientId: undefined }),
+    [IOS_SIMULATOR],
+  );
+  assert.equal(local.lease.deviceKey, undefined);
+  assert.equal(local.inventoryReads, 0);
+
+  const unspecified = await allocateAgainstInventory(proxyAllocateRequest({}), [IOS_SIMULATOR]);
+  assert.equal(unspecified.lease.deviceKey, undefined);
+  assert.equal(unspecified.inventoryReads, 0);
 });
