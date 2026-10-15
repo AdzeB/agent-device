@@ -1,8 +1,12 @@
-import { test, expect, vi, beforeEach } from 'vitest';
+import { test, expect, beforeEach } from 'vitest';
 import { attachRefs } from '@agent-device/kernel/snapshot';
-import { makeSessionStore } from '@agent-device/daemon/testing/__tests__/support/store-factory';
 import { WEB_DESKTOP_DEVICE } from '@agent-device/test-kit/device-fixtures';
-import { handleInteractionCommands } from '@agent-device/daemon/testing/interaction/index';
+import { makeSessionStore } from '../../../__tests__/support/store-factory.ts';
+import {
+  installInteractorSnapshotResolution,
+  mockInteractorSnapshot,
+} from '../../../__tests__/support/interactor-resolution-fixture.ts';
+import { touchCreateCommandSurface } from '../../../__tests__/support/touch-command-surface-fake.ts';
 import {
   getRuntimeBindings,
   mockHoverPoint,
@@ -11,64 +15,22 @@ import {
   mockTapPoint,
   resetGetRuntimeFixture,
   runtimeBindingSpies,
-} from '@agent-device/daemon/testing/__tests__/interaction-get-runtime-fixture';
+} from '../../__tests__/interaction-get-runtime-fixture.ts';
 import {
   contextFromFlags,
   makeMacOsDesktopSession,
   makeMacOsMenubarSession,
   makeSession,
-} from '@agent-device/daemon/testing/interaction/internal/__tests__/interaction-touch-fixtures';
-import { testCreateCommandSurface } from '../command-surface-fixture.ts';
+} from './__tests__/interaction-touch-fixtures.ts';
+import { handleInteractionCommands } from '../index.ts';
 
 // Router ownership: one representative per touch command proves
 // handleInteractionCommands claims press/click/longpress/hover/fill.
 
-const { mockRunAppleRunnerCommand } = vi.hoisted(() => ({
-  mockRunAppleRunnerCommand: vi.fn(),
-}));
-
-vi.mock('@agent-device/platform-android/mechanics', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@agent-device/platform-android/mechanics')>();
-  return {
-    ...actual,
-    getAndroidScreenSize: vi.fn(async () => ({ width: 1344, height: 2992 })),
-    getAndroidAppState: vi.fn(async () => ({})),
-    getAndroidBlockingDialogObservation: vi.fn(async () => ({ status: 'clear' }) as const),
-  };
-});
-
-vi.mock('@agent-device/daemon/testing/snapshot-interactor-capture', () => ({
-  captureSnapshotWithInteractor: vi.fn(),
-}));
-
-vi.mock('@agent-device/platform-apple/runner/operations', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@agent-device/platform-apple/runner/operations')>();
-  return { ...actual, runAppleRunnerCommand: mockRunAppleRunnerCommand };
-});
-
-import {
-  getAndroidAppState,
-  getAndroidBlockingDialogObservation,
-  getAndroidScreenSize,
-} from '@agent-device/platform-android/mechanics';
-import { captureSnapshotWithInteractor } from '@agent-device/daemon/testing/snapshot-interactor-capture';
-const mockGetAndroidAppState = vi.mocked(getAndroidAppState);
-const mockGetAndroidBlockingDialogObservation = vi.mocked(getAndroidBlockingDialogObservation);
-const mockGetAndroidScreenSize = vi.mocked(getAndroidScreenSize);
-const mockCaptureSnapshotForSession = vi.mocked(captureSnapshotWithInteractor);
-
 beforeEach(() => {
   resetGetRuntimeFixture();
-  mockGetAndroidAppState.mockReset();
-  mockGetAndroidAppState.mockResolvedValue({});
-  mockGetAndroidBlockingDialogObservation.mockReset();
-  mockGetAndroidBlockingDialogObservation.mockResolvedValue({ status: 'clear' });
-  mockGetAndroidScreenSize.mockReset();
-  mockGetAndroidScreenSize.mockResolvedValue({ width: 1344, height: 2992 });
-  mockCaptureSnapshotForSession.mockReset();
-  mockRunAppleRunnerCommand.mockReset();
-  mockRunAppleRunnerCommand.mockResolvedValue({});
+  installInteractorSnapshotResolution();
+  mockInteractorSnapshot.mockReset();
 });
 
 test('press coordinates dispatches press and records as press', async () => {
@@ -78,7 +40,7 @@ test('press coordinates dispatches press and records as press', async () => {
   sessionStore.publish(sessionName, storedSession);
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchCreateCommandSurface,
     req: {
       token: 't',
       session: sessionName,
@@ -121,7 +83,7 @@ test.each([
   sessionStore.publish(sessionName, session);
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchCreateCommandSurface,
     req: { token: 't', session: sessionName, command, positionals: [...positionals], flags: {} },
     sessionName,
     sessionStore,
@@ -140,7 +102,7 @@ test('click rejects macOS desktop surface interactions until helper routing exis
   sessionStore.publish(sessionName, makeMacOsDesktopSession(sessionName));
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchCreateCommandSurface,
     req: {
       token: 't',
       session: sessionName,
@@ -167,7 +129,7 @@ test('fill rejects macOS menubar surface interactions until helper routing exist
   sessionStore.publish(sessionName, makeMacOsMenubarSession(sessionName));
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchCreateCommandSurface,
     req: {
       token: 't',
       session: sessionName,
@@ -209,7 +171,7 @@ test('longpress @ref resolves the target and dispatches coordinate longpress', a
   sessionStore.publish(sessionName, session);
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchCreateCommandSurface,
     req: {
       token: 't',
       session: sessionName,
@@ -255,7 +217,7 @@ test('hover @ref on web dispatches through the provider hoverRef route, not coor
   };
   sessionStore.publish(sessionName, session);
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchCreateCommandSurface,
     req: {
       token: 't',
       session: sessionName,
@@ -274,6 +236,7 @@ test('hover @ref on web dispatches through the provider hoverRef route, not coor
     data: { ref: 'e1', gesture: 'hover', message: expect.stringMatching(/Hovered @e1/) },
   });
   expect(mockHoverRef).toHaveBeenCalledWith(expect.objectContaining({ ref: '@e1' }));
+  expect(mockHoverPoint).not.toHaveBeenCalled();
   expect(sessionStore.get(sessionName)?.actions[0]?.command).toBe('hover');
 });
 
@@ -283,7 +246,7 @@ test('hover selector on web resolves the target and dispatches coordinate hover'
   const session = makeSession(sessionName);
   session.device = WEB_DESKTOP_DEVICE;
   sessionStore.publish(sessionName, session);
-  mockCaptureSnapshotForSession.mockResolvedValue({
+  mockInteractorSnapshot.mockResolvedValue({
     nodes: attachRefs([
       {
         index: 0,
@@ -299,7 +262,7 @@ test('hover selector on web resolves the target and dispatches coordinate hover'
   });
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchCreateCommandSurface,
     req: {
       token: 't',
       session: sessionName,
@@ -326,7 +289,7 @@ test('hover is refused by capability on touch platforms before any dispatch', as
   sessionStore.publish(sessionName, makeSession(sessionName));
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchCreateCommandSurface,
     req: {
       token: 't',
       session: sessionName,
