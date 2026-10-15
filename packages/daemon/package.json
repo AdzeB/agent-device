@@ -18,6 +18,7 @@
     "@agent-device/platform-android": "workspace:*",
     "@agent-device/platform-apple": "workspace:*",
     "@agent-device/platform-web": "workspace:*",
+    "@agent-device/proxy": "workspace:*",
     "@agent-device/replay-port": "workspace:*",
     "@agent-device/replay-test": "workspace:*",
     "@agent-device/selectors": "workspace:*",
@@ -350,10 +351,6 @@
     "./testing/server/http-server": {
       "types": "./src/server/http/http-server.ts",
       "default": "./src/server/http/http-server.ts"
-    },
-    "./testing/server/server-lifecycle": {
-      "types": "./src/server/http/server-lifecycle.ts",
-      "default": "./src/server/http/server-lifecycle.ts"
     },
     "./testing/server/server-shutdown": {
       "types": "./src/server/http/server-shutdown.ts",
