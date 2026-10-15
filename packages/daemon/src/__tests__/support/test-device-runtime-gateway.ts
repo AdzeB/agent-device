@@ -210,12 +210,22 @@ async function gestureBinding(device: DeviceInfo) {
 export function createRequestHandler(
   deps: Omit<
     RequestRouterDeps,
-    'deviceRuntimeGateway' | 'providerCredentials' | 'platformServices' | 'claimRecoveryGateway'
+    | 'deviceRuntimeGateway'
+    | 'providerCredentials'
+    | 'platformServices'
+    | 'claimRecoveryGateway'
+    | 'androidObservation'
+    | 'platformResourceCleanup'
   > &
     Partial<
       Pick<
         RequestRouterDeps,
-        'deviceRuntimeGateway' | 'providerCredentials' | 'platformServices' | 'claimRecoveryGateway'
+        | 'deviceRuntimeGateway'
+        | 'providerCredentials'
+        | 'platformServices'
+        | 'claimRecoveryGateway'
+        | 'androidObservation'
+        | 'platformResourceCleanup'
       >
     >,
 ) {
@@ -224,12 +234,14 @@ export function createRequestHandler(
     providerCredentials = providerCredentialsFixture({}, path.dirname(deps.logPath)),
     platformServices = daemonPlatformServicesFixture(),
     claimRecoveryGateway = daemonClaimRecoveryGatewayFixture(),
+    androidObservation = clearAndroidObservationFixture,
+    platformResourceCleanup = platformResourceCleanupFixture(),
     ...rest
   } = deps;
   const handle = createProductionRequestHandler({
-    androidObservation: clearAndroidObservationFixture,
-    platformResourceCleanup: platformResourceCleanupFixture(),
     ...rest,
+    androidObservation,
+    platformResourceCleanup,
     platformServices,
     claimRecoveryGateway,
     deviceRuntimeGateway,
