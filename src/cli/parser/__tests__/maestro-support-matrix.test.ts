@@ -3,11 +3,13 @@ import { expect, test } from 'vitest';
 import { usageForCommand } from '../args.ts';
 import { getFlagDefinitions } from '@agent-device/command-registry/flag-registry';
 import {
-  MAESTRO_COMPATIBILITY_ADR_URL,
-  MAESTRO_COMPATIBILITY_ISSUE_URL,
   MAESTRO_COMPAT_LIMITATIONS,
   MAESTRO_COMPAT_SUPPORTED_CAPABILITIES,
 } from '@agent-device/maestro';
+
+const MAESTRO_COMPATIBILITY_ADR_URL =
+  'https://github.com/callstack/agent-device/blob/main/docs/adr/0015-direct-maestro-engine.md';
+const MAESTRO_COMPATIBILITY_ISSUE_URL = 'https://github.com/callstack/agent-device/issues/new';
 
 test('Maestro flag routes to the versioned compatibility help topic', () => {
   const flag = getFlagDefinitions().find((definition) => definition.key === 'replayMaestro');
