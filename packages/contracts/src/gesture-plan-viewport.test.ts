@@ -1,25 +1,20 @@
-import {
-  gesturePayloadFromPositionals,
-  normalizePublicGesture,
-} from '@agent-device/contracts/gesture-normalization';
-import { GESTURE_SAMPLE_INTERVAL_MS, buildGesturePlan } from '@agent-device/contracts/gesture-plan';
+import { gesturePayloadFromPositionals, normalizePublicGesture } from './gesture-normalization.ts';
+import { GESTURE_SAMPLE_INTERVAL_MS, buildGesturePlan } from './gesture-plan.ts';
 import { PUBLIC_PLATFORMS } from '@agent-device/kernel/device';
 import { AppError } from '@agent-device/kernel/errors';
 import fc from 'fast-check';
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
 import {
+  assertAllSamplesInViewport,
   COMPACT_VIEWPORTS,
   gestureInViewportArb,
   PROPERTY_RUNS_SMALL,
-} from '@agent-device/test-kit/property-arbitraries';
-import {
-  assertAllSamplesInViewport,
   isErrorWithReason,
   LANDSCAPE,
   PORTRAIT,
   requireTwoPointerPlan,
-} from './gesture-plan-test-utils.ts';
+} from './gesture-plan.fixtures.ts';
 
 describe('viewport-aware multi-touch geometry', () => {
   test.each([
