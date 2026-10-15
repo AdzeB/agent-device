@@ -1,8 +1,9 @@
 // The TypeScript project graph is three hand-written views of one fact: the workspace package
-// set, the root manifest's `workspace:*` declarations, and the `references` lists in the root,
-// examples/sdk, and per-package tsconfigs. `tsc -b` fails loudly on a MISSING reference it
-// needs but silently tolerates EXTRA ones (#3289 review), so a package added to the workspace
-// while a references list goes un-updated keeps building a stale graph that still exits 0.
+// set, the root manifest's `workspace:*` declarations, and the `references` lists in the root
+// build node (tsconfig.typecheck.json), examples/sdk, and per-package tsconfigs. `tsc -b` fails
+// loudly on a MISSING reference it needs but silently tolerates EXTRA ones (#3289 review), so a
+// package added to the workspace while a references list goes un-updated keeps building a stale
+// graph that still exits 0.
 // These tests read the committed declarations against each other so the four views cannot
 // drift: an added, renamed, or removed workspace package must edit every list or fail here.
 
@@ -53,8 +54,34 @@ test('root and examples/sdk reference exactly the workspace package set', () => 
   const expected = workspacePackageDirs();
   assert.ok(expected.length >= 25, 'expected the 25+ workspace packages to be enumerable');
 
-  assert.deepEqual(referencedPackageDirs('tsconfig.json', '.'), expected);
+  assert.deepEqual(referencedPackageDirs('tsconfig.typecheck.json', '.'), expected);
   assert.deepEqual(referencedPackageDirs('examples/sdk/tsconfig.json', 'examples/sdk'), expected);
+});
+
+test('the root build node is tsconfig.json plus references, and tsconfig.json has none', () => {
+  // fallow >=3.20 walks the references of the tsconfig that owns each file on every import, which
+  // made its resolve stage ~14x slower here, and `fr` loads every referenced project as its own
+  // ts.Program, which exhausts Node's default heap (#3289 CI). `extends` does not inherit
+  // references, so the typecheck node carries them without fallow, fr, editors, or tsdown seeing them.
+  const rootConfig = readTsconfig('tsconfig.json');
+  assert.equal(
+    rootConfig.references,
+    undefined,
+    'references on tsconfig.json slow every fallow gate and OOM freerange',
+  );
+  const typecheckConfig = readTsconfig('tsconfig.typecheck.json');
+  assert.equal(typecheckConfig.extends, './tsconfig.json');
+  assert.equal(
+    typecheckConfig.include,
+    undefined,
+    'the build node must not narrow the root program',
+  );
+  assert.equal(
+    typecheckConfig.exclude,
+    undefined,
+    'the build node must not narrow the root program',
+  );
+  assert.deepEqual(Object.keys(typecheckConfig.compilerOptions ?? {}), ['tsBuildInfoFile']);
 });
 
 test('the compiled-set predicate is licensed by the tsconfig include/exclude shape it mirrors', () => {
@@ -114,21 +141,6 @@ test('the root manifest declares every workspace package as a workspace dependen
     'a workspace package the root program consumes must be declared workspace:* in the root ' +
       'manifest (its tsconfig references already name it; the root project resolves package ' +
       'specifiers through these declarations)',
-  );
-});
-
-test('the freerange config stays a reference-free view of the root program', () => {
-  // `fr` loads every `references` project as a full simultaneous ts.Program (~26 programs,
-  // >2.8 GB heap before analysis) and OOMs Node's default 4 GB on this workspace (#3289 CI).
-  // The wrapper at scripts/freerange/tsconfig.json exists only because `extends` does not
-  // inherit references (planted with --showConfig); if someone adds references to it, the
-  // gate reintroduces the OOM, so the absence is pinned here rather than trusted to the comment.
-  const config = readTsconfig('scripts/freerange/tsconfig.json');
-  assert.equal(config.references, undefined, 'references on the freerange config OOM gate');
-  assert.equal(
-    config.extends,
-    '../../tsconfig.json',
-    'the freerange view must stay the root program itself (no include/exclude drift)',
   );
 });
 
