@@ -47,14 +47,14 @@ export const DISPATCH_DISCLOSURE_DRIVER_OWNERS: Readonly<Record<string, string>>
     'packages/platform-apple/src/runner/__tests__/runner-lifecycle-dispatch-disclosure.test.ts',
   'ios-runner.transport.':
     'packages/platform-apple/src/runner/__tests__/runner-lifecycle-dispatch-disclosure.test.ts',
-  'android-adb.': 'packages/platform-android/src/__tests__/dispatch-disclosure.test.ts',
-  'android-helper.': 'packages/platform-android/src/__tests__/dispatch-disclosure.test.ts',
+  'android-adb.': 'packages/platform-android/src/__tests__/index-dispatch-disclosure.test.ts',
+  'android-helper.': 'packages/platform-android/src/__tests__/index-dispatch-disclosure.test.ts',
   'android-helper.gesture-session.':
     'packages/platform-android/src/__tests__/touch-helper-session.test.ts',
   'webdriver.': 'packages/provider-webdriver/src/webdriver-transport.test.ts',
   'webdriver.orientation.': 'packages/provider-webdriver/src/webdriver-orientation.test.ts',
   'web-agent-browser.':
-    'packages/platform-web/src/__tests__/agent-browser-dispatch-disclosure.test.ts',
+    'packages/platform-web/src/__tests__/agent-browser-provider-dispatch-disclosure.test.ts',
   'maestro-direct.':
     'src/__tests__/daemon-composition/interaction/interaction-touch-direct-ios.test.ts',
 };
