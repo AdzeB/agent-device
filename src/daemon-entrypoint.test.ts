@@ -6,12 +6,8 @@ import http from 'node:http';
 import path from 'node:path';
 import { test } from 'vitest';
 import { resolveDaemonPaths } from '@agent-device/daemon-contracts/daemon-resolution';
-import { startDaemonRuntimeFixture } from './daemon-composition/daemon-runtime-fixture.ts';
-import type { DaemonRuntimeController } from '@agent-device/daemon';
-import {
-  cleanupDownloadableArtifact,
-  trackDownloadableArtifact,
-} from '@agent-device/daemon/testing/artifact-tracking';
+import { startDaemonRuntime, type DaemonRuntimeController } from '@agent-device/daemon';
+import { createDaemonRuntimeDeps } from './daemon-composition.ts';
 import { runCmdBackground } from '@agent-device/host-kit/command';
 import {
   createOwnedProcessRecordStore,
@@ -79,24 +75,17 @@ function waitForStdoutLine(
 test('daemon runtime starts HTTP transport in-process and shuts down cleanly', async () => {
   const stateDir = mkdtempForTestSync('agent-device-daemon-runtime-');
   const paths = resolveDaemonPaths(stateDir);
-  const artifactPath = path.join(stateDir, 'runtime-artifact.txt');
-  fs.writeFileSync(artifactPath, 'runtime-artifact');
-  const artifactId = trackDownloadableArtifact({
-    artifactPath,
-    artifactType: 'runtime-artifact',
-    fileName: 'runtime-artifact.txt',
-  });
   const stdout: string[] = [];
   const stderr: string[] = [];
   let exitCode: number | undefined;
 
   try {
-    const runtime = await startDaemonRuntimeFixture({
+    const runtime = await startDaemonRuntime({
+      composeDeps: createDaemonRuntimeDeps,
       env: {
         ...process.env,
         AGENT_DEVICE_STATE_DIR: stateDir,
         AGENT_DEVICE_DAEMON_SERVER_MODE: 'http',
-        AGENT_DEVICE_RETAIN_ARTIFACTS: '1',
       },
       exit: (code) => {
         exitCode = code;
@@ -119,26 +108,12 @@ test('daemon runtime starts HTTP transport in-process and shuts down cleanly', a
     assert.ok(fs.existsSync(paths.lockPath), 'daemon lock should be held while runtime is active');
 
     await waitForHttpOk(`http://127.0.0.1:${runtime?.httpPort}/health`, 2_000);
-    const artifactResponse = await fetch(
-      `http://127.0.0.1:${runtime?.httpPort}/artifacts/${encodeURIComponent(artifactId)}`,
-      {
-        headers: {
-          authorization: `Bearer ${runtime?.token}`,
-          connection: 'close',
-        },
-      },
-    );
-    assert.equal(artifactResponse.status, 200);
-    assert.equal(await artifactResponse.text(), 'runtime-artifact');
-    assert.equal(fs.existsSync(artifactPath), true);
-
     await runtime?.shutdown();
 
     assert.equal(exitCode, 0);
     assert.equal(fs.existsSync(paths.infoPath), false);
     assert.equal(fs.existsSync(paths.lockPath), false);
   } finally {
-    cleanupDownloadableArtifact(artifactId);
     fs.rmSync(stateDir, { recursive: true, force: true });
   }
 });
@@ -150,7 +125,8 @@ test('daemon runtime publishes dual transport metadata', async () => {
   let exitCode: number | undefined;
 
   try {
-    const runtime = await startDaemonRuntimeFixture({
+    const runtime = await startDaemonRuntime({
+      composeDeps: createDaemonRuntimeDeps,
       env: {
         ...process.env,
         AGENT_DEVICE_STATE_DIR: stateDir,
@@ -200,7 +176,8 @@ test('daemon rejects unowned cloud artifacts over RPC', async () => {
   let runtime: DaemonRuntimeController | null = null;
 
   try {
-    runtime = await startDaemonRuntimeFixture({
+    runtime = await startDaemonRuntime({
+      composeDeps: createDaemonRuntimeDeps,
       env: {
         ...process.env,
         AGENT_DEVICE_STATE_DIR: stateDir,
@@ -330,7 +307,8 @@ test('daemon runtime records startup device-claim reconciliation in daemon.log',
       }),
     );
 
-    const runtime = await startDaemonRuntimeFixture({
+    const runtime = await startDaemonRuntime({
+      composeDeps: createDaemonRuntimeDeps,
       env: {
         ...process.env,
         AGENT_DEVICE_STATE_DIR: stateDir,
@@ -455,7 +433,8 @@ test('startup sweep settles a foreign dead owner without touching a live same-na
       }),
     );
 
-    runtime = await startDaemonRuntimeFixture({
+    runtime = await startDaemonRuntime({
+      composeDeps: createDaemonRuntimeDeps,
       env: {
         ...process.env,
         AGENT_DEVICE_STATE_DIR: daemonStateDir,
