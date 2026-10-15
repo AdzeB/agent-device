@@ -36,7 +36,6 @@ function declarations(): PlatformPackageDeclaration[] {
             '@agent-device/platform-apple/perf',
             '@agent-device/platform-apple/physical-device',
             '@agent-device/platform-apple/runner',
-            '@agent-device/platform-apple/runner/test-host',
             '@agent-device/platform-apple/runner/operations',
             '@agent-device/platform-apple/runner/requests-fixtures',
             '@agent-device/platform-apple/runner-owner',
@@ -285,22 +284,6 @@ test('the apple runner mechanics facet subpaths are the enumerated exception', (
   );
   assert.deepEqual(checkPlatformPackagePolicy(sources, declarations()), []);
 
-  // The test-host installer is a single vitest setup file, dynamic imports included.
-  const testHostSources = validSources();
-  testHostSources.set(
-    'scripts/vitest-apple-runner-host-setup.ts',
-    "import { installAppleRunnerTestHost } from '@agent-device/platform-apple/runner/test-host';",
-  );
-  assert.deepEqual(checkPlatformPackagePolicy(testHostSources, declarations()), []);
-  testHostSources.set(
-    'src/platform-runtime.ts',
-    composition() + "\nvoid import('@agent-device/platform-apple/runner/test-host');",
-  );
-  assert.match(
-    messages(testHostSources).join('\n'),
-    /only scripts\/vitest-apple-runner-host-setup\.ts may import/,
-  );
-
   // A NEW unenumerated subpath widens the export list and fails declarations.
   const widened = declarations();
   const apple = widened.find((pkg) => pkg.family === 'apple')!;
@@ -311,6 +294,26 @@ test('the apple runner mechanics facet subpaths are the enumerated exception', (
   assert.match(
     messages(validSources(), widened).join('\n'),
     /platform-apple must export exactly its root façade/,
+  );
+});
+
+test('the runner test host is importable only from tests and __tests__ helpers', () => {
+  const testHostSources = validSources();
+  testHostSources.set(
+    'packages/platform-apple/src/runner/__tests__/host-setup.ts',
+    "import { installAppleRunnerTestHost } from '../test-host.ts';",
+  );
+  testHostSources.set(
+    'packages/platform-apple/src/runner/runner-lifecycle.ts',
+    "import { appleRunnerTestHost } from './test-host.ts';",
+  );
+  assert.match(
+    messages(testHostSources).join('\n'),
+    /runner\/test-host\.ts binds the runner test dispatcher/,
+  );
+  assert.equal(
+    messages(testHostSources).filter((message) => message.includes('test dispatcher')).length,
+    1,
   );
 });
 

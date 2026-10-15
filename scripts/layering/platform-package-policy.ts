@@ -66,9 +66,8 @@ export function checkRetiredPlatformsZone(files: readonly string[]): LayeringVio
     'src/platforms is retired; family code belongs in its platform package, shared mechanics in an owning substrate package, and cross-family tests in their root or package test owner',
   );
 }
+const APPLE_RUNNER_TEST_HOST_FILE = 'packages/platform-apple/src/runner/test-host';
 const APPLE_RUNNER_FACADE = '@agent-device/platform-apple/runner';
-const APPLE_RUNNER_TEST_HOST = '@agent-device/platform-apple/runner/test-host';
-const APPLE_RUNNER_TEST_HOST_INSTALLER = 'scripts/vitest-apple-runner-host-setup.ts';
 const ANDROID_MECHANICS_FACADE = '@agent-device/platform-android/mechanics';
 const ANDROID_HOST_FACET = '@agent-device/platform-android/adb-host';
 const ANDROID_HOST_BINDING = 'src/platform-runtime-android-adb-host.ts';
@@ -76,7 +75,6 @@ const ANDROID_DEVICE_BOOT_FACADE = '@agent-device/platform-android/device-boot';
 const MECHANICS_FACET_SUBPATHS: Readonly<Partial<Record<PlatformFamily, readonly string[]>>> = {
   apple: [
     APPLE_RUNNER_FACADE,
-    APPLE_RUNNER_TEST_HOST,
     '@agent-device/platform-apple/app-lifecycle',
     '@agent-device/platform-apple/app-resolution',
     '@agent-device/platform-apple/debug-symbols',
@@ -159,6 +157,12 @@ function resolvesToRequestProviderComposition(file: string, specifier: string): 
   if (!specifier.startsWith('.')) return false;
   const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
   return resolved === REQUEST_PROVIDER_COMPOSITION_FILE;
+}
+
+function resolvesToAppleRunnerTestHost(file: string, specifier: string): boolean {
+  if (!specifier.startsWith('.')) return false;
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
+  return resolved.replace(/\.ts$/, '') === APPLE_RUNNER_TEST_HOST_FILE;
 }
 
 function isPackageOwnedFacadeTest(file: string, family: string, specifier: string): boolean {
@@ -261,6 +265,15 @@ function checkSource(file: string, source: string): LayeringViolation[] {
         ),
       );
     }
+    if (resolvesToAppleRunnerTestHost(file, site.spec) && isProductionSource(file)) {
+      violations.push(
+        violation(
+          file,
+          site.line,
+          'runner/test-host.ts binds the runner test dispatcher — only test files and __tests__ helpers may import it',
+        ),
+      );
+    }
     const importedFamily = concretePlatformFamily(site.spec);
     if (file.startsWith('packages/contracts/') && importedFamily) {
       violations.push(
@@ -280,15 +293,7 @@ function checkSource(file: string, source: string): LayeringViolation[] {
         ),
       );
     }
-    if (site.spec === APPLE_RUNNER_TEST_HOST && file !== APPLE_RUNNER_TEST_HOST_INSTALLER) {
-      violations.push(
-        violation(
-          file,
-          site.line,
-          `'${APPLE_RUNNER_TEST_HOST}' installs the runner test host dispatcher — only ${APPLE_RUNNER_TEST_HOST_INSTALLER} may import it`,
-        ),
-      );
-    } else if (
+    if (
       importedFamily &&
       !COMPOSITION_FILES.has(file) &&
       // Named platform facades are the package's consumer seams. R11's
