@@ -142,6 +142,7 @@ import {
   checkPackageExportSurface,
   packageExportSurfaceSummary,
 } from './package-export-surface.ts';
+import { checkTestKitIsolation } from './test-kit-isolation.ts';
 import { checkDaemonLayers, DAEMON_ROOT } from './daemon-layers.ts';
 import { checkSessionAuthorityOverlay, handlerOwnedOverlay } from './session-authority-overlay.ts';
 import {
@@ -607,8 +608,13 @@ export const LAYERING_RULES: Readonly<Record<LayeringRuleId, LayeringRule>> = {
       context.sourceFiles.filter((file) => file.startsWith(DAEMON_SOURCE_ROOT)),
       context.edges,
     ),
-  'package-export-surface': (context) =>
-    checkPackageExportSurface(context.ratchets.testOnlyExports, context.reference.testOnlyExports),
+  'package-export-surface': (context) => [
+    ...checkPackageExportSurface(
+      context.ratchets.testOnlyExports,
+      context.reference.testOnlyExports,
+    ),
+    ...checkTestKitIsolation(readTrackedPackageManifests(repoRoot), context.allTypeScriptSources),
+  ],
 };
 
 export function main(): number {
