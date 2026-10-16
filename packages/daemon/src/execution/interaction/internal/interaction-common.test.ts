@@ -1,24 +1,22 @@
 import type { CommandFlags } from '@agent-device/contracts/command';
-import { legacyDispatchCapture } from '@agent-device/daemon/testing/__tests__/legacy-snapshot-capture-fixture';
+import { legacyDispatchCapture } from '../../../__tests__/support/legacy-snapshot-capture-fixture.ts';
 import { beforeEach, expect, test } from 'vitest';
 import {
   makeIosSession,
   makeAuthoringSession,
   authoringPublication,
-} from '@agent-device/daemon/testing/__tests__/support/session-factories';
-import { makeSessionStore } from '@agent-device/daemon/testing/__tests__/support/store-factory';
+} from '../../../__tests__/support/session-factories.ts';
+import { makeSessionStore } from '../../../__tests__/support/store-factory.ts';
 import { attachRefs, type RawSnapshotNode } from '@agent-device/kernel/snapshot';
-import {
-  finalizeTouchInteraction,
-  handleInteractionCommands,
-} from '@agent-device/daemon/testing/interaction/index';
+import { activateCompleteRefFrame } from '../../../core/ref-frame.ts';
+import { finalizeTouchInteraction, handleInteractionCommands } from '../index.ts';
 import { IOS_SIMULATOR } from '@agent-device/test-kit';
 import {
   getRuntimeBindings,
   mockFillPoint,
   resetGetRuntimeFixture,
-} from '@agent-device/daemon/testing/__tests__/interaction-get-runtime-fixture';
-import { testCreateCommandSurface } from '../command-surface-fixture.ts';
+} from '../../__tests__/interaction-get-runtime-fixture.ts';
+import { touchForwardingCreateCommandSurface } from '../../../__tests__/support/touch-forwarding-surface-fake.ts';
 
 const contextFromFlags = (_flags: CommandFlags | undefined) => ({});
 
@@ -165,7 +163,7 @@ test('parameterized fill scrubs concatenated backend values and object keys thro
   );
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchForwardingCreateCommandSurface(),
     req: {
       token: 't',
       session: sessionName,
@@ -223,7 +221,7 @@ test('parameterized fill collapses whitespace-only backend echoes through the ha
   });
 
   const response = await handleInteractionCommands({
-    createCommandSurface: testCreateCommandSurface,
+    createCommandSurface: touchForwardingCreateCommandSurface(),
     req: {
       token: 't',
       session: sessionName,
@@ -298,3 +296,51 @@ test.each([
     expect(session.actions[0]?.result).toEqual(response.data);
   },
 );
+
+test('a fill on a @ref acts on the node of the authorized ref frame, not on a newer observation', async () => {
+  const sessionStore = makeSessionStore();
+  const sessionName = 'ref-frame-authority-fill';
+  const session = makeIosSession(sessionName, { appBundleId: 'com.example.app' });
+  const field = (rect: { x: number; y: number; width: number; height: number }) =>
+    attachRefs([
+      {
+        index: 0,
+        type: 'XCUIElementTypeTextField',
+        label: 'Email',
+        rect,
+        enabled: true,
+        hittable: true,
+      },
+    ] as RawSnapshotNode[]);
+  session.snapshot = {
+    nodes: field({ x: 0, y: 0, width: 20, height: 20 }),
+    createdAt: Date.now(),
+    backend: 'xctest',
+  };
+  activateCompleteRefFrame(session);
+  session.snapshot = {
+    nodes: field({ x: 200, y: 200, width: 20, height: 20 }),
+    createdAt: Date.now(),
+    backend: 'xctest',
+  };
+  sessionStore.publish(sessionName, session);
+  mockFillPoint.mockResolvedValue({ filled: true });
+
+  const response = await handleInteractionCommands({
+    createCommandSurface: touchForwardingCreateCommandSurface(),
+    req: {
+      token: 't',
+      session: sessionName,
+      command: 'fill',
+      positionals: ['@e1', 'hello'],
+      flags: {},
+    },
+    sessionName,
+    sessionStore,
+    contextFromFlags,
+    ...getRuntimeBindings(),
+  });
+
+  expect(response?.ok, JSON.stringify(response)).toBe(true);
+  expect(mockFillPoint).toHaveBeenCalledWith(expect.objectContaining({ point: { x: 10, y: 10 } }));
+});
