@@ -13,7 +13,6 @@
   "references": [
     { "path": "../capture-kit" },
     { "path": "../contracts" },
-    { "path": "../daemon-contracts" },
     { "path": "../host-kit" },
     { "path": "../kernel" }
   ]
