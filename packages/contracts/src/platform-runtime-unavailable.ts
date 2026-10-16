@@ -58,6 +58,7 @@ export type UnavailablePlatformRuntimeFacts = Readonly<{
   back: RuntimeOperationUnavailability;
   orientation: RuntimeOperationUnavailability;
   fold: RuntimeOperationUnavailability;
+  telephony: RuntimeOperationUnavailability;
   tvRemote: RuntimeOperationUnavailability;
   keyboard: RuntimeOperationUnavailability;
   clipboard: RuntimeOperationUnavailability;
@@ -114,6 +115,7 @@ const UNAVAILABLE_CELLS = {
   back: true,
   orientation: true,
   fold: true,
+  telephony: true,
   tvRemote: true,
   keyboard: true,
   clipboard: true,
@@ -239,6 +241,7 @@ export function createUnavailablePlatformRuntimeFacts(
       // Stated directly rather than through `foldRuntimeOperationFacts`, so this hub does not
       // evaluate the fold contract for owners that never pose a hinge (eager-closure budgets).
       setFoldPose: frozen.fold,
+      sendTelephonyEvent: frozen.telephony,
       ...tvRemoteRuntimeOperationFacts({ tvRemote: frozen.tvRemote }),
       ...keyboardRuntimeOperationFacts({ unsupported: frozen.keyboard }),
       ...clipboardRuntimeOperationFacts({ unsupported: frozen.clipboard }),

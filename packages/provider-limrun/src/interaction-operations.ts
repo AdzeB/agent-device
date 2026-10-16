@@ -324,9 +324,19 @@ export const LIMRUN_FOLD_UNAVAILABLE = unavailableFact(
   'fold runs a HID helper through simctl spawn inside a foldable iPhone simulator on the daemon host; a Limrun session has no such simulator.',
 );
 
+export const LIMRUN_TELEPHONY_UNAVAILABLE = unavailableFact(
+  'unsupported-provider-mode',
+  "telephony sends calls and SMS to an Android emulator's console through local adb; agent-device does not route it through a Limrun session.",
+);
+
 /** The fold refusal both Limrun legs share. */
 export function limrunFoldOperationFacts() {
   return Object.freeze({ setFoldPose: LIMRUN_FOLD_UNAVAILABLE });
+}
+
+/** The telephony refusal both Limrun legs share. */
+export function limrunTelephonyOperationFacts() {
+  return Object.freeze({ sendTelephonyEvent: LIMRUN_TELEPHONY_UNAVAILABLE });
 }
 
 /**
