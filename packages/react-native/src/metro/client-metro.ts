@@ -20,7 +20,7 @@ import {
   type ConfirmedProcessStop,
 } from '@agent-device/host-kit/process';
 import { sleep } from '@agent-device/host-kit/retry';
-import { ensureMetroCompanion } from './client-metro-companion.ts';
+import { ensureMetroCompanion } from '../companion/client-metro-companion.ts';
 import type {
   MetroBridgeDescriptor,
   MetroBridgeResult,
@@ -36,7 +36,7 @@ import {
   readProjectPackageJson,
   type PackageJsonShape,
 } from '@agent-device/host-kit/project-runtime';
-import { normalizeBaseUrl } from '../client/base-url.ts';
+import { normalizeBaseUrl } from './base-url.ts';
 import { buildBundleUrl } from './bundle-url.ts';
 import {
   EXPO_VIRTUAL_ENTRY_BUNDLE_PATH,

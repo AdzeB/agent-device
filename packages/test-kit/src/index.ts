@@ -104,3 +104,11 @@ export {
   withNodeRuntime,
   writeFakeManagedAgentBrowserPackage,
 } from './web-managed-agent-browser.ts';
+
+export {
+  writeFakeMetroNpx,
+  findFreeMetroPort,
+  stopTestMetroProcess,
+} from './metro-process.fixtures.ts';
+
+export { readMetroSessionFixture, writeMetroSessionFixture } from './metro-session.fixtures.ts';
