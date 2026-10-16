@@ -641,7 +641,7 @@ test('proxy open resolves device key before allocating lease', async () => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-test('proxy install allocates a device lease before dispatch', async () => {
+test.each(['install', 'uninstall'])('proxy %s allocates a lease first', async (command) => {
   const { tempRoot, stateDir, remoteConfigPath } = connectionWorkspace(
     'agent-device-connect-proxy-install-',
   );
@@ -664,7 +664,7 @@ test('proxy install allocates a device lease before dispatch', async () => {
   });
 
   const materialized = await materializeRemoteConnectionForCommand({
-    command: 'install',
+    command,
     flags: {
       json: true,
       help: false,
