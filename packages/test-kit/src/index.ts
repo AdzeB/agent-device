@@ -74,7 +74,6 @@ export {
   PROPERTY_RUNS_SMALL,
   rawSnapshotNodesArb,
   refArb,
-  replayScriptArb,
 } from './property-arbitraries.ts';
 export {
   createUnavailableRuntimeFactsForTest,
