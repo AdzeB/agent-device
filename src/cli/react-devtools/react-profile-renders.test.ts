@@ -3,18 +3,9 @@ import assert from 'node:assert/strict';
 import {
   chronological,
   selectPropKindRequests,
-  splitDisplayName,
   summarizeRenders,
 } from './react-profile-renders.ts';
 import { MEMO, rawProfile, repeat, type Render } from './react-profile-renders.fixtures.ts';
-
-test('splitDisplayName separates DevTools wrapper names from the component', () => {
-  assert.deepEqual(splitDisplayName('Memo(ForwardRef(Row))'), {
-    name: 'Row',
-    wrappers: ['Memo', 'ForwardRef'],
-  });
-  assert.deepEqual(splitDisplayName('Row'), { name: 'Row', wrappers: [] });
-});
 
 test('commits from several roots are read as one timeline', () => {
   const raw = rawProfile({ 1: ['A'], 2: ['B'] }, [
@@ -104,5 +95,24 @@ test('names and prop keys that differ only by control characters stay apart', ()
       ['Row', { id: 1 }],
       ['Row\u0007', { 'id\u001b': 1 }],
     ],
+  );
+});
+
+test('edited profiles cannot render inherited component-kind keys', () => {
+  const raw = rawProfile({ 1: ['Valid'], 2: ['Invalid'] }, [
+    [
+      0,
+      2,
+      [],
+      [
+        [1, 1],
+        [2, 1],
+      ],
+    ],
+  ]);
+  raw.elements['2'] = JSON.parse('["Invalid","toString",0,0]');
+  assert.deepEqual(
+    summarizeRenders(raw).components.map(({ name, kind }) => [name, kind]),
+    [['Valid', 'function']],
   );
 });

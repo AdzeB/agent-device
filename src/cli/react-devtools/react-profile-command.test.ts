@@ -3,13 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { runReactProfileCommand } from './react-profile-command.ts';
 import { InspectorSession } from './metro-inspector.ts';
 import { commandHarness, TARGET } from './react-devtools-command.fixtures.ts';
 import { FakeAppRuntime, MEMO_TYPE, encodeOperations } from './react-devtools-runtime.fixtures.ts';
 
 const harness = (app?: FakeAppRuntime, targets?: unknown[]) =>
-  commandHarness(runReactProfileCommand, app, targets);
+  commandHarness(['profile'], app, targets);
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -261,6 +260,35 @@ test('drill-down views read the saved recording, not a trimmed analysis', async 
   assert.equal(saved.version, 2);
   assert.equal(saved.profile.commits.length, 3);
   assert.match((await run('report', 'Row')).text, /changed props: onPress 36 \(function\)/);
+  assert.doesNotMatch((await run('report', 'Row')).text, /collection may have been interrupted/);
+});
+
+test('stop saves the raw recording before optional prop inspection', async () => {
+  const { app, run, stateDir } = harness();
+  await run('start');
+  recordRowRenders(app);
+  let checkpoint:
+    | { profile: { commits: unknown[] }; propKinds: unknown; notes: string[] }
+    | undefined;
+  vi.mocked(InspectorSession.connect).mockResolvedValue({
+    evaluate: async (expression: string) => {
+      if (expression.includes('.describeProps(')) {
+        const file = path.join(stateDir, 'react-profiles', 'qa.json');
+        if (fs.existsSync(file)) checkpoint = JSON.parse(fs.readFileSync(file, 'utf8'));
+        throw new Error('inspection unavailable');
+      }
+      return vm.runInContext(expression, app.context);
+    },
+    close: () => {},
+  } as unknown as InspectorSession);
+  const stopped = await run('stop');
+  assert.equal(checkpoint?.profile.commits.length, 3);
+  assert.deepEqual(checkpoint?.propKinds, {});
+  assert.deepEqual(checkpoint?.notes, [
+    'Changed prop values have not been inspected; collection may have been interrupted.',
+  ]);
+  assert.match(stopped.text, /Changed prop values could not be inspected: inspection unavailable/);
+  assert.match((await run('report', 'Row')).text, /renders 36/);
 });
 
 test('a renderer that fails while another records nothing is named in the empty summary', async () => {

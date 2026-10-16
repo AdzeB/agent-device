@@ -312,17 +312,13 @@ export const REACT_DEVTOOLS_RUNTIME_SOURCE = String.raw`
     var out = Object.create(null);
     Object.keys(request).forEach(function (id) {
       var keys = request[id];
-      eachRenderer(function (ri) {
-        if (out[id]) return;
-        var inspected;
-        try { inspected = ri.inspectElement(nextRequestID++, Number(id), null, true); } catch (e) { return; }
-        if (!inspected || inspected.type !== 'full-data' || !inspected.value || !inspected.value.props) return;
-        var props = inspected.value.props;
-        var data = props.data !== undefined ? props.data : props;
-        var kinds = Object.create(null);
-        keys.forEach(function (key) { if (data && key in data) kinds[key] = propKind(data[key], key, props.cleaned); });
-        out[id] = kinds;
-      });
+      var inspected = inspectBackendElement(Number(id));
+      if (!inspected.value || !inspected.value.props) return;
+      var props = inspected.value.props;
+      var data = props.data !== undefined ? props.data : props;
+      var kinds = Object.create(null);
+      keys.forEach(function (key) { if (data && key in data) kinds[key] = propKind(data[key], key, props.cleaned); });
+      out[id] = kinds;
     });
     return out;
   }
@@ -346,34 +342,43 @@ export const REACT_DEVTOOLS_RUNTIME_SOURCE = String.raw`
     return { ok: true, nodes: nodes, order: childOrder, logs: counts, logsTracked: logsTracked };
   }
 
-  function inspectOne(id) {
+  function inspectBackendElement(id) {
     var found = null;
+    var failure = null;
     eachRenderer(function (ri) {
       if (found || (ri.hasElementWithId && !ri.hasElementWithId(id))) return;
       var result;
       try { result = ri.inspectElement(nextRequestID++, id, null, true); } catch (e) {
-        found = { error: String(e && e.message || e) };
-        return;
+        result = { type: 'error', message: String(e && e.message || e) };
       }
       if (!result || result.type === 'not-found') return;
-      if (result.type !== 'full-data') { found = { error: result.message || result.type }; return; }
-      var value = result.value;
-      var known = elements.get(id);
-      found = {
-        name: known ? known[0] : lookupName(ri, id),
-        type: value.type,
-        key: value.key == null ? null : value.key,
-        props: value.props,
-        state: value.state,
-        hooks: value.hooks,
-        context: value.context,
-        owners: value.owners,
-        errors: value.errors,
-        warnings: value.warnings,
-        isErrored: !!value.isErrored
-      };
+      if (result.type === 'full-data') found = { value: result.value, name: lookupName(ri, id) };
+      else {
+        failure = { error: result.message || result.type };
+        if (ri.hasElementWithId) found = failure;
+      }
     });
-    return found || { missing: true };
+    return found || failure || { missing: true };
+  }
+
+  function inspectOne(id) {
+    var result = inspectBackendElement(id);
+    if (!result.value) return result;
+    var value = result.value;
+    var known = elements.get(id);
+    return {
+      name: known ? known[0] : result.name,
+      type: value.type,
+      key: value.key == null ? null : value.key,
+      props: value.props,
+      state: value.state,
+      hooks: value.hooks,
+      context: value.context,
+      owners: value.owners,
+      errors: value.errors,
+      warnings: value.warnings,
+      isErrored: !!value.isErrored
+    };
   }
 
   function inspect(ids) {
