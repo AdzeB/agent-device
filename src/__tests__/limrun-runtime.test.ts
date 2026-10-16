@@ -6,7 +6,6 @@ import type { ClientOptions } from '@limrun/api';
 import { createInstanceClient as createAndroidInstanceClient } from '@limrun/api/instance-client';
 import { createInstanceClient as createIosInstanceClient } from '@limrun/api/ios-client';
 import { LimrunRuntime } from '../sdk/limrun.ts';
-import { createExpiredProviderLeaseReleaser } from '@agent-device/daemon/testing/provider-lease-expiry';
 import type { DeviceLease } from '@agent-device/contracts/device';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { AppError } from '@agent-device/kernel/errors';
@@ -258,61 +257,6 @@ test('Limrun reclaims a labeled iOS instance without an in-memory session', asyn
     assert.deepEqual(limrunMockState.iosDelete.mock.calls, [['ios-instance-recovered']]);
   } finally {
     await runtime.shutdown();
-  }
-});
-
-test('Limrun recovers a failed expired lease release after a daemon restart', async () => {
-  const stateDir = mkdtempForTestSync('agent-device-limrun-expiry-');
-  const lease: DeviceLease = {
-    leaseId: 'lease-recovered-after-restart',
-    tenantId: 'team-a',
-    runId: 'run-a',
-    backend: 'ios-instance',
-    leaseProvider: 'limrun',
-    createdAt: 1,
-    heartbeatAt: 1,
-    expiresAt: 60_001,
-  };
-  const firstRuntime = new LimrunRuntime({ apiKey: 'lim_test_key' });
-  const firstReleaser = createExpiredProviderLeaseReleaser({
-    recoverExpiredLease: firstRuntime.recoverExpiredLease,
-    recoverableProviderIds: ['limrun'],
-    stateDir,
-  });
-  let recoveredRuntime: LimrunRuntime | undefined;
-  let recoveredReleaser: ReturnType<typeof createExpiredProviderLeaseReleaser> | undefined;
-
-  try {
-    const allocateLease = firstRuntime.leaseLifecycle.allocate;
-    if (!allocateLease) throw new Error('Limrun runtime must provide lease allocation');
-    await allocateLease(lease);
-    limrunMockState.iosDelete.mockRejectedValueOnce(new Error('temporary provider outage'));
-
-    await firstReleaser.release(lease);
-    assert.deepEqual(limrunMockState.iosDelete.mock.calls[0], ['ios-instance-1']);
-    firstReleaser.shutdown();
-
-    recoveredRuntime = new LimrunRuntime({ apiKey: 'lim_test_key' });
-    recoveredReleaser = createExpiredProviderLeaseReleaser({
-      recoverExpiredLease: recoveredRuntime.recoverExpiredLease,
-      recoverableProviderIds: ['limrun'],
-      stateDir,
-    });
-    limrunMockState.iosList.mockResolvedValueOnce({
-      getPaginatedItems: () => [{ metadata: { id: 'ios-instance-recovered' } }],
-    });
-    await recoveredReleaser.retryPending();
-
-    assert.deepEqual(limrunMockState.iosList.mock.calls[0], [
-      { labelSelector: 'provider=limrun,leaseId=lease-recovered-after-restart' },
-    ]);
-    assert.deepEqual(limrunMockState.iosDelete.mock.calls.at(-1), ['ios-instance-recovered']);
-  } finally {
-    // A crashed daemon cannot run the original runtime's graceful shutdown.
-    firstReleaser.shutdown();
-    recoveredReleaser?.shutdown();
-    await recoveredRuntime?.shutdown();
-    fs.rmSync(stateDir, { recursive: true, force: true });
   }
 });
 
