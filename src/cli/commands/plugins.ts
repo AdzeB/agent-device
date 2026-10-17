@@ -1,3 +1,9 @@
+import { resolveDaemonPaths } from '@agent-device/daemon-contracts/daemon-resolution';
+import { readPluginInventory } from '@agent-device/contracts/plugin-inventory';
+import {
+  isUnusableRecord,
+  readDaemonStatus,
+} from '@agent-device/daemon-contracts/daemon-registration';
 import { AppError } from '@agent-device/kernel/errors';
 import { changePlugin, listPlugins } from '@agent-device/plugins/store';
 import { BUILTIN_PROVIDER_IDS } from '../../builtin-provider-ids.ts';
@@ -25,7 +31,18 @@ export const pluginsCommand: ClientCommandHandler = async ({ positionals, flags 
     );
   }
   const plugins = await listPlugins(process.env, BUILTIN_PROVIDER_IDS);
-  await writeCommandOutput(flags, { plugins, restartRequired: action !== 'list' }, () =>
+  const daemon = readDaemonStatus(resolveDaemonPaths(flags.stateDir));
+  const daemonPlugins = readPluginInventory(daemon.plugins);
+  const failedInDaemon = daemonPlugins.filter(({ state }) => state === 'failed');
+  const data = {
+    plugins,
+    ...(daemon.state === 'running'
+      ? { daemon: { pid: daemon.pid, stateDir: daemon.stateDir, plugins: daemonPlugins } }
+      : {}),
+    ...(isUnusableRecord(daemon) ? { daemonRecord: daemon.state } : {}),
+    restartRequired: action !== 'list',
+  };
+  await writeCommandOutput(flags, data, () =>
     [
       ...plugins.map((plugin) =>
         plugin.compatible
@@ -38,6 +55,15 @@ export const pluginsCommand: ClientCommandHandler = async ({ positionals, flags 
         ? ['Restart the local daemon after closing active sessions to use the changed plugin set.']
         : []),
       ...(plugins.length === 0 ? ['No provider plugins installed.'] : []),
+      ...(isUnusableRecord(daemon)
+        ? [
+            `The daemon record for ${daemon.stateDir} is ${daemon.state}, so its providers are unknown.`,
+          ]
+        : []),
+      ...failedInDaemon.map(
+        (plugin) =>
+          `The running daemon did not register ${plugin.package ?? plugin.provider ?? plugin.source}: ${plugin.error?.message}`,
+      ),
     ].join('\n'),
   );
   return true;
