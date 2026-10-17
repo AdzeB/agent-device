@@ -4,10 +4,7 @@ import type {
   EnsureDaemonOptions,
 } from '@agent-device/contracts/client';
 import { waitForDaemonExit } from '@agent-device/daemon-contracts/daemon-process';
-import {
-  recoverAbandonedDaemonRegistration,
-  type DaemonRetirementResult,
-} from '@agent-device/daemon-contracts/daemon-registration-owner';
+import { recoverAbandonedDaemonRegistration } from '@agent-device/daemon-contracts/daemon-registration-owner';
 import { sleep } from '@agent-device/host-kit/retry';
 import { AppError } from '@agent-device/kernel/errors';
 import {
@@ -15,6 +12,7 @@ import {
   observeLocalDaemon,
   resolveLocalDaemonSettings,
   retireDaemonForTakeover,
+  stopDaemonForTakeover,
   startLocalDaemon,
   type DaemonClientSettings,
   type EnsuredDaemon,
@@ -27,6 +25,7 @@ import {
   daemonIdentityOf,
   daemonDrainTimeoutError,
   daemonIncompatibleError,
+  daemonRetirementUnconfirmedError,
 } from './daemon-lifecycle-errors.ts';
 
 // A racing `ensureDaemon` in another process can retire or replace the daemon this call judged, or
@@ -128,10 +127,11 @@ async function replaceIncompatible(
   }
   const outcome = await quiesceOrRetireUnresponsive(info, settings);
   if (outcome === 'gone') return { kind: 'judge-again' };
-  if (outcome === 'draining') await awaitDrainedDaemon(info, startTime, settings);
+  const drained =
+    outcome === 'draining' ? await awaitDrainedDaemon(info, startTime, settings) : outcome;
   // A daemon force-retired for answering nothing is reported like an unreachable one: it was never
   // shown to be idle, so "incompatible" would overstate what happened to it.
-  const reason = outcome === 'retired' ? 'missing' : 'incompatible';
+  const reason = drained === 'retired' ? 'missing' : 'incompatible';
   return await start(settings, onStart, reason, daemonIdentityOf(info));
 }
 
@@ -150,7 +150,7 @@ async function awaitDrainedDaemon(
   info: DaemonInfo,
   startTime: string,
   settings: DaemonClientSettings,
-): Promise<void> {
+): Promise<'left' | 'retired'> {
   const { exited } = await waitForDaemonExit(
     { pid: info.pid, startTime },
     { timeoutMs: DRAIN_DEADLINE_MS, pollMs: DRAIN_POLL_MS },
@@ -161,30 +161,21 @@ async function awaitDrainedDaemon(
       paths: settings.paths,
       observed: { pid: info.pid, startTime },
     });
-    return;
+    return 'left';
   }
   if (await answersLivenessProbe(info)) throw await daemonDrainTimeoutError(info, settings);
-  try {
-    await retireDaemonForTakeover(info, settings.paths, 'force');
-  } catch (error) {
-    if (isRefusalToSignalNonDaemon(error)) throw await daemonDrainTimeoutError(info, settings);
-    throw error;
+  const retirement = await stopDaemonForTakeover(info, settings.paths, 'force');
+  if (retirement.status !== 'retained') return 'retired';
+  // The identity check could not prove the live process is the daemon it observed (an embedded host
+  // runs no daemon entry; a start time or command line may also be unreadable), so nothing was
+  // signaled.
+  if (
+    retirement.termination?.status === 'retained' &&
+    retirement.termination.reason === 'identity-unverified'
+  ) {
+    throw await daemonDrainTimeoutError(info, settings);
   }
-}
-
-/**
- * The identity check could not prove the live process is the daemon it observed (an embedded host
- * runs no daemon entry; a start time or command line may also be unreadable), so nothing was signaled.
- */
-function isRefusalToSignalNonDaemon(error: unknown): boolean {
-  if (!(error instanceof AppError) || error.details?.reason !== 'daemon_retirement_unconfirmed') {
-    return false;
-  }
-  const { termination } = error.details.retirement as Extract<
-    DaemonRetirementResult,
-    { status: 'retained' }
-  >;
-  return termination?.status === 'retained' && termination.reason === 'identity-unverified';
+  throw daemonRetirementUnconfirmedError(retirement, settings.paths);
 }
 
 /**
