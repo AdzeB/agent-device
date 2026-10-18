@@ -44,6 +44,7 @@ import {
   resolveDaemonShutdownReportPath,
   type DaemonShutdownOutcome,
 } from './daemon-shutdown-report.ts';
+import { sweepDeadDaemonStartupPhasesFiles } from './daemon-startup-phases.ts';
 
 export const DAEMON_STARTUP_EXIT_CODES = Object.freeze({ busy: 75, unproven: 78 });
 export type DaemonRegistrationFields = Readonly<{
@@ -85,6 +86,7 @@ export async function tryAcquireDaemonRegistration(
   try {
     acquisition.assertHeld();
     fs.rmSync(resolveDaemonShutdownReportPath(boundPaths.baseDir), { force: true });
+    sweepDeadDaemonStartupPhasesFiles(boundPaths.baseDir);
   } catch (error) {
     await releaseRegistrationAfterFailure(acquisition, error, boundPaths.logPath);
   }
