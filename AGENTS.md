@@ -5,12 +5,13 @@ The daemon owns sessions. Registry declarations route commands to platform runti
 
 ## Task routing
 
-Read only the row for your current task. Follow other links only when they apply.
+Read only your task's row. Follow other links only when they apply.
 
 | When the task involves | Read |
 | --- | --- |
 | Domain vocabulary | `CONTEXT.md` |
-| Architecture decisions | `docs/adr/README.md` |
+| Read architecture decisions | `docs/adr/README.md` |
+| Write or amend an ADR | `docs/adr/FORMAT.md` |
 | Source changes, package boundaries, routing, diagnostics | `docs/agents/code-ownership.md` |
 | Checks or a failed gate | `docs/agents/testing.md` |
 | New or changed tests | `docs/agents/test-authoring.md` |
@@ -51,7 +52,7 @@ The versioned CLI help owns command semantics. To drive an app, start with the s
 - The layering scan reads only tracked files. Stage new modules before you trust its result.
 - When you rename a file, move its Fallow baseline entry. Do not regenerate unrelated baselines.
 
-The validation lock automatically reclaims owners that are provably dead. An unknown owner continues to block.
+The validation lock automatically reclaims provably dead owners. An unknown owner continues to block.
 If the wait times out, report the printed owner and the lock state. Do not remove the lock manually.
 
 ## Agent docs
