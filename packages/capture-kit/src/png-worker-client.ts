@@ -1,5 +1,4 @@
 import { Worker } from 'node:worker_threads';
-import { emitDiagnostic } from '@agent-device/host-kit/diagnostics';
 import { AppError, toAppErrorCode } from '@agent-device/kernel/errors';
 import type { Rect } from '@agent-device/kernel/snapshot';
 import { resolveInternalEntryModulePath } from './internal-entry.ts';
@@ -29,6 +28,12 @@ import {
 
 const PNG_WORKER_ENTRYPOINT = 'png-worker';
 
+/** Why the worker left service for good; `detail` carries the underlying error text. */
+export type PngWorkerUnavailableReason = {
+  kind: 'entry-not-found' | 'spawn-failed' | 'worker-error' | 'worker-exited';
+  detail?: string;
+};
+
 /** Worker-infrastructure failure: the generic runner falls back to the sync path. */
 class PngWorkerUnavailableError extends Error {}
 
@@ -38,22 +43,16 @@ type PendingJob = {
 };
 
 let worker: Worker | null = null;
-let workerUnavailable = false;
-let warnedWorkerUnavailable = false;
+let unavailableReason: PngWorkerUnavailableReason | undefined;
+let reportUnavailable: ((reason: PngWorkerUnavailableReason) => void) | undefined;
 let nextJobId = 0;
 const pendingJobs = new Map<number, PendingJob>();
 
-/** Permanently degrades to the sync path and reports the reason once. */
-function markWorkerUnavailable(reason: string): void {
-  workerUnavailable = true;
-  if (warnedWorkerUnavailable) return;
-  warnedWorkerUnavailable = true;
-  // Worker failures can surface outside a diagnostics scope (e.g. daemon
-  // startup pre-warm), so pair the scoped diagnostic with a process warning.
-  emitDiagnostic({ level: 'warn', phase: 'png_worker_unavailable', data: { reason } });
-  process.emitWarning(
-    `PNG worker unavailable, falling back to in-process PNG processing: ${reason}`,
-  );
+/** Permanently degrades to the sync path; the daemon's sink hears each transition once. */
+function markWorkerUnavailable(reason: PngWorkerUnavailableReason): void {
+  if (unavailableReason) return;
+  unavailableReason = reason;
+  reportUnavailable?.(reason);
 }
 
 function handleWorkerMessage(message: PngWorkerResponse): void {
@@ -74,14 +73,14 @@ function handleWorkerMessage(message: PngWorkerResponse): void {
   }
 }
 
-function handleWorkerFailure(failed: Worker, error: Error): void {
+function handleWorkerFailure(failed: Worker, reason: PngWorkerUnavailableReason): void {
   if (worker !== failed) return;
   // Keep the failure handling conservative: after any worker-level error the
   // daemon permanently falls back to the in-process synchronous path.
-  markWorkerUnavailable(error.message);
+  markWorkerUnavailable(reason);
   worker = null;
   void failed.terminate().catch(() => {});
-  rejectPendingJobs(new PngWorkerUnavailableError(`PNG worker failed: ${error.message}`));
+  rejectPendingJobs(new PngWorkerUnavailableError(`PNG worker failed: ${reason.kind}`));
 }
 
 function rejectPendingJobs(error: Error): void {
@@ -102,31 +101,34 @@ function updateWorkerRef(): void {
 }
 
 function obtainWorker(): Worker | null {
-  if (workerUnavailable) return null;
+  if (unavailableReason) return null;
   if (worker) return worker;
   const modulePath = resolveInternalEntryModulePath(import.meta.url, PNG_WORKER_ENTRYPOINT);
   if (!modulePath) {
-    markWorkerUnavailable('worker entry module not found next to the current module');
+    markWorkerUnavailable({ kind: 'entry-not-found' });
     return null;
   }
   try {
+    // The worker decodes and encodes bytes it is sent; it needs none of the host's environment.
     const created = new Worker(modulePath, {
+      env: {},
       execArgv: modulePath.endsWith('.ts') ? ['--experimental-strip-types'] : [],
     });
     created.on('message', handleWorkerMessage);
     created.on('error', (error) => {
-      handleWorkerFailure(created, error);
+      handleWorkerFailure(created, { kind: 'worker-error', detail: error.message });
     });
     created.on('exit', (code) => {
-      handleWorkerFailure(created, new Error(`PNG worker exited with code ${code}`));
+      handleWorkerFailure(created, { kind: 'worker-exited', detail: `exit code ${code}` });
     });
     created.unref();
     worker = created;
     return created;
   } catch (error) {
-    markWorkerUnavailable(
-      `failed to spawn worker: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    markWorkerUnavailable({
+      kind: 'spawn-failed',
+      detail: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -176,14 +178,23 @@ async function runPngJob<Kind extends PngWorkerJobKind>(
   try {
     return await runWorkerJob(job);
   } catch (error) {
-    if (error instanceof PngWorkerUnavailableError) return await runSync();
+    if (error instanceof PngWorkerUnavailableError) {
+      return await runSync();
+    }
     throw error;
   }
 }
 
-/** Daemon startup hook: spawns the worker before the first screenshot job. */
-export function prewarmPngWorker(): void {
-  obtainWorker();
+/**
+ * Daemon startup hook: spawns the worker before the first screenshot job and registers the daemon's
+ * sink, which hears every later transition to unavailable once, inside or outside a request.
+ */
+export function prewarmPngWorker(
+  onUnavailable: (reason: PngWorkerUnavailableReason) => void,
+): void {
+  reportUnavailable = onUnavailable;
+  if (unavailableReason) onUnavailable(unavailableReason);
+  else obtainWorker();
 }
 
 /** Stops the worker thread (used by tests and shutdown); later calls respawn it. */
