@@ -44,7 +44,7 @@ type PendingJob = {
 
 let worker: Worker | null = null;
 let unavailableReason: PngWorkerUnavailableReason | undefined;
-let reportUnavailable: ((reason: PngWorkerUnavailableReason) => void) | undefined;
+const unavailableSinks = new Set<(reason: PngWorkerUnavailableReason) => void>();
 let nextJobId = 0;
 const pendingJobs = new Map<number, PendingJob>();
 
@@ -52,7 +52,7 @@ const pendingJobs = new Map<number, PendingJob>();
 function markWorkerUnavailable(reason: PngWorkerUnavailableReason): void {
   if (unavailableReason) return;
   unavailableReason = reason;
-  reportUnavailable?.(reason);
+  for (const sink of unavailableSinks) sink(reason);
 }
 
 function handleWorkerMessage(message: PngWorkerResponse): void {
@@ -185,16 +185,29 @@ async function runPngJob<Kind extends PngWorkerJobKind>(
   }
 }
 
+let pngWorkerHolds = 0;
+
 /**
- * Daemon startup hook: spawns the worker before the first screenshot job and registers the daemon's
- * sink, which hears every later transition to unavailable once, inside or outside a request.
+ * Daemon startup hook: spawns the worker before the first screenshot job and holds it for the
+ * caller. The sink hears every transition to unavailable once, inside or outside a request, and
+ * hears an earlier one at once. The worker is shared by every runtime in the process, so it stops
+ * when the last holder lets go; the returned release is idempotent.
  */
-export function prewarmPngWorker(
+export function retainPngWorker(
   onUnavailable: (reason: PngWorkerUnavailableReason) => void,
-): void {
-  reportUnavailable = onUnavailable;
+): () => Promise<void> {
+  unavailableSinks.add(onUnavailable);
   if (unavailableReason) onUnavailable(unavailableReason);
   else obtainWorker();
+  pngWorkerHolds += 1;
+  let released = false;
+  return async () => {
+    if (released) return;
+    released = true;
+    unavailableSinks.delete(onUnavailable);
+    pngWorkerHolds -= 1;
+    if (pngWorkerHolds === 0) await terminatePngWorker();
+  };
 }
 
 /** Stops the worker thread (used by tests and shutdown); later calls respawn it. */

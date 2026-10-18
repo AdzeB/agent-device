@@ -45,8 +45,6 @@ async function pngWorkerEventsAfter(spawn: 'start' | 'throw', act: () => void): 
           AGENT_DEVICE_DAEMON_SERVER_MODE: 'http',
         },
       }),
-      exit: () => {},
-      registerProcessHandlers: false,
       stderr: { write: () => {} },
       stdout: { write: () => {} },
       composeDeps: daemonRuntimeDepsFixture({}),
@@ -64,7 +62,7 @@ async function pngWorkerEventsAfter(spawn: 'start' | 'throw', act: () => void): 
     await new Promise((resolve) => setTimeout(resolve, 50));
     return readEvents();
   } finally {
-    await runtime?.shutdown();
+    await runtime?.close();
     fs.rmSync(stateDir, { recursive: true, force: true });
   }
 }
