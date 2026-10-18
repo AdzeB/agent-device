@@ -73,12 +73,18 @@ An unproven cell is at least a visible claim that has an owner.
 export const INTERACTION_GUARANTEES = [
   'disambiguation',        // collapse one equivalent wrapper chain; distinct subtrees fail with candidates
   'occlusion',             // covered targets are refused
+  'keyboardOcclusion',     // refuse tap points behind the visible software keyboard
+  'parentOwnedTouchPoint', // preserve parent identity; avoid interactive descendants
   'offscreen',             // tap point (rect center) must lie in the root viewport
   'nonHittable',           // promotion + targetHittable/hint annotation
   'responseConstruction',  // one shared response construction site (Layer 2)
   'responseIdentity',      // refLabel/selectorChain availability on this path
   'verifyEvidence',        // --verify baseline + post-action digest
+  'settleObservation',     // best-effort --settle diff after the action
   'errorTaxonomy',         // no-match/ambiguous/offscreen codes, messages, hints
+  'resolutionDisclosure',  // disclose the source of target resolution
+  'outcomeObservation',    // state what the path observes after dispatch
+  'targetStability',       // refuse tap positions that change between observations
 ] as const;
 ```
 
@@ -155,13 +161,15 @@ Some rules must run **runner-side**, because the direct iOS path cannot see the 
 These rules get pure-function Swift twins that operate on plain geometry, without `XCUIElement`.
 `TapPointPolicy.isAllowed(elementFrame:windowFrame:)` is one example.
 **Golden fixture tables** enforce parity.
-These tables are JSON files under `contracts/fixtures/`, and three test suites consume them:
+These tables are JSON files under `contracts/fixtures/`.
+`tap-point-policy.json` has two test consumers:
 
-1. Vitest asserts the TypeScript rule against the table.
-2. Runner Swift unit tests assert the Swift twin against the same table.
-   CI already compiles them through "Swift Runner Unit Compile".
-3. The provider harness's fake runner derives its behavior from the table.
-   Integration scenarios therefore exercise the real contract instead of a manual approximation.
+1. `packages/contracts/src/snapshot-visibility-tap-point-policy.test.ts` asserts the TypeScript rule against the table.
+2. `apple/runner/AgentDeviceRunner/AgentDeviceRunnerUITests/UnitTests/RunnerTests+TapPointPolicyTests.swift` asserts the Swift twin against the same table.
+   CI already compiles it through "Swift Runner Unit Compile".
+
+The provider harness's fake runner does not consume this table.
+Migration step 3 remains open for that consumer.
 
 Then, a TypeScript or Swift drift turns CI red on the side that changed, without a simulator.
 
@@ -313,7 +321,7 @@ A daemon reset there destroyed every healthy app session that the daemon owned.
   Their divergence is priced and documented, instead of discovered on-device.
 - The Swift/TypeScript split stops being a parity blind spot.
   Golden tables are the single source of truth for cross-language rules.
-  The fake runner stops being a second implementation that drifts.
+  After the remaining migration step 3 work, the fake runner would consume the same table instead of a separate approximation.
 - The initial cost is mostly classification honesty.
   The first registry contains `waived('gap: ...')` cells, and that is the purpose.
   For example, the maestro non-hittable fallback intentionally waives `offscreen`.
@@ -386,7 +394,7 @@ That Swift policy is the source of truth, because the current table has only thr
 
 - A coordinate synthesized tap never probes keyboards and may use the coordinate fallback.
   This applies to a standalone tap, a `sequence` step, and the in-app `back` top-leading tap.
-- Default iOS scroll probes keyboards only after AX is known healthy.
+- Default iOS scroll probes keyboards whenever AX is not stamped unavailable, including while health is still unknown (#2500).
   It must not fall back to `XCUICoordinate`.
 - Synthesized one-contact `gesture` plans may still use the coordinate fallback before AX health is known.
   After a snapshot stamps AX unavailable, they stop using it.

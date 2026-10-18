@@ -137,7 +137,7 @@ Platform adapters consume the canonical plan:
 - **Apple.** iOS lowers one-contact endpoint-hold plans to the established fast-swipe synthesis profile.
   That profile reaches the endpoint in 100 ms, then holds there for the planned duration before it lifts.
   This matches Maestro's XCTest driver.
-  One-contact plans are linear and therefore carry only their start and end samples, with the authored duration between them.
+  An endpoint-hold plan is linear and therefore carries only its start and end samples, with the authored duration between them.
   Two-contact plans convert every planned point to native orientation and send the exact arrays to the private XCTest event bridge.
   macOS lowers a one-contact plan to its drag executor.
   tvOS lowers a one-contact plan to remote direction.
@@ -187,12 +187,16 @@ Providers should compose transport/device bindings with the shared platform adap
 
 That `.ad` codec is the script format's own syntax, not a compatibility shim.
 It is not scheduled for removal (amended 2026-07, issue #1216).
-Its only remaining callers are the CLI argv parse and the `.ad` line parse.
-Both are the current public syntax, so nothing is left to migrate off.
+Its callers include the CLI argv parse, the `.ad` line parse, and the recording path.
+`packages/daemon/src/execution/interaction/internal/interaction-gesture.ts` encodes gesture inputs for recordings.
+`packages/daemon/src/core/session-script-writer.ts` decodes recorded drag endpoints.
+`packages/replay-port/src/daemon-port/target-token.ts` decodes drag endpoints to select the replay target token.
+`packages/daemon/src/core/session-script-active-publication.ts` decodes drag endpoints to validate target evidence before script publication.
+These are current syntax and recording consumers, so nothing is left to migrate off.
 A structured `.ad` gesture payload was rejected.
 It would make recordings unreadable and impossible to search with grep, for no behavioral gain.
 
-One table, `PUBLIC_GESTURE_SYNTAX`, defines argument arity for both callers.
+One table, `PUBLIC_GESTURE_SYNTAX`, defines argument arity for both parsers.
 Thus, a form removed from the CLI is removed from `.ad` in the same edit.
 If a `.ad` script still carries a removed positional, the script fails when it is parsed.
 This failure occurs before the replay executes any device action.

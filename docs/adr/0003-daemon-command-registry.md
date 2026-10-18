@@ -2,16 +2,19 @@
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-10-16: invariants 3 and 4 now describe the shipped derivation (#906, #907).
 
 ## Rules at a glance
 
 - Keep public command identity in `packages/command-registry/src/catalog.ts` and public input/output contracts in `src/commands/**`.
-- Keep daemon route ownership and request-policy traits in the daemon command registry.
+- Declare daemon route ownership and request-policy traits in the separately typed `daemon` facet of the descriptor registry.
+- Derive the daemon registry from that facet. Expose request-policy predicates only through the daemon registry.
 - Request modules consume named predicates from the registry. They do not recreate command string sets.
 - Handler modules own execution logic only. They do not export duplicate coverage tables to prove route membership.
 - The daemon registry must not define CLI grammar, Node.js client options, MCP schemas, user-facing help, or platform capability support.
-- A derived daemon registry is permitted only if it preserves all four invariants in the 2026-06 update.
+- Preserve all four invariants in the 2026-06 update.
+- Do not derive a public contract from daemon traits. A diagnostic display, such as `command explain`, may read them.
+- A command without a `daemon` facet uses the `generic` route with default request policy.
 
 ## Context
 
@@ -35,7 +38,9 @@ Duplicate command sets required alignment by convention.
 Keep public command identity in `packages/command-registry/src/catalog.ts`.
 Keep public input/output contracts in `src/commands/**`.
 
-Add `packages/daemon/src/core/daemon-command-registry.ts` as the daemon-side source of truth for command route ownership and request-policy traits.
+Declare command route ownership and request-policy traits in the `daemon` facet in `packages/command-registry/src/registry.ts`.
+`DaemonCommandDescriptor` in `packages/command-registry/src/daemon-command-descriptor.ts` types that separate facet.
+`packages/daemon/src/core/daemon-command-registry.ts` derives its table through `deriveDaemonCommandDescriptors(commandDescriptors)`.
 Request modules consume predicate functions from the registry.
 They do not recreate command string sets.
 Handler modules own execution logic only.
@@ -64,7 +69,8 @@ The command contract, projection, help, and capability modules retain these resp
 
 ## Consequences
 
-When a daemon-handled command is added or moved, its route and request-policy traits require updates in the daemon command registry.
+When a daemon-handled command is added or moved, update its `daemon` facet in `packages/command-registry/src/registry.ts`.
+The daemon registry derives its table from those declarations.
 The registry tests pin the trait decisions.
 Provider-backed integration scenarios verify important request-policy behavior through the real daemon request path.
 
@@ -79,7 +85,7 @@ Thus, future changes do not require readers to infer the rationale from agent in
 
 ## Update (2026-06): single-declaration / derivation model
 
-A later proposal, the `CommandDescriptor` direction in [ADR 0008](0008-command-descriptor-registry.md), unifies a command's declarations at one registration site.
+The implemented `CommandDescriptor` direction in [ADR 0008](0008-command-descriptor-registry.md) unifies a command's declarations at one registration site.
 It derives these surfaces from that site:
 
 - Public catalog.
@@ -89,7 +95,7 @@ It derives these surfaces from that site:
 - Daemon registry.
 
 Its purpose is to remove the drift between these tables.
-Convention keeps several of these surfaces aligned against that drift.
+Registry tests pin the derived tables.
 
 **This ADR's decision remains accepted.**
 Its boundary concerns ownership and the predicate interface, not the physical file that contains a trait.
@@ -97,7 +103,8 @@ Its boundary concerns ownership and the predicate interface, not the physical fi
 That property remains true for a projected or derived backing table.
 A derived daemon registry is therefore permitted **only if** it preserves all these invariants:
 
-1. **Daemon-owned declaration.** A daemon-owned facet under `packages/daemon/src/` declares route and request-policy traits.
+1. **Daemon-owned declaration.** The separately typed `daemon` facet in `packages/command-registry/src/registry.ts` declares route and request-policy traits.
+   `DaemonCommandDescriptor` in `packages/command-registry/src/daemon-command-descriptor.ts` owns its type.
    The registration composes that facet.
    The public command contract in `src/commands/**` or `packages/command-registry/src/catalog.ts` must never contain these traits as inline fields.
    A registration call may be co-located with public declarations.
@@ -106,15 +113,20 @@ A derived daemon registry is therefore permitted **only if** it preserves all th
 2. **Predicate interface unchanged.** Consumers continue to use named predicates such as `getDaemonCommandRoute`, `isLeaseAdmissionExempt`, and `shouldLockSessionExecution`.
    Only the daemon registry exposes these predicates.
    Derivation changes table construction, not table access.
-3. **No leakage into public projections.** Types must prevent the catalog/CLI/MCP/help/capability projections from reading daemon-only traits.
-   The daemon registry must still not define CLI grammar, Node.js options, MCP schemas, user-facing help, or capability support.
-4. **One declaration per concern, enforced by types.** At the single registration site, a missing or duplicate daemon trait must cause a compile error.
-   This replaces alignment by convention.
-   This structural improvement justifies derivation instead of a separate hand-authored table.
+3. **No daemon traits in public contracts.** CLI grammar, Node.js client options, MCP schemas, user-facing help, and capability support must not derive from daemon-only traits.
+   A diagnostic display may read the `daemon` facet. `command explain` in `src/cli/command-explain.ts` displays routes and request-policy traits this way.
+4. **One declaration per command.** Each command has at most one `daemon` facet, at its registration in the descriptor registry.
+   No second table declares the same traits. This replaces alignment by convention, and it justifies derivation instead of a separate hand-authored table.
+   A command without a `daemon` facet uses the `generic` route with default request policy. The daemon registry tests pin the derived table.
 
 A single flat public descriptor that exposes daemon fields in public views is **not** permitted.
 This would combine daemon policy with a public command registry, which this ADR rejects.
 Compose facets owned by their domains.
 Derive the registry from those facets.
-Until that derivation is implemented and the registry tests pin it, the hand-authored `packages/daemon/src/core/daemon-command-registry.ts` remains the source of truth.
-Until then, the operating rule in `AGENTS.md` does not change.
+PR #906 introduced the descriptor and proved parity.
+PR #907 made the derivation live and deleted the hand-authored table.
+The daemon registry tests pin route and request-policy decisions.
+
+**Amendment 2026-10-16.** The 2026-06 text required types to stop every public projection from reading daemon traits, and required a compile error for a missing daemon trait.
+The shipped derivation does neither: `CommandDescriptorBase.daemon` is optional (`packages/command-registry/src/types.ts`), and a command without a facet gets the `generic` route.
+Invariants 3 and 4 now state the property that matters and that the code holds: no public contract derives from daemon traits, and no second table declares them.

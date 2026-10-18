@@ -25,10 +25,11 @@ Completed process history is in git history.
 - Keep the cross-process client `invoke` seam and the in-daemon `execute` seam distinct. Never collapse the process boundary.
 - Preserve all four invariants from ADR 0003.
 - The descriptor module must own the `Input`/`Result` types. The client must be derived as a view type, and a lint boundary enforces this.
+- Before client methods can stop returning `CommandRequestResult`, move the result contracts described in Consequences.
 
 ## Context
 
-Roughly ten manually maintained tables repeat command identity and require alignment by convention:
+Before the descriptor migration, roughly ten manually maintained tables repeated command identity and required alignment by convention:
 
 - `PUBLIC_COMMANDS` in `src/command-catalog.ts`.
 - Per-command metadata and family facets in `src/commands/**`.
@@ -59,7 +60,7 @@ Introduce one `CommandDescriptor` per command.
 It **composes facets owned by their domains**.
 Every consumer table is **derived** through pure projection:
 
-- The descriptor composes catalog identity, command-family surface projection hooks, a `capability` facet, a `daemon` facet, platform dispatch membership, response data transforms, and typed-result hooks.
+- The descriptor composes catalog identity, command-family surface projection hooks, the `platformExecution` declaration (successor to the retired `capability` facet), a `daemon` facet, platform dispatch membership, response data transforms, and typed-result hooks.
   `src/commands/**` remains the owner of the CLI schema/reader and executable surface metadata.
   ADR 0003 shapes the route and request-policy traits of the `daemon` facet.
 - Narrow command traits that affect multiple projections belong to the descriptor.
@@ -99,9 +100,12 @@ This design composes with ADR 0003's four invariants and is bound by them:
 ## Consequences
 
 A plain new command changes approximately 1–2 files.
-Per-platform behavior remains N implementations behind the descriptor's `execute`.
-The descriptor is the prerequisite for typed per-command results in ADR 0010, which deletes the `src/client-types.ts` mirror.
-It also supplies the capability facet used by the platform-plugin work in ADR 0009.
+Per-platform behavior remains N implementations behind the in-daemon `execute` seam.
+The descriptor's `platformExecution` declaration names the execution shape: `none`, `host`, `inventory`, or `device-runtime`.
+For the `device-runtime` variants it also names the runtime use that seam binds.
+The descriptor is the prerequisite for typed per-command results.
+`src/client/client-types.ts` retains the public client interface and some `CommandRequestResult` return types.
+It also supplied the capability facet used by the platform-plugin work in ADR 0009. That facet is retired; [ADR 0009](0009-apple-platform-consolidation.md) records the retirement.
 
 During the migration, the import-cycle inversion was the principal risk.
 At that time, `command-catalog.ts` had approximately 95 importers.
@@ -119,16 +123,21 @@ As of 2026-07, the descriptor registry is live for these surfaces:
 - MCP exposure list.
 - Capability-checked CLI command list.
 - Post-action observation traits.
-- Platform dispatch command set, including the remaining dispatch-only alias `read`.
+- Platform dispatch command set, which then included the dispatch-only alias `read`.
+
+PR #1877 removed `read` when `get` moved to the request-bound device runtime.
+The daemon registry now derives its table from descriptor facets instead of a hand-maintained table (PR #907).
 
 Command-family surface metadata remains under `src/commands/**`, beside CLI grammar and client-backed executors.
 Coherence checks compare it with the descriptor CLI catalog.
 Thus, new surface names cannot differ from the descriptor root.
 
-The remaining deferred work is the public Node-client typed-result narrowing.
-[#1153](https://github.com/callstack/agent-device/issues/1153) tracks this work outside this registry migration.
+[#1153](https://github.com/callstack/agent-device/issues/1153), the former tracker for public Node-client typed-result narrowing, closed on 2026-07-08.
+In `src/client/client-types.ts`, 21 client methods still return `CommandRequestResult`.
+They include `alert`, `reactNative`, and `interactions.swipe`.
 Some commands still expose dynamic daemon response payloads or retain closed result contracts in runtime modules.
 Before their client methods can stop returning `CommandRequestResult`, those contracts must move.
+Issue closure does not establish complete result narrowing.
 
 This ADR owns the decision and its constraints.
 The descriptor projections enforce the delivered end state.

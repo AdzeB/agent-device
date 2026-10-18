@@ -16,7 +16,7 @@
 - If the per-code default hint would mislead, supply a hint. If the default suffices, omit the hint.
 - When you wrap an error, preserve an existing hint and the cause chain.
 - Every consumer surface must carry at least code, message, and hint. Rehydration helpers copy all fields.
-- Failed requests always flush diagnostics. Messages must not embed raw stderr dumps or secrets.
+- The router's thrown-error finalizer attempts a diagnostics flush. `diagnosticId` requires an active request diagnostics scope, and `logPath` appears only when that flush produces a file. Returned or pre-scope failures may omit both fields. Messages must not embed raw stderr dumps or secrets.
 
 ## Context
 
@@ -78,8 +78,15 @@ Nothing documented the conventions, so each new site decided them again.
    - Events timeline.
    Rehydration helpers (`throwDaemonError`, `toDaemonHttpRpcError`) copy all fields.
    `NormalizedError` hoists the typed signals, so `--json` consumers see them.
-6. **Observability.** Failed requests always flush diagnostics.
-   A `diagnosticId` and an ndjson `logPath` accompany every error.
+6. **Observability.** The router's thrown-error finalizer, `finalizeThrownRequestError`
+   (`packages/daemon/src/server/request-router.ts`), emits a `request_failed` diagnostic and attempts one forced
+   flush. It attaches a `diagnosticId` only when a request diagnostics scope is active, and an ndjson
+   `logPath` only when that flush produces a file; the flush returns no record for zero events or a write failure.
+   `withDiagnosticsScope` itself runs no finalizer.
+   The token refusal returned by `runRequestWithinScope` and malformed RPC method params rejected in
+   `packages/daemon/src/server/http/http-rpc-methods.ts` omit both fields.
+   On a remote path, the client keeps only a `logPath` it can open.
+   When it cannot produce one, `logPathUnavailable` replaces `logPath` and names the reason (#1801).
    Daemon-side diagnostics are under the session state dir.
    Client-side diagnostics are under `~/.agent-device/logs`.
    Messages must not embed raw stderr dumps or secrets.

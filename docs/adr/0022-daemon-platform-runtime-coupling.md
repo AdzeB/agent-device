@@ -3,10 +3,11 @@
 ## Status
 
 Accepted (2026-09-06). This ADR implements issue #2278's audit deliverables.
-Gates enforce the classification inventory and structural no-regrowth checks.
-The ADR records decisions and references gates instead of duplicating the inventory.
+R76 prohibits daemon coupling to root platform-runtime modules.
+Gates enforce structural no-regrowth checks.
+The ADR records decisions and references gates instead of duplicating their checks.
 
-Amended 2026-10-11 by #3431.
+Amended 2026-10-12 by #3431 and #3430.
 Daemon-runtime composition edges moved from `packages/daemon/src/` to process-root `src/daemon-composition.ts`:
 
 - Gateway, diagnostics, resource-cleanup, and lifecycle edges.
@@ -118,8 +119,8 @@ The ADR 0019 trace recorded routes of approximately 24 files without an accepted
    - Runtime lifecycle participation deepens through the existing lifecycle phases, with no generic hook bag (#2333).
    - Open-target planning separates plan/result from platform mechanics and preserves one construction path.
    - Session state/store authority retains its access structure and ratchets the handler-owned portion through R75.
-   - Route depth records the re-traced routes and collapses only the proven pass-through hops.
-     This change collapses none.
+   - Route depth records the re-traced routes and collapses only the hops that the deletion test proves removable.
+     The deletion test covers pass-through and translation hops. This change collapses none.
 
 ## 3. Rationale
 

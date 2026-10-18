@@ -6,6 +6,7 @@ Accepted (2026-09-20).
 The pose-settle amendment is dated 2026-09-21 under #2730.
 The touch-overlay export diagnosis was corrected on 2026-09-22 under #2707.
 The Android emulator pose amendment is dated 2026-10-10.
+The no-panel refusal correction (#3761) is dated 2026-10-18.
 This ADR covers iPhone Duo (iOS 27.1, `iPhone19,4`) and Apple devices with more than one integrated CoreDevice display.
 The amendment below also covers foldable Android emulators.
 
@@ -19,13 +20,16 @@ Only inference answers the second question.
 
 | Situation | Behavior |
 | --- | --- |
-| Any iOS simulator capture | First resolve the CoreDevice display table. Capture the panel that the system currently lights. |
+| iOS simulator capture through `simctl` | First resolve the CoreDevice display table. Capture the panel that the system currently lights. |
+| Runner fallback after an eligible `simctl` failure | Follow the target app's window and capture the display that hosts it. Use the facts that the runner reports. Only a failure the fallback policy (`shouldFallbackToRunner`) accepts reaches the runner; other failures rethrow. |
 | More than one integrated panel | Pass `--display=<panel name>` on every `simctl io screenshot`. Never use the implicit default. |
-| Zero or multiple lit panels | Name the `primary` panel. Emit `apple_display_capture_ambiguous`. Report pose as `unknown`. |
+| Zero or multiple lit panels with a `primary` panel | Name the `primary` panel. Emit `apple_display_capture_ambiguous`. Report pose as `unknown`. |
+| No sole lit panel and no `primary` panel | Refuse with `COMMAND_FAILED` and `details.reason: capture-panel-unidentified`. Never choose a panel by array order. |
 | One integrated panel | Preserve pre-panel behavior exactly: no display flag, no pose, unchanged scale probe. |
 | Density normalization | Use the captured panel's `pointScale`. For runner fallback, use that capture's reported pixels-per-point. |
-| Pose report | From panel power alone, report only `closed`, `fully-open`, or `unknown`, never a narrower pose. `fold` reports the exact pose because it reads the hinge angle. |
+| Pose report | From panel power alone, report only `closed`, `fully-open`, or `unknown`, never a narrower pose. `fold` reports an exact pose only after hinge readings verify it. |
 | Pose request | `agent-device fold <closed\|half-open\|open>` sends private HID inside the simulator. Then it reads the hinge angle back from CoreDevice until the angle agrees. For `half-open`, two consecutive readings must agree. If the readings never agree, refuse the pose. |
+| The first hinge read returns no sample | Refuse with `fold-pose-dispatched-unverified`. Panel power does not verify the pose. |
 | The hinge reaches `half-open` but keeps moving | Refuse with `fold-pose-unsettled` and the observed and previous angles. An angle inside the open interval is an observed category, not a pose that the hinge holds. |
 | External display | It is not a panel. It creates neither multi-screen classification nor a pose. |
 | CoreDevice cannot answer | Return unresolved inventory. Preserve single-panel capture. An absent host feature is not a capture failure. |
@@ -67,10 +71,12 @@ It is the only reader of CoreDevice display information.
   If the primary panel is also largest, `primary` still decides.
   In that case, emit `apple_display_primary_geometry_conflict`. Do not silently replace identity with a geometry rule.
 - **Capture target.**
-  `resolveAppleCaptureDisplay` returns a panel for every multi-panel device.
+  `resolveAppleCaptureDisplay` resolves a panel or a refusal for every multi-panel device.
   It returns `undefined` only for a single-panel device or unresolved inventory.
   If exactly one panel is lit, name that panel.
-  Otherwise, name `primary`, set `ambiguous`, and emit `apple_display_capture_ambiguous`.
+  Otherwise, if CoreDevice marks a `primary` panel, name it, set `ambiguous`, and emit `apple_display_capture_ambiguous`.
+  If neither identifies a panel, refuse with `COMMAND_FAILED` and `details.reason: capture-panel-unidentified` (#3761, merged 2026-10-18).
+  Array order is not identity; the resolver never falls back to it.
   A multi-panel device never receives a capture without a display name.
   The implicit default caused the black-image, exit-0 failure.
   An explicitly named, possibly dark panel makes failure visible and diagnosable.
@@ -136,7 +142,8 @@ SpringBoard owns the home-screen window.
 Thus, a session without an app, or with a stopped app, can still resolve a window's display.
 The result always names a display occupied by a window.
 It never defaults to `XCUIScreen.main`, which is dark on a Duo when the app uses the inner panel.
-A capture fails closed with a typed reason only when neither window resolves.
+A capture fails closed only in three cases. Neither window resolves. A resolved window names no display. A resolved display yields an unrenderable image.
+The typed reasons are `unresolvedWindow`, `unresolvedScreen`, and `unrenderableImage` (`RunnerAppScreenCapture.swift`).
 The query uses both `exists` and frame evidence to refuse an app without a window.
 Such an app returns `(0,0 0x0)` from `frame` without an exception.
 Geometry alone cannot prove that no window exists.
@@ -230,12 +237,16 @@ The split above still holds: the press is not evidence, and the read-back is evi
 The headless HID amendment above replaces the Device Hub press.
 Git history retains the superseded Device Hub process.
 
-`xcrun devicectl device motion hinge-angle --device <udid>` streams the Duo simulator hinge angle over `Range:0-180°`.
+In the 2026-09-21 run, `xcrun devicectl device motion hinge-angle --device <udid>` streamed the Duo simulator hinge angle over `Range:0-180°`.
 Measured presets are Closed 0°, Book 130°, and Open 180°.
 `--session-timeout` does not stop the stream.
 Each read therefore uses devicectl's own `--timeout`, whose minimum accepted value is 5 seconds.
 The sample printed before timeout is the reading.
-This read path was checked on the shipping 27.1 toolchain.
+This run did not establish support in every 27.1 toolchain.
+On 2026-10-16, the host reports Xcode 27.1 build 27A9275 and devicectl 651.13.5.
+Its `device` help lists no `motion` subcommand.
+The 2026-10-14 fix (#3587) records the same limitation for that build, then identified as 27.1 RC.
+Without a sample, the pose remains unconfirmed as described below.
 
 `closed` and `open` are hinge end stops.
 One read at the stop proves the pose.
@@ -286,7 +297,7 @@ Attempt count, per-read timeout, cancellation, and open/closed end-stop rules re
 An unsettled fold still consumes four hinge streams.
 
 If the first hinge read returns no sample, the pose remains unconfirmed regardless of cause.
-For example, devicectl 651.13.5 in Xcode 27.1 RC build 27A9275 lacks `device motion`.
+The 2026-10-14 evidence identifies devicectl 651.13.5 in Xcode 27.1 build 27A9275 as an example without `device motion`.
 An unreachable device also prints no sample.
 HID has already dispatched, so refusal uses `fold-pose-dispatched-unverified`.
 This distinguishes unconfirmed dispatch from an observed contradictory pose.
@@ -311,8 +322,8 @@ The shipping-toolchain investigation recorded these candidate results:
 | `simctl` subcommands | No `hinge`/`fold`/`pose` surface; No such token in the `simctl` binary or in `CoreSimulator.framework` |
 | `simctl io` | `screenshot`/`recordVideo` take `--display`; `screenConfig` sets `power` and `geometry` per screen — Neither changes hinge state. |
 | XCUITest | No hinge token in any `XCUIAutomation` header; `XCUIDeviceButton` is Home/VolumeUp/VolumeDown/Action/Camera only |
-| CoreDevice | `com.apple.coredevice.action.streamhingeangle`, `HingeAngleManager`, `DeviceHingeAngleSnapshot` and `HingeAngleStreamConfig` exist in `/Library/Developer/PrivateFrameworks/CoreDeviceUtilities.framework` (and `dtdeviceinfod`), They **stream** an angle. The Duo reports no such feature. `devicectl` exposes no CLI for it. |
-| `devicectl` | `device info displays` reports panel state only |
+| CoreDevice | The initial 2026-09-20 examination found `com.apple.coredevice.action.streamhingeangle`, `HingeAngleManager`, `DeviceHingeAngleSnapshot`, and `HingeAngleStreamConfig` in `/Library/Developer/PrivateFrameworks/CoreDeviceUtilities.framework` and `dtdeviceinfod`. The Duo then reported no such feature. The 2026-09-21 run above later observed a CLI stream. |
+| `devicectl` | `device info displays` reports panel state only. Hinge-stream availability depends on the toolchain; the 2026-10-16 host examination above found no `device motion`. |
 | `Xcode.app` frameworks | No hinge reference in `Xcode.app/Contents/{SharedFrameworks,Frameworks}`, Device Hub control is therefore not a hinge API shipped inside Xcode. |
 
 Two searches came back empty, not negative. This ADR records them as limits, not as refuted claims:
@@ -402,7 +413,8 @@ Only `AVAssetExportPresetHighestQuality` preserves arbitrary geometry.
 Hardware encoding makes full-resolution export inexpensive: approximately 1–2s for 90s at `1206x2622`.
 Thus, `high` was not slower.
 
-`recording-overlay.swift` now always exports through the geometry-preserving preset at both quality tiers.
+`recording-overlay.swift` exports every composited overlay through the geometry-preserving preset at both quality tiers.
+An empty gesture list skips the overlay export and copies the raw capture unchanged.
 `--quality` no longer reduces capture resolution.
 Before adoption, it verifies that the composited track's resolved size matches the capture.
 It also rejects uniformly black output when the raw capture had visible content.

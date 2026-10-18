@@ -97,8 +97,9 @@ export function snapshotRequest(
 }
 
 /**
- * The suite's snapshot runtime with a bind counter, so a test can assert whether the handler
- * bound the device at all (ADR 0019 §9: at most one bind per request).
+ * The suite's snapshot runtime counts device binds.
+ * ADR 0019 §9 permits one execution bind.
+ * If the action use has no capture, `--settle` may acquire a second, capture-only bind.
  */
 export function countingSnapshotRuntime(): Readonly<{
   inspectFacts: InspectDeviceRuntimeFacts;

@@ -159,7 +159,7 @@ That oracle replaced the original hand-typed parser fixture.
    The pinned parser is SHA-verified at regeneration.
    Layer 1 captures each parse.
    The deterministic verifier replays that capture against our engine.
-   The verifier classifies every flow as identical / both-reject / we-reject / mismatch.
+   The verifier classifies every flow as identical / both-reject / we-reject / mismatch / we-are-lenient.
    Each non-identical outcome must be a declared, on-the-record divergence.
 2. Layer 2 reads upstream constants (retry cap, animation-wait threshold/timeout, erase cap) straight from the pinned bytecode.
    It also reads parser-observed defaults (swipe duration) straight from the pinned bytecode.
@@ -193,8 +193,10 @@ Each of the four #1217 regressions has a dedicated fixture:
 A pure unit test, rather than a device scenario, pins the runtime half of percent truncation, because a one-pixel delta is not app-observable.
 The detector for bug class 4 is an engine-side timing invariant that executes on the device path.
 Unit tests exercise that detector against synthetic traces.
-On the device path, the detector is currently blocked by a declared `scrollUntilVisible` divergence (#1299).
-The differential itself found that divergence on its first working run.
+The `settle-after-tap` device scenario has no declared divergence.
+It requires at least one settle latch and no settle timeouts.
+The differential found the former `scrollUntilVisible` divergence on its first working run.
+Issue #1299 closed on 2026-07-21; that divergence no longer blocks the detector.
 
 Documented intentional deviations are encoded as expected-divergence entries rather than silent mismatches:
 
