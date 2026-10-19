@@ -102,6 +102,7 @@ const HELPER_CONTENT_RECAPTURE_DELAY_MS = 250;
  */
 const HELPER_CONTENT_RECAPTURE_WINDOW_MS = 10_000;
 export type AndroidSnapshotOptions = SnapshotOptions & {
+  skipIdleWait?: boolean;
   appBundleId?: string;
   signal?: AbortSignal;
   helperArtifact?: AndroidSnapshotHelperArtifact;
@@ -312,7 +313,7 @@ async function captureAndroidUiHierarchyWithHelper(
   artifact: AndroidSnapshotHelperArtifact,
 ): Promise<AndroidUiHierarchyCapture> {
   const helperDeviceKey = getAndroidSnapshotHelperSessionDeviceKey(device);
-  const releaseHelperSession = releasesHelperSessionAfterCapture(options, helperDeviceKey);
+  const releaseHelperSession = await releasesHelperSessionAfterCapture(options, helperDeviceKey);
   try {
     return await captureAndroidHelperContentWithinWindow({
       options,
@@ -384,11 +385,12 @@ function resolveContentRecaptureDeadlineMs(options: AndroidSnapshotOptions): num
 }
 
 /** A transient read keeps a session it found running and releases one it had to start. */
-function releasesHelperSessionAfterCapture(
+async function releasesHelperSessionAfterCapture(
   options: AndroidSnapshotOptions,
   helperDeviceKey: string,
-): boolean {
-  if (options.transient) return getLiveAndroidSnapshotHelperSession(helperDeviceKey) === undefined;
+): Promise<boolean> {
+  if (options.transient)
+    return (await getLiveAndroidSnapshotHelperSession(helperDeviceKey)) === undefined;
   return options.helperSessionScope !== 'daemon-session';
 }
 
@@ -442,6 +444,7 @@ async function installAndroidSnapshotHelper(
 }
 
 async function captureAndroidUiHierarchyFromHelper(params: {
+  skipIdleWait?: boolean;
   signal?: AbortSignal;
   adb: AndroidAdbExecutor;
   adbProvider: AndroidAdbProvider;
@@ -456,6 +459,7 @@ async function captureAndroidUiHierarchyFromHelper(params: {
     deviceKey: helperDeviceKey,
     signal,
   });
+  captureOptions.skipIdleWait = params.skipIdleWait;
   try {
     const sessionCapture = await withDiagnosticTimer(
       'android_snapshot_helper_session_capture',
@@ -550,6 +554,7 @@ async function captureAndroidHelperContentAttempt(params: {
       await stopAndroidSnapshotHelperSession(helperDeviceKey);
     }
     const capture = await captureAndroidUiHierarchyFromHelper({
+      skipIdleWait: options.skipIdleWait,
       signal: options.signal,
       adb,
       adbProvider,

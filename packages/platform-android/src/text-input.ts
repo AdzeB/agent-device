@@ -84,6 +84,15 @@ export async function fillAndroid(
     const verification = await verifyAndroidFilledText(device, x, y, text, helper);
     return completeAndroidFillVerification(text, beforeTarget, verification);
   }
+  const { runAndroidAutomationHelper } = await import('./automation-helper.ts');
+  if (
+    delayMs === 0 &&
+    (await runAndroidAutomationHelper(device, 'input', { kind: 'fill', x, y, text }))
+  ) {
+    emitAndroidTextDiagnostic('fill', 'android-helper', text);
+    const verification = await verifyAndroidFilledText(device, x, y, text, helper);
+    return completeAndroidFillVerification(text, beforeTarget, verification);
+  }
   let lastVerification: AndroidFillVerification | null = null;
   let dispatchedSteps = 0;
   try {
@@ -530,7 +539,7 @@ function chunkAndroidInputText(text: string, chunkSize: number): string[] {
 
 function emitAndroidTextDiagnostic(
   action: AndroidTextInputAction,
-  backend: 'provider-native' | 'adb-shell' | 'test-ime',
+  backend: 'provider-native' | 'adb-shell' | 'test-ime' | 'android-helper',
   text: string,
 ): void {
   emitDiagnostic({

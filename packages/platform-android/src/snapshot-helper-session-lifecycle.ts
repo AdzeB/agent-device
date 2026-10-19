@@ -86,6 +86,7 @@ export type AndroidSnapshotHelperSession = {
   process: AndroidAdbProcess;
   startedAtMs: number;
   capturedCount: number;
+  commands: ReadonlySet<string>;
 };
 
 /** A session this caller may run commands on, with the budgets it was started under. */
@@ -147,10 +148,15 @@ export async function acquireAndroidSnapshotHelperSession(
  * The live session for a device, or `undefined` when none is running. Commands that may only
  * piggyback on an existing session — never start one — read ownership through this.
  */
-export function getLiveAndroidSnapshotHelperSession(
+export async function getLiveAndroidSnapshotHelperSession(
   deviceKey: string,
-): AndroidSnapshotHelperSession | undefined {
-  return sessions().get(deviceKey);
+): Promise<AndroidSnapshotHelperSession | undefined> {
+  const session = sessions().get(deviceKey);
+  if (session && hasAndroidSnapshotHelperProcessEnded(session.process)) {
+    await stopAndroidSnapshotHelperSession(deviceKey, { force: true });
+    return undefined;
+  }
+  return session;
 }
 
 async function resolveAndroidSnapshotHelperSession(params: {
@@ -312,13 +318,14 @@ async function startAndroidSnapshotHelperSession(params: {
     process: childProcess,
     startedAtMs: Date.now(),
     capturedCount: 0,
+    commands: new Set(),
   };
   try {
     // A helper that announces itself late is a slow `am instrument`, which the one-shot transport it
     // falls back to pays too, so the wait gets a share of the helper-command budget rather than a
     // smaller guess. The caller's own deadline reaches it as an abort on `options.signal`, which is
     // what bounds this below the budget when the command itself is short.
-    await waitForAndroidSnapshotHelperSessionReady(
+    session.commands = await waitForAndroidSnapshotHelperSessionReady(
       childProcess,
       params.startBudgetMs,
       params.options.signal,
