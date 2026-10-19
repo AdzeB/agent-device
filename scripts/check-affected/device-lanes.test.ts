@@ -1,5 +1,5 @@
 // Device-lane ownership (#1781 A9-2): planted paths per family, and the two properties the
-// ios.yml routing leans on — an Apple-owned change carries its iOS checks in a narrow plan, and
+// Apple iOS phase routing leans on — an Apple-owned change carries its iOS checks in a narrow plan, and
 // a tooling change beside it still fails open to the full set.
 
 import assert from 'node:assert/strict';
@@ -183,7 +183,7 @@ test('a golden table owns the parity unit test and both runner builds', () => {
 
 test('a tooling change beside an Android-only change still fails open to the full set', () => {
   for (const tooling of [
-    '.github/workflows/ios.yml',
+    '.github/workflows/apple.yml',
     '.github/actions/setup-apple-runner-build/action.yml',
     'package.json',
     'pnpm-lock.yaml',

@@ -1,0 +1,153 @@
+name: Apple
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+    paths-ignore:
+      - docs/**
+      - website/**
+      - README.md
+      - AGENTS.md
+      - CONTEXT.md
+      - CONTRIBUTING.md
+      - LICENSE
+      - SECURITY.md
+      - .github/actions/build-docs/action.yml
+      - .github/workflows/deploy.yml
+      - .github/workflows/pr-preview.yml
+      - .github/workflows/pr-preview-cleanup.yml
+  push:
+    branches:
+      - main
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  smoke-apple:
+    name: Smoke Tests
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: macos-26
+    # Keep each platform's former 80-minute ceiling, plus shared setup and cleanup.
+    timeout-minutes: 170
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      IOS_STATE_DIR: ${{ github.workspace }}/.tmp/ios-agent-device-state
+      MACOS_STATE_DIR: ${{ github.workspace }}/.tmp/macos-agent-device-state
+      IOS_DERIVED_PATH: ${{ github.workspace }}/.tmp/ios-runner-derived
+      MACOS_DERIVED_PATH: ${{ github.workspace }}/.tmp/macos-runner-derived
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            examples/test-app/pnpm-lock.yaml
+      - name: Fetch the PR base for Apple selectors
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          git fetch origin "$BASE_SHA" --depth=1 || echo "Base fetch failed; Apple selection will fail open."
+      - name: Build the shared CLI
+        id: build
+        uses: ./.github/actions/run-gate
+        with:
+          gate: build
+      - name: Select iOS smoke tests
+        id: ios-impact
+        shell: bash
+        run: node --experimental-strip-types scripts/apple-ci-impact.ts smoke
+      # The macOS clean-install proof may raise permission UI. Run the iOS focus proof first.
+      - name: iOS smoke tests
+        id: ios
+        uses: ./.github/actions/smoke-ios-run
+        continue-on-error: true
+        timeout-minutes: 80
+        env:
+          IOS_RUNTIME_VERSION: '26.2'
+          IOS_UDID: ${{ vars.IOS_UDID }}
+          AGENT_DEVICE_STATE_DIR: ${{ env.IOS_STATE_DIR }}
+          AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH: ${{ env.IOS_DERIVED_PATH }}
+          AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS: '420000'
+          AGENT_DEVICE_XCUITEST_INCLUDE_UNIT_TESTS: '1'
+          AGENT_DEVICE_XCUITEST_ARCHS: arm64
+          AGENT_DEVICE_IOS_APP_EVENT_URL_TEMPLATE: agent-device-test-app:///automation?event={event}&payload={payload}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.ios-impact.outputs.run != 'false' }}
+      - name: Restore the Apple host after iOS
+        id: ios-cleanup
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          AGENT_DEVICE_STATE_DIR: ${{ env.IOS_STATE_DIR }}
+        shell: bash
+        run: bash scripts/teardown-ios-smoke.sh
+      - name: macOS smoke tests
+        id: macos
+        uses: ./.github/actions/smoke-macos
+        continue-on-error: true
+        timeout-minutes: 80
+        env:
+          AGENT_DEVICE_STATE_DIR: ${{ env.MACOS_STATE_DIR }}
+          AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH: ${{ env.MACOS_DERIVED_PATH }}
+          AGENT_DEVICE_XCUITEST_INCLUDE_UNIT_TESTS: '1'
+          RESULT_BUNDLE_PATH: ${{ github.workspace }}/.tmp/xctest-host/RunnerTests.xcresult
+          RESULT_SUMMARY_PATH: ${{ github.workspace }}/.tmp/xctest-host/test-results-summary.json
+          XCTEST_LANE: host
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.ios-cleanup.outcome == 'success' }}
+      - name: Diagnose the Apple host after a phase failure
+        if: ${{ always() && (steps.ios.outcome == 'failure' || steps.macos.outcome == 'failure' || steps.ios-cleanup.outcome == 'failure') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p test/screenshots
+          screencapture -x test/screenshots/apple-host-after-failure.png
+          osascript scripts/decline-hosted-compute-local-network.applescript diagnose
+      - name: Clean macOS daemon and retained runners
+        id: macos-cleanup
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          AGENT_DEVICE_STATE_DIR: ${{ env.MACOS_STATE_DIR }}
+        shell: bash
+        run: |
+          pnpm clean:daemon
+      - name: Require both Apple phases to succeed
+        if: always()
+        env:
+          IOS_SELECTED: ${{ steps.ios-impact.outputs.run }}
+          IOS_OUTCOME: ${{ steps.ios.outcome }}
+          MACOS_OUTCOME: ${{ steps.macos.outcome }}
+          IOS_CLEANUP_OUTCOME: ${{ steps.ios-cleanup.outcome }}
+          MACOS_CLEANUP_OUTCOME: ${{ steps.macos-cleanup.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf "### Apple smoke phases\n\n| Phase | Outcome |\n| --- | --- |\n| iOS | %s |\n| macOS | %s |\n" "$IOS_OUTCOME" "$MACOS_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$IOS_SELECTED" = false ]; then
+            test "$IOS_OUTCOME" = skipped
+          else
+            test "$IOS_OUTCOME" = success
+          fi
+          test "$MACOS_OUTCOME" = success
+          test "$IOS_CLEANUP_OUTCOME" = success
+          test "$MACOS_CLEANUP_OUTCOME" = success
+      - name: Upload Apple artifacts
+        if: always()
+        uses: ./.github/actions/upload-agent-device-artifacts
+        with:
+          artifact-name: apple-artifacts
+          agent-state-dir: ${{ env.IOS_STATE_DIR }}
+          runner-derived-path: ${{ env.IOS_DERIVED_PATH }}
+          additional-paths: |
+            ${{ env.MACOS_STATE_DIR }}/daemon.log
+            ${{ env.MACOS_STATE_DIR }}/sessions/**
+            ${{ env.MACOS_DERIVED_PATH }}/.agent-device-runner-cache.json
+            ${{ env.MACOS_DERIVED_PATH }}/Logs/**

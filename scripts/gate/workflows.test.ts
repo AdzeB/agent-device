@@ -83,7 +83,7 @@ test('path filters use GitHub glob semantics', () => {
 test('lanes carry the workflow spelling the catalog used, and only real triggers qualify', () => {
   const labels = model.lanes.map((lane) => lane.label);
   assert.ok(labels.includes('Coverage'), 'CI jobs are named bare');
-  assert.ok(labels.includes('iOS / Smoke Tests'), 'other workflows are prefixed');
+  assert.ok(labels.includes('Apple / Smoke Tests'), 'other workflows are prefixed');
   const deploy = model.lanes.find((lane) => lane.workflow === 'deploy.yml');
   assert.equal(deploy?.qualifying, false, 'a push-only lane gates nothing on the way in');
 });
@@ -336,9 +336,8 @@ test('device smoke lanes skip drafts and start when a draft is marked ready', ()
     );
   assert.deepEqual(smokeLanes.map(({ workflow }) => workflow.name).sort(), [
     'Android',
+    'Apple',
     'Linux',
-    'iOS',
-    'macOS',
   ]);
   for (const { workflow, job } of smokeLanes) {
     assert.deepEqual(

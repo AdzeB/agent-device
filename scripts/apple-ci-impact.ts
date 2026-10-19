@@ -5,6 +5,21 @@ import { selectChecks } from './check-affected/model.ts';
 
 type Selection = { run: boolean; reason: string };
 
+export function selectIosSmoke(
+  eventName: string,
+  changedPaths: readonly string[] | null,
+): Selection {
+  if (eventName !== 'pull_request') return { run: true, reason: 'main runs exercise iOS smoke' };
+  const checked = checkOwnership(changedPaths);
+  if (checked.early) return checked.early;
+  const input = checked.plan.reasons.find(
+    (entry) => entry.check === 'swift-runner-ios' || entry.check === 'replay-ios',
+  );
+  return input
+    ? { run: true, reason: `iOS device-lane input changed: ${input.path}` }
+    : { run: false, reason: 'the affected-check model selected no iOS device lane' };
+}
+
 function checkOwnership(
   changedPaths: readonly string[] | null,
 ): { early: Selection; plan?: never } | { early?: never; plan: ReturnType<typeof selectChecks> } {
@@ -62,18 +77,21 @@ function changedPathsFromGit(baseSha: string): string[] | null {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const target = process.argv[2];
-  if (target !== 'xctest' && target !== 'bridge') {
-    process.stderr.write('Expected xctest or bridge target\n');
+  if (target !== 'xctest' && target !== 'bridge' && target !== 'smoke') {
+    process.stderr.write('Expected xctest, bridge, or smoke target\n');
     process.exitCode = 2;
   } else {
     const eventName = process.env.GITHUB_EVENT_NAME ?? '';
     const changedPaths =
       eventName === 'pull_request' ? changedPathsFromGit(process.env.BASE_SHA ?? '') : [];
     const selection =
-      target === 'xctest'
-        ? selectIosXctests(eventName, changedPaths)
-        : selectAppleBridgeProof(changedPaths);
-    const label = target === 'xctest' ? 'iOS XCTest' : 'Apple bridge proof';
+      target === 'smoke'
+        ? selectIosSmoke(eventName, changedPaths)
+        : target === 'xctest'
+          ? selectIosXctests(eventName, changedPaths)
+          : selectAppleBridgeProof(changedPaths);
+    const label =
+      target === 'smoke' ? 'iOS smoke' : target === 'xctest' ? 'iOS XCTest' : 'Apple bridge proof';
     process.stdout.write(`${label}: ${selection.run ? 'run' : 'skip'}; ${selection.reason}\n`);
     if (process.env.GITHUB_OUTPUT) {
       fs.appendFileSync(process.env.GITHUB_OUTPUT, `run=${selection.run}\n`);
