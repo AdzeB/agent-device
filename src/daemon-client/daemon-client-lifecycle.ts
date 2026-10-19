@@ -24,7 +24,7 @@ import { PUBLIC_COMMANDS } from '@agent-device/command-registry/catalog';
 import type { findUnrecoveredRepairCommitFailure } from '@agent-device/daemon-contracts/session-repair-tombstone';
 import type { DaemonInfo } from './daemon-client-metadata.ts';
 import { attachActiveSessionAddressHint } from './daemon-client-address-hints.ts';
-import { isRemoteDaemon } from './daemon-client-metadata.ts';
+import { isRemoteDaemon, observedDaemonIdentityOf } from './daemon-client-metadata.ts';
 import { cachedRemoteDaemonHealth } from './daemon-client-transport.ts';
 import {
   assertDaemonPolicyMatches,
@@ -59,6 +59,18 @@ const LOOPBACK_BLOCK_LIST = new net.BlockList();
 LOOPBACK_BLOCK_LIST.addSubnet('127.0.0.0', 8, 'ipv4');
 LOOPBACK_BLOCK_LIST.addAddress('::1', 'ipv6');
 LOOPBACK_BLOCK_LIST.addSubnet('::ffff:127.0.0.0', 104, 'ipv6');
+
+/**
+ * Whether a timed-out request may retire the daemon it was waiting on. An attach client never may: the
+ * daemon is not its to kill, and `ensureDaemon` is where an unresponsive one is replaced. Every other
+ * caller asks the retirement, which judges the record's owner before it signals anything.
+ */
+export function resolveTimeoutRecovery(
+  settings: DaemonClientSettings,
+): 'retire-unresponsive' | 'none' {
+  if (settings.daemonLifecycle === 'attach') return 'none';
+  return 'retire-unresponsive';
+}
 
 export function resolveClientSettings(
   req: Omit<DaemonWireRequest, 'token'>,
@@ -283,7 +295,7 @@ export async function cleanupDaemonAfterRequest(
 
   const result = await stopAndRetireDaemon({
     paths: settings.paths,
-    observed: { pid: daemon.info.pid, startTime: daemon.info.processStartTime ?? null },
+    observed: observedDaemonIdentityOf(daemon.info),
     mode: 'graceful',
     ownedStateDir: settings.ownedStateDir,
   });
