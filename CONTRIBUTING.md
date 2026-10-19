@@ -218,6 +218,12 @@ lock and need macOS or Linux; on Windows, use the affected plan and direct focus
 stays authoritative for coverage, provider integration, history-backed compatibility, specialized
 toolchains, and live device lanes.
 
+Lint limits `*.test.{ts,tsx,mjs}` files throughout the repository and production `.ts`, `.tsx`,
+and `.mjs` files under `src/` and package `src/` to 1,000 lines, including comments and blank lines.
+Split oversized files along module boundaries. `LEGACY_FILE_LINE_CAPS` in `oxlint.config.ts` caps
+each legacy oversized file at its recorded length. Lower its cap when it shrinks; remove its entry
+when it fits the 1,000-line limit. Caps do not adjust automatically.
+
 Useful direct entry points:
 
 - `pnpm test` or `pnpm test:unit` — root unit projects
