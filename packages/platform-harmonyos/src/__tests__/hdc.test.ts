@@ -146,7 +146,7 @@ test('ensureHarmonyToolchainPathConfigured defaults to the host environment', as
   vi.stubEnv('DEVECO_SDK_HOME', undefined);
   vi.stubEnv('HARMONYOS_COMMAND_LINE_TOOLS', undefined);
 
-  await ensureHarmonyToolchainPathConfigured();
+  await ensureHarmonyToolchainPathConfigured(process.env);
 
   assert.equal(process.env.PATH, [toolchains, '/usr/bin'].join(path.delimiter));
 });
