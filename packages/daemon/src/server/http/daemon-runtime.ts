@@ -74,11 +74,13 @@ import {
   type RuntimeStateHandle,
 } from '@agent-device/host-kit/runtime-slots';
 import { emitDiagnostic, type ResourceDiagnostic } from '@agent-device/host-kit/diagnostics';
+import type { DaemonCodeOrigin } from '@agent-device/host-kit/code-signature';
 import type { HostEnvironment } from '@agent-device/kernel/source-value';
 import {
   readCurrentOwnerIdentity,
   reapOwnedProcessRecordsAtStartup,
   type OwnedProcessRecordStore,
+  type OwnerIdentity,
 } from '@agent-device/host-kit/process';
 import { isEnvTruthy, sleep } from '@agent-device/host-kit/retry';
 import {
@@ -227,9 +229,13 @@ export type DaemonRuntimeOptions = {
    * record it cannot place, and a runtime always knows which of these two it is.
    */
   ownership?: DaemonRuntimeOwnership;
+  /** The daemon code an embedder loaded; its process entry belongs to the host application. */
+  codeIdentity?: { origin: DaemonCodeOrigin; codeSignature?: string };
 };
 
 export type DaemonRuntimeController = {
+  /** The runtime process lifetime used in its registration and lifecycle protocol. */
+  identity: Readonly<OwnerIdentity>;
   httpPort?: number;
   socketPort?: number;
   /**
@@ -262,6 +268,13 @@ export function daemonStartupExitCode(error: unknown): number {
 export async function startDaemonRuntime(
   options: DaemonRuntimeOptions,
 ): Promise<DaemonRuntimeController> {
+  const runtimeOptions = {
+    ...options,
+    codeIdentity: options.codeIdentity ?? {
+      origin: resolveDaemonCodeOrigin(),
+      codeSignature: resolveDaemonCodeSignature(),
+    },
+  };
   const runtimeState = createRuntimeStateHandle();
   return await runtimeState.run(
     async () =>
@@ -269,7 +282,7 @@ export async function startDaemonRuntime(
         const rollback = createStartupRollback();
         rollback.onRollback(() => runtimeState.dispose());
         try {
-          return await startDaemonRuntimeOnHost(options, rollback, runtimeState);
+          return await startDaemonRuntimeOnHost(runtimeOptions, rollback, runtimeState);
         } catch (error) {
           await rollback.run();
           throw error;
@@ -279,7 +292,9 @@ export async function startDaemonRuntime(
 }
 
 async function startDaemonRuntimeOnHost(
-  options: DaemonRuntimeOptions,
+  options: DaemonRuntimeOptions & {
+    codeIdentity: NonNullable<DaemonRuntimeOptions['codeIdentity']>;
+  },
   rollback: StartupRollback,
   runtimeState: RuntimeStateHandle,
 ): Promise<DaemonRuntimeController> {
@@ -328,8 +343,7 @@ async function startDaemonRuntimeOnHost(
   const version = readVersion();
   const token = crypto.randomBytes(24).toString('hex');
   const daemonIdentity = readCurrentOwnerIdentity();
-  const daemonCodeOrigin = resolveDaemonCodeOrigin();
-  const daemonCodeSignature = resolveDaemonCodeSignature();
+  const { codeIdentity } = options;
   const requestDrainTimeoutMs =
     options.shutdownBudgets?.requestDrainMs ?? DAEMON_REQUEST_DRAIN_TIMEOUT_MS;
   // The registry is the one plugin cleanup owner: closing it shuts each runtime down, then disposes
@@ -586,8 +600,8 @@ async function startDaemonRuntimeOnHost(
       httpPort,
       token,
       version,
-      codeOrigin: daemonCodeOrigin,
-      codeSignature: daemonCodeSignature,
+      codeOrigin: codeIdentity.origin,
+      codeSignature: codeIdentity.codeSignature,
       policyDigest: daemonPolicy?.digest,
       capabilities: DAEMON_CAPABILITIES,
       plugins: deps.pluginInventory,
@@ -952,5 +966,6 @@ async function startDaemonRuntimeOnHost(
     run: runtimeState.run,
     socketPort,
     token,
+    identity: Object.freeze({ ...daemonIdentity }),
   };
 }
