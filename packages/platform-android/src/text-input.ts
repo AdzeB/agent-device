@@ -88,7 +88,10 @@ export async function fillAndroid(
   const { runAndroidAutomationHelper } = await import('./automation-helper.ts');
   if (
     delayMs === 0 &&
-    (await runAndroidAutomationHelper(device, 'input', { kind: 'fill', x, y, text }))
+    (await runAndroidAutomationHelper(device, {
+      action: 'input',
+      input: { kind: 'fill', x, y, text },
+    }))
   ) {
     emitAndroidTextDiagnostic('fill', 'android-helper', text);
     const verification = await verifyAndroidFilledText(device, x, y, text, helper, beforeCapture);
@@ -124,7 +127,7 @@ export async function fillAndroid(
         return completeAndroidFillVerification(text, beforeTarget, verification);
       }
       const unconfirmed = buildAndroidFillUnconfirmedVerification(text, beforeTarget, verification);
-      if (unconfirmed) return unconfirmed;
+      if (unconfirmed) return completeAndroidFillVerification(text, beforeTarget, verification);
     }
   } catch (error) {
     throw discloseDispatchAfterSteps(error, dispatchedSteps);
