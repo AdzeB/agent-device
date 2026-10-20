@@ -124,6 +124,11 @@ export async function setAndroidOrientation(
   await settleAndroidOrientation(device, orientation, userRotation);
 }
 
+/** No display settle: the sensor picks the next rotation, so there is no target to wait for. */
+export async function unlockAndroidOrientation(device: DeviceInfo): Promise<void> {
+  await runAndroidShell(device, ['settings', 'put', 'system', 'accelerometer_rotation', '1']);
+}
+
 const ORIENTATION_SETTLE_TIMEOUT_MS = 15_000;
 const ORIENTATION_SETTLE_POLL_MS = 500;
 

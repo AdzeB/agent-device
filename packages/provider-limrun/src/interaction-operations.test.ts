@@ -46,6 +46,7 @@ test('the Android leg admits back/orientation and gates tv-remote on a real TV t
   const mobile = limrunNavigationOperationFacts(androidMobileDevice);
   expect(mobile.back).toEqual({ available: true });
   expect(mobile.setOrientation).toEqual({ available: true });
+  expect(mobile.unlockOrientation).toEqual({ available: true });
   expect(mobile.tvRemote).toEqual({
     available: false,
     reason: 'unsupported-device-kind',
@@ -146,6 +147,7 @@ test('the iOS leg admits back/orientation but explicitly refuses tv-remote', () 
   const facts = limrunNavigationOperationFacts(iosDevice);
   expect(facts.back).toEqual({ available: true });
   expect(facts.setOrientation).toEqual({ available: true });
+  expect(facts.unlockOrientation.available).toBe(false);
   expect(facts.tvRemote).toEqual({
     available: false,
     reason: 'unsupported-provider-mode',
@@ -157,6 +159,7 @@ test('a dead session closes all three navigation cells with the same reason rega
   const facts = limrunNavigationOperationFacts(androidTvDevice, liveSessionUnavailable);
   expect(facts.back).toEqual(liveSessionUnavailable);
   expect(facts.setOrientation).toEqual(liveSessionUnavailable);
+  expect(facts.unlockOrientation).toEqual(liveSessionUnavailable);
   expect(facts.tvRemote).toEqual(liveSessionUnavailable);
 });
 

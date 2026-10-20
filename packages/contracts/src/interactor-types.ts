@@ -404,6 +404,8 @@ export type Interactor = {
    */
   home?(): Promise<void>;
   setOrientation(orientation: DeviceRotation): Promise<{ orientation?: DeviceRotation } | void>;
+  /** Hands rotation back to the sensor; only an owner whose `setOrientation` locks it carries this. */
+  unlockOrientation?(): Promise<void>;
   performGesture?(plan: GesturePlan): Promise<Record<string, unknown> | void>;
   /**
    * Optional (parity with `home`): opens the recents surface, a control not every owner carries.

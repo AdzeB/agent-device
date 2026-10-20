@@ -1,5 +1,9 @@
 import type { SessionAction } from '@agent-device/contracts/session';
-import { DEVICE_ROTATIONS, FOLD_POSES, TELEPHONY_ACTIONS } from '@agent-device/contracts/device';
+import {
+  FOLD_POSES,
+  ORIENTATION_REQUESTS,
+  TELEPHONY_ACTIONS,
+} from '@agent-device/contracts/device';
 import { BACK_MODES } from '@agent-device/contracts/back-mode';
 import { TV_REMOTE_BUTTONS } from '@agent-device/contracts/tv-remote';
 import { PUBLIC_COMMANDS } from '@agent-device/command-registry/catalog';
@@ -89,7 +93,7 @@ export function buildStructuredActionDetails(action: SessionAction): Record<stri
     case PUBLIC_COMMANDS.back:
       return compactDetails({ mode: readEnum(result.mode, BACK_MODES) });
     case PUBLIC_COMMANDS.orientation:
-      return compactDetails({ orientation: readEnum(result.orientation, DEVICE_ROTATIONS) });
+      return compactDetails({ orientation: readEnum(result.orientation, ORIENTATION_REQUESTS) });
     case PUBLIC_COMMANDS.fold:
       return compactDetails({ pose: readEnum(result.pose, FOLD_POSES) });
     case PUBLIC_COMMANDS.telephony:
@@ -203,8 +207,9 @@ function buildTelephonyActionSummary(result: Record<string, unknown>): string {
 }
 
 function buildOrientationActionSummary(result: Record<string, unknown>): string {
-  const orientation = readEnum(result.orientation, DEVICE_ROTATIONS);
+  const orientation = readEnum(result.orientation, ORIENTATION_REQUESTS);
   if (!orientation) return 'Changed orientation';
+  if (orientation === 'auto') return 'Rotation follows the device sensor';
   // An unconfirmed rotation is not a rotation: the daemon keeps the requested
   // value for compatibility, so the recorded action must disclose it instead of
   // asserting that the device rotated.

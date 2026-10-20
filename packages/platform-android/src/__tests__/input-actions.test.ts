@@ -10,6 +10,7 @@ import {
   probeAndroidDisplayRotation,
   scrollAndroid,
   setAndroidOrientation,
+  unlockAndroidOrientation,
 } from '../input-actions.ts';
 import { AppError } from '@agent-device/kernel/errors';
 import { ANDROID_EMULATOR } from './test-utils/device-fixtures.ts';
@@ -579,6 +580,15 @@ test('setAndroidOrientation leaves a display that reports no rotation to the set
       ['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0'],
       ['shell', 'settings', 'put', 'system', 'user_rotation', '0'],
       DISPLAY_READ,
+    ]);
+  });
+});
+
+test('unlockAndroidOrientation turns auto-rotate on and neither writes user_rotation nor polls', async () => {
+  await withFakeAdb(displayReporting(['1']), async ({ calls, device }) => {
+    await unlockAndroidOrientation(device);
+    assert.deepEqual(calls, [
+      ['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1'],
     ]);
   });
 });
