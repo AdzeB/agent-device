@@ -1,6 +1,6 @@
 import type { Interactor, RunnerContext } from './interactor-types.ts';
 import type { TvRemoteButton } from './tv-remote.ts';
-import type { RuntimeOperationFact } from './platform-runtime.ts';
+import type { RuntimeOperationFact, RuntimeOperationUnavailability } from './platform-runtime.ts';
 import type { SnapshotRuntimeExecution } from './snapshot-runtime.ts';
 
 /**
@@ -30,9 +30,29 @@ export type TvRemoteRuntimeOperationFacts = Readonly<{
 }>;
 
 export function tvRemoteRuntimeOperationFacts(
-  input: Readonly<{ tvRemote: RuntimeOperationFact }>,
+  input: Readonly<{
+    tvRemote: RuntimeOperationFact;
+    buttonSupport?: Readonly<{
+      supported: readonly TvRemoteButton[];
+      unsupported: RuntimeOperationUnavailability;
+    }>;
+  }>,
 ): TvRemoteRuntimeOperationFacts {
-  return Object.freeze({ tvRemote: input.tvRemote });
+  const { tvRemote, buttonSupport } = input;
+  return Object.freeze({
+    tvRemote:
+      tvRemote.available && buttonSupport
+        ? Object.freeze({
+            available: true as const,
+            subjects: Object.freeze(
+              Object.fromEntries(
+                buttonSupport.supported.map((button) => [button, { available: true as const }]),
+              ),
+            ),
+            unlisted: buttonSupport.unsupported,
+          })
+        : tvRemote,
+  });
 }
 
 /** How a fail-closed refusal names the TV remote to the caller, matching the command. */

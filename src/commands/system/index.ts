@@ -21,7 +21,9 @@ import {
 } from '@agent-device/contracts/device';
 import { type BackMode, BACK_MODES } from '@agent-device/contracts/back-mode';
 import {
+  type TvRemoteButton,
   TV_REMOTE_BUTTONS,
+  TV_REMOTE_ANDROID_KEYCODE_PATTERN,
   TV_REMOTE_BUTTON_USAGE,
   parseTvRemoteButton,
   tvRemoteDurationMode,
@@ -40,6 +42,7 @@ import {
 import type { CliReader, DaemonWriter } from '../cli-grammar/types.ts';
 import type { JsonSchema } from '../command-contract.ts';
 import {
+  customField,
   enumField,
   integerField,
   requiredField,
@@ -81,6 +84,15 @@ const TV_REMOTE_LONGPRESS_PRESET_MS = 500;
 
 const CLIPBOARD_ACTION_VALUES = ['read', 'write'] as const;
 const KEYBOARD_METADATA_ACTION_VALUES = ['status', 'dismiss', 'enter', 'return'] as const;
+
+const tvRemoteButtonSchema: JsonSchema = {
+  description:
+    'TV remote button. Android TV also accepts android-keycode:<n> with n from 1 to 2147483647.',
+  oneOf: [
+    enumSchema(TV_REMOTE_BUTTONS),
+    { type: 'string', pattern: TV_REMOTE_ANDROID_KEYCODE_PATTERN.source },
+  ],
+};
 
 /**
  * This family's advertised MCP `outputSchema`s, keyed by daemon command name and projected into
@@ -146,7 +158,7 @@ export const SYSTEM_COMMAND_OUTPUT_SCHEMAS = {
   'tv-remote': objectSchema(
     {
       action: constSchema('tv-remote'),
-      button: enumSchema(TV_REMOTE_BUTTONS),
+      button: tvRemoteButtonSchema,
       durationMs: numberSchema(),
       message: stringSchema(),
     },
@@ -303,7 +315,7 @@ const clipboardCommandDescription =
 const actionButtonCommandDescription =
   'Press the iPhone or iPad Action Button once. The press is dispatched without activating the session app and nothing is re-observed afterwards, so the app keeps the state the press found. What the system does with the press is not observed by this command: Simulators run no Shortcuts or App Intents, so delivery to an assigned Shortcut is verifiable only on a physical iPhone.';
 const tvRemoteCommandDescription =
-  'Press or long-press a TV remote or D-pad button on Android TV, tvOS, or Vega OS. Choose the button and optional hold duration through the input fields. The aliases ok, center, and enter all map to select.';
+  'Press or long-press a TV remote button on Android TV, tvOS, or Vega OS. Android TV also supports volume, power, media, channel, guide, captions, input, color keys, and android-keycode:N. tvOS and Vega OS support up, down, left, right, select, menu, home, and back. Phones and WebDriver sessions are unsupported. The aliases ok, center, and enter map to select.';
 
 const telephonyCommandDescription =
   'Simulate an incoming phone call or SMS on an Android emulator through its console over adb: call rings from the number, accept answers, cancel ends the call, and sms delivers a text message. The call screen or notification can cover the app, so re-snapshot afterwards.';
@@ -387,7 +399,11 @@ const tvRemoteCommandMetadata = defineFieldCommandMetadata(
   TV_REMOTE_COMMAND_NAME,
   tvRemoteCommandDescription,
   {
-    button: requiredField(enumField(TV_REMOTE_BUTTONS)),
+    button: requiredField(
+      customField<TvRemoteButton>(tvRemoteButtonSchema, (record, key) =>
+        parseTvRemoteButton(typeof record[key] === 'string' ? record[key] : undefined),
+      ),
+    ),
     durationMs: integerField(
       `Press duration in milliseconds. tvOS and Vega OS use the exact hold duration; Android TV maps any positive value to an ADB longpress (${tvRemoteDurationMode('android')}).`,
       {
@@ -661,8 +677,9 @@ const actionButtonCommandFacet = defineParameterlessCommandFacet({
 const tvRemoteCommandFacet = defineCommandFacet({
   name: TV_REMOTE_COMMAND_NAME,
   text: {
-    summary: 'Press a TV remote/D-pad button',
-    cliDetail: 'longpress holds for 500ms by default; --duration-ms overrides the preset.',
+    summary: 'Press a TV remote navigation, media, or hardware button',
+    cliDetail:
+      'longpress selects the 500ms preset; --duration-ms overrides it. Android TV uses the system long-press duration.',
   },
   metadata: tvRemoteCommandMetadata,
   run: (client, input) => client.command.tvRemote(input),
@@ -746,7 +763,7 @@ function readTvRemoteInput(
   if (args.length !== 1) {
     throw new AppError(
       'INVALID_ARGS',
-      `tv-remote requires exactly one button: ${TV_REMOTE_BUTTONS.join(', ')}.`,
+      `tv-remote requires exactly one button: ${TV_REMOTE_BUTTONS.join(', ')}, or android-keycode:<n>.`,
     );
   }
   const effectiveDurationMs =

@@ -6,6 +6,7 @@ import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runti
 import type { RuntimeOperationFact } from '@agent-device/contracts/platform-runtime';
 import { systemButtonRuntimeOperationFacts } from '@agent-device/contracts/system-button-runtime';
 import { tvRemoteRuntimeOperationFacts } from '@agent-device/contracts/tv-remote-runtime';
+import { tvRemoteButtonsForPlatform } from '@agent-device/contracts/tv-remote';
 import {
   hasAppleActionButton,
   isTvOsDevice,
@@ -173,7 +174,17 @@ export function appleNavigationFacts(device: DeviceInfo) {
       actionButton: appleActionButtonFact(device),
     }),
     ...orientationRuntimeOperationFacts({ orientation: appleOrientationFact(device) }),
-    ...tvRemoteRuntimeOperationFacts({ tvRemote: appleTvRemoteFact(device) }),
+    ...tvRemoteRuntimeOperationFacts({
+      tvRemote: appleTvRemoteFact(device),
+      buttonSupport: {
+        supported: tvRemoteButtonsForPlatform('apple'),
+        unsupported: {
+          available: false,
+          reason: 'unsupported-platform-leaf',
+          hint: 'This TV remote button is not supported on tvOS.',
+        },
+      },
+    }),
     ...keyboardRuntimeOperationFacts({
       unsupported: keyboardCellUnavailable,
       status: appleKeyboardStatusFact(device),

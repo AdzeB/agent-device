@@ -346,6 +346,11 @@ describe('system command interface', () => {
     expect(tvRemoteCliReader(['press', 'select'], flags())).toMatchObject({
       button: 'select',
     });
+    expect(tvRemoteCliReader(['volume-down'], flags())).toMatchObject({ button: 'volume-down' });
+    expect(
+      tvRemoteDaemonWriter({ button: 'android-keycode:300' } as Record<string, unknown>)
+        .positionals,
+    ).toEqual(['android-keycode:300']);
     expect(tvRemoteCliReader(['ok'], flags())).toMatchObject({ button: 'select' });
     expect(tvRemoteCliReader(['center'], flags())).toMatchObject({ button: 'select' });
     expect(tvRemoteCliReader(['enter'], flags())).toMatchObject({ button: 'select' });
