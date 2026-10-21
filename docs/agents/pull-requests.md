@@ -13,7 +13,6 @@ Apply authorization already given. Merging and releasing need separate authoriza
 
 Follow [validation](testing.md).
 Record the `check:affected --run --head` receipt in the PR body. A serialized gate stage can validate the pushed head instead.
-Before you report publication, record that result.
 For unresolved failures, follow the blocked-validation table.
 An authorized incomplete draft can record a blocker. A blocker is not a pass.
 Push once per review round. Each push restarts CI. Drafts skip device lanes.
@@ -50,6 +49,7 @@ Measure with `git diff --stat origin/main...HEAD`.
 Stack only layers that can merge independently.
 Rename-only `refactor(move)` PRs are exempt when `git diff -M90% --stat origin/main...HEAD` proves no material content change.
 Use conventional commit prefixes, without agent tags.
+Never push tags.
 Put enforcement edits in a final `chore(gates): <what and why>` commit.
 
 For conflicts or relevant upstream changes, rebase. Disjoint changes alone do not require rebase.
