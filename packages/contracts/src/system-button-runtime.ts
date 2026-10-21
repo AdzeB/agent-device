@@ -7,9 +7,10 @@ import type { SnapshotRuntimeExecution } from './snapshot-runtime.ts';
 /**
  * The system buttons: one press each, no arguments, nothing returned. `home` and `appSwitcher`
  * reach a springboard or recents surface; `actionButton` presses iPhone/iPad hardware;
- * `volumeUp`, `volumeDown` and `power` press the phone hardware keys the `hardware-button`
- * command names. What varies between them is which owners carry the control, and that is the
- * fact table's job, not a per-button module's: a button joins this list and its owners state a cell.
+ * the rest are the phone hardware keys the `hardware-button` command names — volume, power,
+ * mute, the explicit sleep/wake events, and the media keys. What varies between them is which
+ * owners carry the control, and that is the fact table's job, not a per-button module's: a
+ * button joins this list and its owners state a cell.
  */
 export const SYSTEM_BUTTONS = [
   'home',
@@ -18,11 +19,22 @@ export const SYSTEM_BUTTONS = [
   'volumeUp',
   'volumeDown',
   'power',
+  'mute',
+  'sleep',
+  'wake',
+  'mediaPlayPause',
+  'mediaNext',
+  'mediaPrevious',
+  'mediaRewind',
+  'mediaFastForward',
 ] as const;
 
 export type SystemButton = (typeof SYSTEM_BUTTONS)[number];
 
-/** How a provider fail-closed refusal names each button to the caller. */
+/**
+ * What the family names to a caller on a fail-closed refusal. The hardware keys read as the
+ * positional names `hardware-button` takes.
+ */
 export const SYSTEM_BUTTON_LABELS = {
   home: 'home',
   appSwitcher: 'app-switcher',
@@ -30,6 +42,14 @@ export const SYSTEM_BUTTON_LABELS = {
   volumeUp: 'volume-up',
   volumeDown: 'volume-down',
   power: 'power',
+  mute: 'mute',
+  sleep: 'sleep',
+  wake: 'wake',
+  mediaPlayPause: 'media-play-pause',
+  mediaNext: 'media-next',
+  mediaPrevious: 'media-previous',
+  mediaRewind: 'media-rewind',
+  mediaFastForward: 'media-fast-forward',
 } as const satisfies Record<SystemButton, string>;
 
 // The hardware-button command vocabulary in device-rotation.ts must stay a family sub-cell with
@@ -124,7 +144,32 @@ const androidHardwareButtonKindUnavailable: RuntimeOperationUnavailability = Obj
 
 const ANDROID_AVAILABLE = Object.freeze({ available: true } as const);
 
-export function androidHardwareButtonAvailability(
+const ANDROID_HARDWARE_BUTTON_CELLS = SYSTEM_BUTTONS.filter(
+  (button) => button !== 'home' && button !== 'appSwitcher' && button !== 'actionButton',
+) satisfies readonly HardwareButton[];
+
+type HardwareCellsCoverCommandVocabulary =
+  HardwareButton extends (typeof ANDROID_HARDWARE_BUTTON_CELLS)[number]
+    ? true
+    : { missingFromCells: Exclude<HardwareButton, (typeof ANDROID_HARDWARE_BUTTON_CELLS)[number]> };
+const hardwareCellsCoverCommandVocabulary: HardwareCellsCoverCommandVocabulary = true;
+void hardwareCellsCoverCommandVocabulary;
+
+/**
+ * One device's verdict for every `hardware-button` cell. The local adb runtime and the Limrun
+ * provider spread this over their family facts, so the phone/TV/simulator rule is stated once
+ * for every key and a new key joins both owners with it.
+ */
+export function androidHardwareButtonFacts(
+  device: AndroidHardwareButtonSubject,
+): Readonly<Record<HardwareButton, RuntimeOperationFact>> {
+  const availability = androidHardwareButtonAvailability(device);
+  const facts: Partial<Record<HardwareButton, RuntimeOperationFact>> = {};
+  for (const button of ANDROID_HARDWARE_BUTTON_CELLS) facts[button] = availability;
+  return facts as Readonly<Record<HardwareButton, RuntimeOperationFact>>;
+}
+
+function androidHardwareButtonAvailability(
   device: AndroidHardwareButtonSubject,
 ): RuntimeOperationFact {
   if (device.kind === 'simulator') return androidHardwareButtonKindUnavailable;

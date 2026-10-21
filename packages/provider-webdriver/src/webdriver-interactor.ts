@@ -1,4 +1,4 @@
-import type { DeviceRotation } from '@agent-device/contracts/device';
+import type { DeviceRotation, HardwareButton } from '@agent-device/contracts/device';
 import type { BackMode } from '@agent-device/contracts/back-mode';
 import type {
   CloudTextEntryReadiness,
@@ -53,12 +53,6 @@ const SNAPSHOT_VIEWPORT_PROBE_TIMEOUT_MS = 500;
 
 /** The Android `KEYCODE_ENTER` the IME's return key sends. */
 const ANDROID_KEYCODE_ENTER = 66;
-/** The Android `KEYCODE_VOLUME_UP` the `hardware-button volume-up` press sends. */
-const ANDROID_KEYCODE_VOLUME_UP = 24;
-/** The Android `KEYCODE_VOLUME_DOWN` the `hardware-button volume-down` press sends. */
-const ANDROID_KEYCODE_VOLUME_DOWN = 25;
-/** The Android `KEYCODE_POWER` the `hardware-button power` press sends. */
-const ANDROID_KEYCODE_POWER = 26;
 /** How a WebDriver dismiss lowers the iOS keyboard: Appium's hide-keyboard route. */
 const WEBDRIVER_DISMISS_MECHANISM = 'appium-hide-keyboard';
 
@@ -434,20 +428,22 @@ class WebDriverInteractor implements Interactor {
    * Android owner sends. The press lands on the system, which is what the command claims.
    */
   async volumeUp(): Promise<void> {
-    this.requireSupport('volumeUp');
-    await this.pressVolumeKey(ANDROID_KEYCODE_VOLUME_UP, 'volumeup');
+    await this.pressVolumeKey('volumeUp', 'volumeup');
   }
 
   async volumeDown(): Promise<void> {
-    this.requireSupport('volumeDown');
-    await this.pressVolumeKey(ANDROID_KEYCODE_VOLUME_DOWN, 'volumedown');
+    await this.pressVolumeKey('volumeDown', 'volumedown');
   }
 
-  private async pressVolumeKey(androidKeycode: number, xcuiButtonName: string): Promise<void> {
+  private async pressVolumeKey(
+    button: 'volumeUp' | 'volumeDown',
+    xcuiButtonName: string,
+  ): Promise<void> {
     if (this.backend === 'android') {
-      await this.client.executeScript('mobile: pressKey', [{ keycode: androidKeycode }]);
+      await this.pressAndroidHardwareKey(button);
       return;
     }
+    this.requireSupport(button);
     await this.client.executeScript('mobile: pressButton', [{ name: xcuiButtonName }]);
   }
 
@@ -457,8 +453,47 @@ class WebDriverInteractor implements Interactor {
    * capability map declares `power` unsupported, so the declaration refuses before this leg.
    */
   async power(): Promise<void> {
-    this.requireSupport('power');
-    await this.client.executeScript('mobile: pressKey', [{ keycode: ANDROID_KEYCODE_POWER }]);
+    await this.pressAndroidHardwareKey('power');
+  }
+
+  private async pressAndroidHardwareKey(button: HardwareButton): Promise<void> {
+    this.requireSupport(button);
+    const { HARDWARE_BUTTON_NAME_LABELS } = await import('@agent-device/contracts/device');
+    const { toAndroidTvRemoteKeyevent } = await import('@agent-device/contracts/tv-remote');
+    const keycode = Number(toAndroidTvRemoteKeyevent(HARDWARE_BUTTON_NAME_LABELS[button]));
+    await this.client.executeScript('mobile: pressKey', [{ keycode }]);
+  }
+
+  async mute(): Promise<void> {
+    await this.pressAndroidHardwareKey('mute');
+  }
+
+  async sleep(): Promise<void> {
+    await this.pressAndroidHardwareKey('sleep');
+  }
+
+  async wake(): Promise<void> {
+    await this.pressAndroidHardwareKey('wake');
+  }
+
+  async mediaPlayPause(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaPlayPause');
+  }
+
+  async mediaNext(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaNext');
+  }
+
+  async mediaPrevious(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaPrevious');
+  }
+
+  async mediaRewind(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaRewind');
+  }
+
+  async mediaFastForward(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaFastForward');
   }
 
   async tvRemote(_button: TvRemoteButton, _durationMs?: number): Promise<void> {

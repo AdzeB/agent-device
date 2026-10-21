@@ -51,7 +51,7 @@ test('iOS volume presses ride mobile pressButton and power refuses before the dr
 
   const powerClient = {
     executeScript: async () => {
-      throw new Error('the iOS power refusal must reach the driver');
+      throw new Error('the iOS power refusal must not reach the driver');
     },
   } as unknown as WebDriverClient;
   const powerIos = createWebDriverInteractor({
@@ -73,4 +73,59 @@ test('Android power presses KEYCODE_POWER through mobile pressKey', async () => 
   });
   await android.power!();
   assert.deepEqual(transcript, ['mobile: pressKey [{"keycode":26}]']);
+});
+
+// The eight extended hardware keys (#3848): Android presses each of their keycodes
+// through `mobile: pressKey`, the same keyevents the local adb owner sends; XCUITest exposes no
+// press route for any of them, so the declared capability map refuses an iOS session before the
+// driver is asked.
+test('Android presses each extended hardware key through its mobile pressKey keycode', async () => {
+  const cases = [
+    ['mute', 164],
+    ['sleep', 223],
+    ['wake', 224],
+    ['mediaPlayPause', 85],
+    ['mediaNext', 87],
+    ['mediaPrevious', 88],
+    ['mediaRewind', 89],
+    ['mediaFastForward', 90],
+  ] as const;
+  for (const [method, keycode] of cases) {
+    const transcript: string[] = [];
+    const android = createWebDriverInteractor({
+      client: recordingClient(transcript),
+      backend: 'android',
+      capabilities: createCloudWebDriverCapabilities({ provider: 'test', platform: 'android' }),
+    });
+    await android[method]!();
+    assert.deepEqual(transcript, [`mobile: pressKey [{"keycode":${keycode}}]`], method);
+  }
+});
+
+test('iOS refuses every extended hardware key before the driver is asked', async () => {
+  const ios = createWebDriverInteractor({
+    client: {
+      executeScript: async () => {
+        throw new Error('the iOS hardware-key refusal must not reach the driver');
+      },
+    } as unknown as WebDriverClient,
+    backend: 'xctest',
+    capabilities: createCloudWebDriverCapabilities({ provider: 'test', platform: 'ios' }),
+  });
+  for (const method of [
+    'mute',
+    'sleep',
+    'wake',
+    'mediaPlayPause',
+    'mediaNext',
+    'mediaPrevious',
+    'mediaRewind',
+    'mediaFastForward',
+  ] as const) {
+    await assert.rejects(
+      ios[method]!(),
+      (error: unknown) => error instanceof AppError && error.code === 'UNSUPPORTED_OPERATION',
+      method,
+    );
+  }
 });

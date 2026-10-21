@@ -14,9 +14,23 @@ import {
   actionButtonRuntimeUse,
   appSwitcherRuntimeUse,
   homeRuntimeUse,
+  mediaFastForwardRuntimeUse,
+  mediaNextRuntimeUse,
+  mediaPlayPauseRuntimeUse,
+  mediaPreviousRuntimeUse,
+  mediaRewindRuntimeUse,
+  muteRuntimeUse,
+  powerRuntimeUse,
+  sleepRuntimeUse,
+  volumeDownRuntimeUse,
   volumeUpRuntimeUse,
+  wakeRuntimeUse,
   type PlatformRuntimeOperations,
 } from '@agent-device/contracts/platform-runtime-operations';
+import {
+  HARDWARE_BUTTON_NAMES,
+  parseHardwareButtonPositionals,
+} from '@agent-device/contracts/device';
 import type { SystemButton } from '@agent-device/contracts/system-button-runtime';
 import { deviceShape, type DeviceInfo } from '@agent-device/kernel/device';
 import { makeSession } from '../../__tests__/support/session-factories.ts';
@@ -58,6 +72,14 @@ const iosSimulator = {
   platform: 'apple',
   appleOs: 'ios',
   kind: 'simulator',
+  target: 'mobile',
+  booted: true,
+} as const;
+const androidPhone = {
+  id: 'system-button-runtime-android-phone',
+  name: 'Pixel',
+  platform: 'android',
+  kind: 'emulator',
   target: 'mobile',
   booted: true,
 } as const;
@@ -120,18 +142,22 @@ function executionParams(
   };
 }
 
-function runtimeHarness(button: SystemButton, fact: RuntimeOperationFact = available) {
+function runtimeHarness(
+  button: SystemButton,
+  fact: RuntimeOperationFact = available,
+  device: DeviceInfo = iosSimulator,
+) {
   const press = vi.fn(async () => undefined);
   const facts: RuntimeFacts<PlatformRuntimeOperations> = {
-    device: { ...deviceShape(iosSimulator), providerMode: 'local' },
+    device: { ...deviceShape(device), providerMode: 'local' },
     operations: systemButtonRuntimeOperationFacts({
       unsupported: unavailable,
       [button]: fact,
     }) as RuntimeFacts<PlatformRuntimeOperations>['operations'],
   };
   const binding = {
-    device: iosSimulator,
-    owner: localRuntimeOwner('apple'),
+    device,
+    owner: localRuntimeOwner(device.platform),
     facts,
     operations: { [button]: press },
     [Symbol.asyncDispose]: async () => {},
@@ -220,50 +246,72 @@ test('request router joins home admission to execution, recording, and ref inval
 });
 
 // The hardware-button route selects exactly the named cell from the positional: one inspect, one
-// bind of that cell's use, one press, and a response that echoes the public button name (#3848).
-test('hardware-button binds the named cell and reports the public button name', async () => {
-  const harness = runtimeHarness('volumeUp');
+// bind of that cell's use, one press, and a response that echoes the public button name. The use
+// is stated per name here, not read back from the row table, so a row that drifts fails (#3848).
+const HARDWARE_BUTTON_ROUTE_CASES = [
+  ['volume-up', volumeUpRuntimeUse],
+  ['volume-down', volumeDownRuntimeUse],
+  ['power', powerRuntimeUse],
+  ['mute', muteRuntimeUse],
+  ['sleep', sleepRuntimeUse],
+  ['wake', wakeRuntimeUse],
+  ['media-play-pause', mediaPlayPauseRuntimeUse],
+  ['media-next', mediaNextRuntimeUse],
+  ['media-previous', mediaPreviousRuntimeUse],
+  ['media-rewind', mediaRewindRuntimeUse],
+  ['media-fast-forward', mediaFastForwardRuntimeUse],
+] as const;
 
-  const resolved = await resolveBoundHardwareButtonRuntime({
-    platformServices: daemonPlatformServicesFixture(),
-    device: iosSimulator,
-    positionals: ['volume-up'],
-    inspectFacts: harness.inspectFacts,
-    bindDevice: harness.bindDevice,
-  });
-
-  expect(resolved.ok).toBe(true);
-  if (!resolved.ok) return;
-  expect(harness.inspectFacts).toHaveBeenCalledTimes(1);
-  expect(harness.bindDevice).toHaveBeenCalledWith(iosSimulator, volumeUpRuntimeUse);
-  const session = makeSession('system-button-runtime', { device: iosSimulator });
-  expect(
-    await resolved.execute({
-      session,
-      sessionName: session.name,
-      logPath: '/tmp/daemon.log',
-      command: 'hardware-button',
-      request: {
-        command: 'hardware-button',
-        positionals: ['volume-up'],
-        token: 't',
-        session: session.name,
-      },
-      positionals: ['volume-up'],
-      out: undefined,
-      dispatchContext: {},
-    }),
-  ).toEqual({
-    action: 'hardware-button',
-    button: 'volume-up',
-    message: 'Pressed hardware button volume-up',
-  });
-  expect(harness.press).toHaveBeenCalledTimes(1);
+test('the hardware-button route cases cover the whole command vocabulary', () => {
+  expect(HARDWARE_BUTTON_ROUTE_CASES.map(([name]) => name)).toEqual([...HARDWARE_BUTTON_NAMES]);
 });
+
+test.each(HARDWARE_BUTTON_ROUTE_CASES)(
+  'hardware-button %s binds its named cell and reports the public button name',
+  async (name, use) => {
+    const harness = runtimeHarness(parseHardwareButtonPositionals([name]), available, androidPhone);
+
+    const resolved = await resolveBoundHardwareButtonRuntime({
+      platformServices: daemonPlatformServicesFixture(),
+      device: androidPhone,
+      positionals: [name],
+      inspectFacts: harness.inspectFacts,
+      bindDevice: harness.bindDevice,
+    });
+
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(harness.inspectFacts).toHaveBeenCalledTimes(1);
+    expect(harness.bindDevice).toHaveBeenCalledWith(androidPhone, use);
+    const session = makeSession('system-button-runtime', { device: androidPhone });
+    expect(
+      await resolved.execute({
+        session,
+        sessionName: session.name,
+        logPath: '/tmp/daemon.log',
+        command: 'hardware-button',
+        request: {
+          command: 'hardware-button',
+          positionals: [name],
+          token: 't',
+          session: session.name,
+        },
+        positionals: [name],
+        out: undefined,
+        dispatchContext: {},
+      }),
+    ).toEqual({
+      action: 'hardware-button',
+      button: name,
+      message: `Pressed hardware button ${name}`,
+    });
+    expect(harness.press).toHaveBeenCalledTimes(1);
+  },
+);
 
 test('hardware-button refuses an unknown or missing button before inspecting any device', async () => {
   const harness = runtimeHarness('volumeUp');
-  for (const positionals of [[], ['mute'], ['volume-up', 'extra']] as const) {
+  for (const positionals of [[], ['vol'], ['volume-up', 'extra']] as const) {
     await expect(
       resolveBoundHardwareButtonRuntime({
         platformServices: daemonPlatformServicesFixture(),
