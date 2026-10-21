@@ -3,6 +3,7 @@ import type { DaemonRetirementResult } from './daemon-registration-owner.ts';
 
 import {
   DAEMON_LIFECYCLE_REASONS,
+  embeddedCloseHint,
   DAEMON_RECORD_OWNER_UNRECOGNIZED_REASON,
   type DaemonPaths,
   type ObservedDaemonIdentity,
@@ -47,10 +48,8 @@ export type DaemonStopResult = {
 /**
  * Retires the daemon whose lifetime the caller read, and shapes that retirement as a stop result.
  *
- * The caller hands over the lifetime and the owner its own read proved, so routing and retirement judge
- * one record. Ownership is judged here and nowhere else: an embedded runtime belongs to its host, and a
- * record this build cannot place proves nothing about what is safe to signal, so both come back as the
- * refusal that names their owner, with nothing signaled.
+ * Retirement refuses to signal embedded and unknown owners, and retires their records only
+ * when the observed host lifetime has provably exited.
  */
 export async function stopDaemon(params: {
   paths: DaemonPaths;
@@ -106,13 +105,14 @@ export async function stopDaemon(params: {
  * those two retained reasons become a stop's own reason: a caller that may not signal this process
  * hears the owner's rule, not a retirement that could not be confirmed.
  */
-function ownerRefusal(
+export function ownerRefusal(
   reason: 'embedded-owner' | 'owner-unproven',
+  pid: number | undefined,
 ): Readonly<{ reason: string; hint: string }> {
   return reason === 'embedded-owner'
     ? {
         reason: DAEMON_LIFECYCLE_REASONS.ownerEmbedded,
-        hint: 'Nothing was signaled. Close the host that started this runtime, or repair its record after the process has exited.',
+        hint: embeddedCloseHint(pid),
       }
     : {
         reason: DAEMON_RECORD_OWNER_UNRECOGNIZED_REASON,
@@ -131,7 +131,7 @@ function daemonRetirementError(
   const refusal =
     retirement.status === 'retained' &&
     (retirement.reason === 'embedded-owner' || retirement.reason === 'owner-unproven')
-      ? ownerRefusal(retirement.reason)
+      ? ownerRefusal(retirement.reason, info.pid)
       : undefined;
   return new AppError(
     'COMMAND_FAILED',
@@ -153,7 +153,7 @@ function daemonRetirementError(
   );
 }
 
-export function daemonNotRunningStopResult(): DaemonStopResult {
+function daemonNotRunningStopResult(): DaemonStopResult {
   return {
     stopped: false,
     mode: 'not-running',

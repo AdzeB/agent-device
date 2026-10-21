@@ -137,9 +137,19 @@ async function crashedStaleRegistration(ownership: 'embedded' | 'unrecognized' |
   return { stateDir, paths, ...registered };
 }
 
-for (const [ownership, reason, hint] of [
-  ['embedded', DAEMON_LIFECYCLE_REASONS.ownerEmbedded, /Close the host that started it/],
-  ['sideways', 'daemon-owner-unrecognized', /Update agent-device/],
+for (const [ownership, reason, message, hint] of [
+  [
+    'embedded',
+    DAEMON_LIFECYCLE_REASONS.ownerEmbedded,
+    'A host process owns this runtime, so it was not retired.',
+    /owned by host process \d+\. Close it there/,
+  ],
+  [
+    'sideways',
+    'daemon-owner-unrecognized',
+    'This daemon record states an owner this version cannot read, so this client did not replace it.',
+    /Update agent-device/,
+  ],
 ] as const)
   test(`a managed client preserves a ${ownership} owner`, async (t) => {
     if (await skipWhenLoopbackUnavailable(t)) return;
@@ -155,6 +165,7 @@ for (const [ownership, reason, hint] of [
         createDaemonTransport(createTestHostEnvironment())(request(stateDir)),
       );
       assert.equal(refusal.details?.reason, reason);
+      assert.equal(refusal.message, message);
       assert.match(String(refusal.details?.hint), hint);
       assert.deepEqual(daemon.rpcCommands, [], 'the takeover was never attempted');
       assert.equal(spawn.mock.calls.length, 0);
@@ -165,6 +176,27 @@ for (const [ownership, reason, hint] of [
       await closeLoopbackServer(daemon.server);
     }
   });
+
+test('takeover refuses an embedded registration without a recorded host start time', async () => {
+  const { paths } = stateDirAndPaths();
+  await registerDaemon(paths, { httpPort: 1, ownership: 'embedded' });
+  const record = JSON.parse(fs.readFileSync(paths.infoPath, 'utf8'));
+  delete record.processStartTime;
+  fs.writeFileSync(paths.infoPath, JSON.stringify(record));
+  const info = readDaemonInfo(paths.infoPath);
+  assert.ok(info);
+  assert.equal(info.processStartTime, undefined);
+  const before = fs.readFileSync(paths.infoPath, 'utf8');
+  const killSpy = vi.spyOn(process, 'kill');
+
+  const refusal = await refusalFrom(startup.retireDaemonForTakeover(info, paths));
+
+  assert.equal(refusal.details?.reason, DAEMON_LIFECYCLE_REASONS.ownerEmbedded);
+  assert.match(String(refusal.details?.hint), /owned by host process \d+\. Close it there/);
+  assert.equal(fs.readFileSync(paths.infoPath, 'utf8'), before);
+  assert.deepEqual(signalsSent(killSpy), []);
+  assert.equal(spawn.mock.calls.length, 0);
+});
 
 test('the same record with no host owner is still the takeover this client performs', async (t) => {
   if (await skipWhenLoopbackUnavailable(t)) return;
@@ -259,6 +291,7 @@ test('a matching pin does not bypass attach compatibility checks', async (t) => 
       }),
     );
     assert.equal(refusal.details?.reason, 'daemon-incompatible');
+    assert.match(String(refusal.details?.hint), /owned by host process \d+\. Close it there/);
     assert.deepEqual(daemon.rpcCommands, []);
     assert.equal(spawn.mock.calls.length, 0);
   } finally {
