@@ -20,7 +20,7 @@ enum SnapshotQualityState: String, Codable, CaseIterable {
   case sparse
 }
 
-/// Structured quality verdict shipped with every iOS snapshot payload.
+/// Structured quality verdict from an iOS capture plan.
 struct SnapshotQuality: Codable {
   let state: SnapshotQualityState
   /// Backend that produced the returned payload: tree | queries | private-ax.
@@ -82,6 +82,7 @@ struct SnapshotBackendCapture {
   var customActions: SnapshotCustomActionCoverage? = nil
   var qualityPayload: DataPayload? = nil
   var timing: SnapshotCaptureTiming? = nil
+  var qualityNotes: [SnapshotQualityNote] = []
   /// The keyboard band this capture measured, carried beside the tree it came with (#2660). Only the
   /// tree tier reads the keyboard, so only that tier has one; the daemon reads a missing band as "this
   /// producer could not measure", which is exactly what the query-sweep and private-AX tiers did.
@@ -108,6 +109,7 @@ extension RunnerTests {
       qualityPayload: result.qualityNodes.map {
         DataPayload(nodes: $0, truncated: result.truncated)
       },
+      qualityNotes: result.qualityNotes,
       presentedSurface: SnapshotPresentedSurface.classify(acquisition)
     )
   }
@@ -770,6 +772,7 @@ extension RunnerTests {
         return SnapshotQualityPayload(nodes: nodes, truncated: quality.truncated == true)
       },
       snapshotQuality: quality,
+      snapshotQualityNotes: capture.qualityNotes.isEmpty ? nil : capture.qualityNotes,
       presentedSurface: capture.presentedSurface,
       keyboard: capture.keyboardBand,
       runnerFatal: payload.runnerFatal,

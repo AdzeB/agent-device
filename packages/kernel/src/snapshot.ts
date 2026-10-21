@@ -37,6 +37,12 @@ export const SNAPSHOT_QUALITY_STATES = ['healthy', 'recovered', 'sparse'] as con
 
 export type SnapshotQualityState = (typeof SNAPSHOT_QUALITY_STATES)[number];
 
+export type SnapshotQualityNote = {
+  code: 'regular-geometry-clipped';
+  clippedNodeCount: number;
+  droppedNodeCount: number;
+};
+
 export type SnapshotQualityVerdict = {
   state: SnapshotQualityState;
   backend: SnapshotCaptureBackend;
@@ -735,6 +741,7 @@ export type SnapshotState = {
   createdAt: number;
   truncated?: boolean;
   snapshotQuality?: SnapshotQualityVerdict;
+  snapshotQualityNotes?: SnapshotQualityNote[];
   comparisonSafe?: boolean;
   presentationKey?: string;
   /** Opaque equality key for iOS acquisition and presentation lineage. */

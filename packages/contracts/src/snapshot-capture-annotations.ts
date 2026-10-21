@@ -4,6 +4,7 @@ import type {
   SnapshotCaptureBackend,
   SnapshotQualityState,
   SnapshotQualityVerdict,
+  SnapshotQualityNote,
 } from '@agent-device/kernel/snapshot';
 import type { AndroidSnapshotBackendMetadata } from './snapshot-types.ts';
 
@@ -41,6 +42,7 @@ export type SnapshotCaptureAnnotations = {
   androidSnapshot?: AndroidSnapshotBackendMetadata;
   freshness?: SnapshotCaptureFreshness;
   quality?: SnapshotQualityVerdict;
+  qualityNotes?: SnapshotQualityNote[];
   warnings?: string[];
   /** The Apple runner re-activated the session app while serving this capture (#2682). */
   targetActivation?: IosTargetActivation;
@@ -52,6 +54,7 @@ export type PublicSnapshotCaptureAnnotations = Pick<
   'androidSnapshot' | 'warnings' | 'targetActivation' | 'observation'
 > & {
   snapshotQuality?: SnapshotQualityVerdict;
+  snapshotQualityNotes?: SnapshotQualityNote[];
 };
 
 export function snapshotCaptureAnnotationsFrom(
@@ -63,6 +66,7 @@ export function snapshotCaptureAnnotationsFrom(
     ...(source.androidSnapshot ? { androidSnapshot: source.androidSnapshot } : {}),
     ...(source.freshness ? { freshness: source.freshness } : {}),
     ...(quality ? { quality } : {}),
+    ...(source.qualityNotes?.length ? { qualityNotes: source.qualityNotes } : {}),
     ...(source.warnings ? { warnings: source.warnings } : {}),
     ...(source.targetActivation ? { targetActivation: source.targetActivation } : {}),
     ...(source.observation ? { observation: source.observation } : {}),
@@ -75,6 +79,7 @@ export function publicSnapshotCaptureAnnotations(
   return {
     ...(annotations.androidSnapshot ? { androidSnapshot: annotations.androidSnapshot } : {}),
     ...(annotations.quality ? { snapshotQuality: annotations.quality } : {}),
+    ...(annotations.qualityNotes?.length ? { snapshotQualityNotes: annotations.qualityNotes } : {}),
     ...(annotations.warnings && annotations.warnings.length > 0
       ? { warnings: annotations.warnings }
       : {}),
@@ -94,6 +99,7 @@ export function readSerializedSnapshotCaptureAnnotations(
     ? data.warnings.filter((entry): entry is string => typeof entry === 'string')
     : undefined;
   const quality = readPublishedSnapshotQualityVerdict(data.snapshotQuality);
+  const qualityNotes = readSnapshotQualityNotes(data.snapshotQualityNotes);
   const targetActivation = readTargetActivation(data.targetActivation);
   const observation = readSnapshotObservation(data.observation);
   return publicSnapshotCaptureAnnotations({
@@ -101,6 +107,7 @@ export function readSerializedSnapshotCaptureAnnotations(
       ? { androidSnapshot: androidSnapshot as AndroidSnapshotBackendMetadata }
       : {}),
     ...(quality ? { quality } : {}),
+    ...(qualityNotes ? { qualityNotes } : {}),
     ...(warnings ? { warnings } : {}),
     ...(targetActivation ? { targetActivation } : {}),
     ...(observation ? { observation } : {}),
@@ -158,4 +165,30 @@ function readObject(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+export function readSnapshotQualityNotes(value: unknown): SnapshotQualityNote[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const notes: SnapshotQualityNote[] = [];
+  for (const entry of value.slice(0, 1)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const raw = entry as Record<string, unknown>;
+    if (raw.code !== 'regular-geometry-clipped') continue;
+    if (
+      typeof raw.clippedNodeCount !== 'number' ||
+      !Number.isSafeInteger(raw.clippedNodeCount) ||
+      raw.clippedNodeCount < 0 ||
+      typeof raw.droppedNodeCount !== 'number' ||
+      !Number.isSafeInteger(raw.droppedNodeCount) ||
+      raw.droppedNodeCount < 0 ||
+      raw.clippedNodeCount + raw.droppedNodeCount === 0
+    )
+      continue;
+    notes.push({
+      code: raw.code,
+      clippedNodeCount: raw.clippedNodeCount,
+      droppedNodeCount: raw.droppedNodeCount,
+    });
+  }
+  return notes.length > 0 ? notes : undefined;
 }

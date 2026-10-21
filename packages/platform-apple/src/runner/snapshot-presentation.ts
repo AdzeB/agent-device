@@ -33,6 +33,7 @@ import type {
   RawSnapshotNode,
   SnapshotKeyboardBandFact,
   SnapshotQualityVerdict,
+  SnapshotQualityNote,
   SnapshotViewportSize,
   IosTargetActivation,
   IosSnapshotObservation,
@@ -43,13 +44,14 @@ import {
 } from '@agent-device/contracts/ios-system-surface';
 import { emitDiagnostic } from './host.ts';
 import { TARGET_ACTIVATION_WIRE_KEY, readTargetActivationFact } from './target-activation.ts';
-import { readSnapshotObservation } from '@agent-device/contracts/capture';
+import { readSnapshotObservation, readSnapshotQualityNotes } from '@agent-device/contracts/capture';
 
 export type AppleRunnerSnapshotResult = Readonly<{
   nodes?: RawSnapshotNode[];
   truncated?: boolean;
   message?: string;
   quality?: SnapshotQualityVerdict;
+  qualityNotes?: SnapshotQualityNote[];
   qualityPayload?: IosRunnerQualityPayloadFacts;
   runnerFatal?: boolean;
   systemSurface?: IosSystemSurfaceProvenance;
@@ -88,6 +90,7 @@ export function readAppleSnapshotResult(
     nodes: nodes?.map(interpret),
     truncated: typeof result.truncated === 'boolean' ? result.truncated : undefined,
     quality: readSnapshotQualityVerdict(result.snapshotQuality),
+    qualityNotes: readSnapshotQualityNotes(result.snapshotQualityNotes),
     qualityPayload: qualityPayload
       ? { ...qualityPayload, nodes: qualityPayload.nodes.map(interpret) }
       : qualityPayload,

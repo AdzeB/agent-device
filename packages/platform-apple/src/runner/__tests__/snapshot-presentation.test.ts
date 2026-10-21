@@ -484,3 +484,58 @@ for (const device of [IOS_SIMULATOR, MACOS_DEVICE]) {
     assert.equal('checked' in nodes[0]!, false);
   });
 }
+
+test('a clipped system alert passes host validation and retains its typed quality note', () => {
+  const note = { code: 'regular-geometry-clipped', clippedNodeCount: 1, droppedNodeCount: 1 };
+  const read = readAppleSnapshotResult(
+    {
+      nodes: [
+        {
+          index: 0,
+          type: 'Alert',
+          label: 'Tracking',
+          rect: { x: 18, y: 70, width: 354, height: 716 },
+          depth: 0,
+          hittable: false,
+        },
+        {
+          index: 1,
+          type: 'Button',
+          label: 'Ask App Not to Track',
+          rect: { x: 48, y: 700, width: 294, height: 86 },
+          depth: 1,
+          parentIndex: 0,
+          hittable: true,
+        },
+      ],
+      truncated: false,
+      snapshotQualityNotes: [note],
+    },
+    IOS_SIMULATOR,
+  );
+  const presentation = presentAppleRunnerSnapshot('device-1', { interactiveOnly: true }, read);
+  assert.equal(
+    presentation.nodes.some((node) => node.label === 'Ask App Not to Track'),
+    true,
+  );
+  assert.deepEqual(read.qualityNotes, [note]);
+  assert.equal(read.quality, undefined);
+});
+
+test('runner wire keeps real verdicts independent of clipping notes', () => {
+  const quality = { state: 'recovered', backend: 'queries', reasonCode: 'ax-rejected' };
+  const note = { code: 'regular-geometry-clipped', clippedNodeCount: 1, droppedNodeCount: 2 };
+  const read = readAppleSnapshotResult(
+    { snapshotQuality: quality, snapshotQualityNotes: [note] },
+    IOS_SIMULATOR,
+  );
+  assert.equal(read.quality?.state, 'recovered');
+  assert.equal(read.quality?.backend, 'queries');
+  assert.equal(read.quality?.reasonCode, 'ax-rejected');
+  assert.deepEqual(read.qualityNotes, [note]);
+  assert.equal(readAppleSnapshotResult({ nodes: [] }, IOS_SIMULATOR).quality, undefined);
+  assert.equal(
+    readAppleSnapshotResult({ snapshotQuality: quality }, IOS_SIMULATOR).qualityNotes,
+    undefined,
+  );
+});
