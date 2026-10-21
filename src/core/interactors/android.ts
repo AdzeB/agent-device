@@ -115,6 +115,8 @@ export function createAndroidInteractor(
             includeHiddenContentHints: snapshotOptions.includeHiddenContentHints,
             helperSessionScope: androidHelperSessionScope(snapshotOptions.appBundleId),
             transient: snapshotOptions.transient,
+            idleWait:
+              snapshotOptions.captureBasis === 'unchanged-since-observation' ? 'short' : 'full',
           }),
         { backend: 'android' },
       );

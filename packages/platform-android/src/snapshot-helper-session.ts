@@ -55,7 +55,8 @@ async function captureFromAndroidSnapshotHelperSession(params: {
       port: session.port,
       commandTimeoutMs: resolved.commandTimeoutMs,
       signal: options.signal,
-      skipIdleWait: options.skipIdleWait && session.commands.has('snapshot-immediate'),
+      idleWait: options.idleWait,
+      commands: session.commands,
     });
     session.capturedCount += 1;
     return {
