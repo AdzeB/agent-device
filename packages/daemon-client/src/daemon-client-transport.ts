@@ -27,6 +27,7 @@ import {
   handleDaemonHttpResponseBody,
   hasOutgoingPrivateFieldComparison,
   serializePrivateSocketRequest,
+  sendPrivateFieldComparisonRequest,
 } from './daemon-client-rpc.ts';
 import { handleRequestTimeout } from './daemon-client-timeout.ts';
 import { isRemoteDaemon, type DaemonInfo } from './daemon-client-metadata.ts';
@@ -433,31 +434,15 @@ async function sendRequestWithFallback(
     }
   }
   if (hasOutgoingPrivateFieldComparison()) {
-    const { sanitizePrivateFieldResponse } =
-      await import('@agent-device/daemon-contracts/private-field-response');
-    if (transport !== 'socket' || info.baseUrl) {
-      throw new AppError('INVALID_ARGS', 'Private comparison requires the local socket transport');
-    }
-    try {
-      const { requirePrivateFieldDaemonIdentity } =
-        await import('./private-field-daemon-identity.ts');
-      await requirePrivateFieldDaemonIdentity(info);
-      return sanitizePrivateFieldResponse(
-        await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
+    return await sendPrivateFieldComparisonRequest({
+      info,
+      transport,
+      send: () =>
+        sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
           ...options,
           onProgress: () => {},
         }),
-      );
-    } catch {
-      return {
-        ok: true,
-        data: {
-          protocol: 'android-private-input-v1',
-          status: 'unknown',
-          reason: 'private-comparison-transport-failed',
-        },
-      };
-    }
+    });
   }
 
   try {
