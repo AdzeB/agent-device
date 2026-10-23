@@ -75,7 +75,7 @@ export async function renderOutputFixtures() {
       'snapshot.default.json': { data: snapshot.jsonData },
       'snapshot.digest.json': { data: daemon.snapshotDigest },
       'settle.default.text': { text: await interactionText(SETTLE_ADDED_REF_RESULT) },
-      'settle.default.json': { data: SETTLE_ADDED_REF_RESULT },
+      'settle.default.json': { data: daemon.settleDefault },
       'settle.digest.json': { data: daemon.settleDigest },
       'settle-tail.default.text': { text: await interactionText(SETTLE_TAIL_RESULT) },
       'settle-tail.digest.json': { data: daemon.settleTailDigest },
