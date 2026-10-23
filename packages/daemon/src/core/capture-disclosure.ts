@@ -124,7 +124,7 @@ export function withCaptureDisclosures(params: {
   );
 }
 
-export function withObservationEvidence(
+function withObservationEvidence(
   response: DaemonResponse,
   observation: RequestCaptureProof['observation'],
 ): DaemonResponse {

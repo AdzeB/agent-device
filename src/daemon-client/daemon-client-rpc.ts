@@ -1,3 +1,4 @@
+import type { DaemonTransportPreference } from '@agent-device/daemon-contracts/daemon-resolution';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { PrivateFieldComparison } from '@agent-device/daemon-contracts/private-field-comparison';
 import type { HostEnvironment } from '@agent-device/kernel/source-value';
@@ -265,4 +266,35 @@ export function serializePrivateSocketRequest(request: object): string {
   if (scope && !payload) throw new AppError('INVALID_ARGS', 'Invalid private comparison payload');
   if (scope) scope.payload = undefined;
   return JSON.stringify(payload ? { ...request, privateFieldComparison: payload } : request);
+}
+
+export async function sendPrivateFieldComparisonRequest({
+  info,
+  transport,
+  send,
+}: Readonly<{
+  info: DaemonInfo;
+  transport: Exclude<DaemonTransportPreference, 'auto'>;
+  send: () => Promise<DaemonResponse>;
+}>): Promise<DaemonResponse> {
+  const { sanitizePrivateFieldResponse } =
+    await import('@agent-device/daemon-contracts/private-field-response');
+  if (transport !== 'socket' || info.baseUrl) {
+    throw new AppError('INVALID_ARGS', 'Private comparison requires the local socket transport');
+  }
+  try {
+    const { requirePrivateFieldDaemonIdentity } =
+      await import('./private-field-daemon-identity.ts');
+    await requirePrivateFieldDaemonIdentity(info);
+    return sanitizePrivateFieldResponse(await send());
+  } catch {
+    return {
+      ok: true,
+      data: {
+        protocol: 'android-private-input-v1',
+        status: 'unknown',
+        reason: 'private-comparison-transport-failed',
+      },
+    };
+  }
 }
