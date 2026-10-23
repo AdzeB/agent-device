@@ -11,7 +11,6 @@ const MAX_NODES = 256;
 const MAX_FRAME_BYTES = 16_384;
 type ResponseNode = PostActionResponseFrame['snapshot']['nodes'][number];
 
-/** Retains existing captures only; it neither observes the device nor updates the ref frame. */
 export function createPostActionResponseCollector() {
   const response: PostActionResponse = { frames: [], omittedFrames: 0 };
   let previousDigest: string | undefined;

@@ -135,7 +135,8 @@ test('a failed fallback screenshot does not fail the snapshot that was asked for
 test('the fallback screenshot reaches the artifact inventory with its display rotation', async () => {
   const input = await scenario();
   const runtime = seed(SPARSE, (captureInput) => {
-    writeSolidPng(captureInput.outPath);
+    expect(captureInput.outPath).toBeDefined();
+    writeSolidPng(captureInput.outPath!);
     return { displayRotation: 'landscape-left' };
   });
 

@@ -218,7 +218,6 @@ struct Command: Codable {
   let commandId: String?
   let statusCommandId: String?
   let appBundleId: String?
-  var observeOnly: Bool? = nil
   let text: String?
   let selectorKey: String?
   let selectorValue: String?
@@ -434,7 +433,6 @@ struct TargetActivationFactPayload: Codable {
 }
 
 struct DataPayload: Codable {
-  var observation: ObservationEvidence? = nil
   var observationCapabilities: [String]? = nil
   var message: String?
   var imageBase64: String?
@@ -507,7 +505,7 @@ struct DataPayload: Codable {
   var failedStepIndex: Int?
   var sequenceResults: [SequenceStepResult]?
   var targetActivation: TargetActivationFactPayload?
-  var observation: SnapshotObservationPayload?
+  var observation: ObservationEvidence?
   /// Present on a screenshot the runner captured from a display it resolved, alongside the
   /// `message` path or `imageBase64` payload that carries the image itself (#2728).
   var screenshotMetadata: ScreenshotMetadataPayload?
@@ -547,13 +545,6 @@ struct KeyboardBandFactPayload: Codable, Equatable {
 struct SystemSurfaceProvenancePayload: Codable {
   let bundleId: String
   let kind: String
-}
-
-struct SnapshotObservationPayload: Codable {
-  var mode = "observe-only"
-  var activationPerformed = false
-  let appState: String
-  var appStateSource = "xcuiapplication-state"
 }
 
 struct SnapshotQualityPayload: Codable {

@@ -1,8 +1,5 @@
 import XCTest
 
-/// Response-level proof for an `observeOnly` command. `foregroundVerified` keeps its existing
-/// meaning (the requested app was `runningForeground` before and after capture); the activation
-/// and app-state fields record that the runner reached that answer without activating anything.
 struct ObservationEvidence: Codable {
   let mode: String
   let capability: String
@@ -19,8 +16,6 @@ extension RunnerTests {
   static let observationCapability = "non-activating-foreground-v1"
   static let observationAppStateSource = "xcuiapplication-state"
 
-  /// The observe-only route: never activates, launches, or rebinds through `activateTarget`, so no
-  /// `targetActivation` fact can be produced. A target that is not already foreground is refused.
   @MainActor
   func prepareObservationContext(command: Command) -> ActiveCommandPreparation {
     guard supportsObservationOnly(command.command) else {
@@ -45,7 +40,17 @@ extension RunnerTests {
     mainOwned.app = target
     mainOwned.bundleId = bundleId
     mainOwned.processIdentifier = Self.processIdentifier(of: target)
-    return .context(ActiveCommandContext(app: target))
+    return .context(ActiveCommandContext(
+      app: target,
+      observation: ObservationEvidence(
+        mode: "observe-only",
+        capability: Self.observationCapability,
+        foregroundVerified: true,
+        targetAppBundleId: bundleId,
+        appState: Self.applicationStateName(state),
+        appStateSource: Self.observationAppStateSource
+      )
+    ))
   }
 
   func completeObservation(command: Command, response: Response) throws -> Response {
@@ -90,10 +95,8 @@ extension RunnerTests {
     }
   }
 
-  /// Refusal proof. The target's state is measured whenever its identity is known (`state` never
-  /// activates), so a refusal reports what it found rather than only that it declined.
   @MainActor
-  private func observationUnavailable(
+  func observationUnavailable(
     command: Command,
     reason: String,
     targetState measuredState: XCUIApplication.State? = nil

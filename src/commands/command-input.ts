@@ -328,7 +328,6 @@ function optionEnumValues(definition: FlagDefinition): readonly string[] {
   return values;
 }
 
-/** Operator-only observe-without-activation switch shared by snapshot, get, is, and find. */
 export function observeOnlyField(): CommandField<boolean> {
   return operatorField(
     booleanField(

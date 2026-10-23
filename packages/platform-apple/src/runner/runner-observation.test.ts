@@ -8,7 +8,7 @@ import {
   assertObserveOnlyRunnerResponse,
   executeObserveOnlyRunnerExchange,
 } from './runner-observation.ts';
-import type { RunnerSession } from './runner-session-types.ts';
+import { makeRunnerSession } from './__tests__/runner-session-fixtures.ts';
 
 const COMMAND = { command: 'snapshot', appBundleId: 'com.example.app', observeOnly: true } as const;
 const PROOF = {
@@ -88,7 +88,7 @@ test('F5: no ready session refuses before anything is sent', async () => {
   await assert.rejects(
     executeObserveOnlyRunnerExchange({
       device: { id: 'sim', platform: 'apple', kind: 'simulator' } as DeviceInfo,
-      session: { port: 1 } as RunnerSession,
+      session: makeRunnerSession({ port: 1 }),
       command: COMMAND,
       logPath: undefined,
       timeoutMs: 1_000,

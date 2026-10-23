@@ -5,10 +5,14 @@ import {
   type SnapshotNode,
 } from '@agent-device/kernel/snapshot';
 import type { SelectorRuntimeParams } from './selector-runtime-backend.ts';
-import type { DaemonResponse } from './daemon-request.ts';
-import type { SessionState } from './session-state.ts';
+import type { DaemonResponse } from '@agent-device/kernel/contracts';
+import type { SessionState } from '../core/session-state.ts';
 import { parseVersionedRefPositional } from './ref-positionals.ts';
-import { readRefMutationFrame, readSessionRuntimeRevision, refFrameTree } from './ref-frame.ts';
+import {
+  readRefMutationFrame,
+  readSessionRuntimeRevision,
+  refFrameTree,
+} from '../core/ref-frame.ts';
 import { resolveBoundSelectorCapture } from './selector-capture-binding.ts';
 
 export async function dispatchPrivateFieldComparison(
@@ -41,6 +45,7 @@ export async function dispatchPrivateFieldComparison(
       session,
       inspectFacts: params.inspectFacts,
       bindDevice: params.bindDevice,
+      platformServices: params.platformServices,
     });
     if (!bound.ok || !bound.operations.comparePrivateField) return unknown('unsupported');
     const result = await bound.operations.comparePrivateField({

@@ -56,6 +56,7 @@ const APPLE_SIMULATOR_OPERATION_HOSTS: Readonly<
   // Refused on every Apple leaf at admission, so nothing waits on the runner. The volume keys are
   // refused on the simulator leaf too (XCUIDevice exposes no volume press there), and power and
   // the mute/sleep/wake/media keys are refused on every kind and OS.
+  comparePrivateField: 'simulator',
   sendTelephonyEvent: 'simulator',
   unlockOrientation: 'simulator',
   power: 'simulator',
@@ -77,8 +78,6 @@ const APPLE_SIMULATOR_OPERATION_HOSTS: Readonly<
   findText: 'runner',
   querySelector: 'runner',
   readTextAtPoint: 'runner',
-  // Android-only private field comparison; the Apple runtime never admits it.
-  comparePrivateField: 'simulator',
   // Every interaction and runner-driven capture.
   tapPoint: 'runner',
   tapRef: 'runner',

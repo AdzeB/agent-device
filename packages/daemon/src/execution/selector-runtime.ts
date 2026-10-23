@@ -126,7 +126,8 @@ export async function dispatchGetViaRuntime(
 ): Promise<DaemonResponse | null> {
   const { req } = params;
   if (req.command !== 'get') return null;
-  const { consumePrivateFieldComparison } = await import('@agent-device/daemon-contracts/private-field-comparison');
+  const { consumePrivateFieldComparison } =
+    await import('@agent-device/daemon-contracts/private-field-comparison');
   const privateRequest = consumePrivateFieldComparison();
   if (privateRequest) {
     const { dispatchPrivateFieldComparison } = await import('./private-field-runtime.ts');

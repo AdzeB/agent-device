@@ -140,7 +140,6 @@ export type RunnerCommand = {
    * because no other backend can carry them.
    */
   customActions?: boolean;
-  observeOnly?: boolean;
   depth?: number;
   scope?: string;
   raw?: boolean;
@@ -277,6 +276,8 @@ export const NO_TEXT_INPUT_AT_POINT_RUNNER_CODE = 'NO_TEXT_INPUT_AT_POINT';
  */
 export const TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE = 'TEXT_INPUT_PROBE_UNAVAILABLE';
 
+export const OBSERVATION_UNAVAILABLE_RUNNER_CODE = 'OBSERVATION_UNAVAILABLE';
+
 /**
  * Runner codes that classify a failure for the host without renaming it on the wire. They stay
  * `COMMAND_FAILED` and survive as `details.runnerErrorCode`, which is what family policy reads:
@@ -284,7 +285,6 @@ export const TEXT_INPUT_PROBE_UNAVAILABLE_RUNNER_CODE = 'TEXT_INPUT_PROBE_UNAVAI
  * the scroll keyboard refusal for a surface the runner declined to swipe under the keys, and the
  * retriable `APP_NOT_RUNNING` for a read the runner refused rather than launch the session app.
  */
-export const OBSERVATION_UNAVAILABLE_RUNNER_CODE = 'OBSERVATION_UNAVAILABLE';
 const DIAGNOSTIC_ONLY_RUNNER_ERROR_CODES: ReadonlyMap<string, { retriable?: true }> = new Map([
   [RUNNER_BUSY_RUNNER_CODE, { retriable: true }],
   [MAIN_THREAD_TIMEOUT_RUNNER_CODE, {}],
@@ -449,7 +449,6 @@ export function buildRunnerResponseError(
   });
 }
 
-/** The runner's observe-only refusal proof, preserved verbatim under `details.observation`. */
 function observationErrorDetails(value: unknown): { observation?: object } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return { observation: structuredClone(value) };

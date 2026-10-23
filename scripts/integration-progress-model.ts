@@ -390,7 +390,7 @@ function summarizeProviderScenarioFlagExclusions() {
       // sessions refuse it before capture, so no provider scenario can reach the observed path.
       name: 'local iOS observe-only snapshot',
       owner: 'Apple interactor observe-only and runner XCTest dispatch tests',
-      keys: ['snapshotObserveOnly'],
+      keys: ['observeOnly'],
     },
     {
       // The crop is daemon-level post-processing: the platform write happens first, then the

@@ -302,7 +302,6 @@ async function captureAppleRunnerSnapshot(
     backend: 'xctest' as const,
     producer: 'apple-runner' as const,
     ...(presentation.viewport ? { viewport: presentation.viewport } : {}),
-    ...(result.observation ? { observation: result.observation } : {}),
     ...(result.quality ? { quality: result.quality } : {}),
     ...(result.qualityNotes ? { qualityNotes: result.qualityNotes } : {}),
     ...(result.systemSurface ? { systemSurface: result.systemSurface } : {}),

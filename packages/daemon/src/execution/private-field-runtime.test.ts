@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
+import { daemonPlatformServicesFixture } from '../__tests__/support/platform-services-fixture.ts';
+import { touchCreateCommandSurface } from '../__tests__/support/touch-command-surface-fake.ts';
 import type { SnapshotState } from '@agent-device/kernel/snapshot';
-import { makeAndroidSession } from '../__tests__/test-utils/session-factories.ts';
-import { makeSessionStore } from '../__tests__/test-utils/store-factory.ts';
-import { selectorCaptureFixture } from './__tests__/selector-capture-fixture.ts';
-import { activateCompleteRefFrame } from './ref-frame.ts';
+import { makeAndroidSession } from '../__tests__/support/session-factories.ts';
+import { makeSessionStore } from '../__tests__/support/store-factory.ts';
+import { selectorCaptureFixture } from '../__tests__/support/selector-capture-fixture.ts';
+import { activateCompleteRefFrame } from '../core/ref-frame.ts';
 import { dispatchGetViaRuntime } from './selector-runtime.ts';
 import { withPrivateFieldComparison } from '@agent-device/daemon-contracts/private-field-comparison';
 
@@ -24,7 +26,7 @@ test('private get route resolves a real @ref generation through the owned frame'
     });
     activateCompleteRefFrame(session);
     const sessionStore = makeSessionStore();
-    sessionStore.set(session.name, session);
+    sessionStore.publish(session.name, session);
     let compared = false;
     const fixture = selectorCaptureFixture({
       comparePrivateField: async (input) => {
@@ -54,6 +56,8 @@ test('private get route resolves a real @ref generation through the owned frame'
             token: 'test',
             session: session.name,
           },
+          createCommandSurface: touchCreateCommandSurface,
+          platformServices: daemonPlatformServicesFixture(),
           sessionName: session.name,
           sessionStore,
           inspectFacts: fixture.inspectFacts,

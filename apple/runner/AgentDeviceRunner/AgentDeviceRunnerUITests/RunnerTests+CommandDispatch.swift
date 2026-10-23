@@ -120,7 +120,7 @@ extension RunnerTests {
     let app: XCUIApplication
     /// Set when `app` is a system surface served in place over the still-bound session app (#2438).
     var systemSurface: SystemSurfaceHost? = nil
-    var observation: SnapshotObservationPayload? = nil
+    var observation: ObservationEvidence? = nil
   }
 
   enum ActiveCommandPreparation {
@@ -669,12 +669,14 @@ extension RunnerTests {
     return XCUIApplication(bundleIdentifier: host.bundleId).state
   }
 
-  func observeOnlyUnavailableResponse() -> Response {
-    Response(ok: false, error: ErrorPayload(
-      code: "OBSERVATION_UNAVAILABLE",
-      message: "The session app cannot be observed without activation.",
-      hint: "XCUIApplication must report runningForeground before and after capture. This state report does not prove screen ownership (#2696)."
-    ))
+  func observeOnlyUnavailableResponse(command: Command) throws -> Response {
+    try runMainThreadWork(
+      "observe_only_refusal",
+      timeout: Self.mainThreadExecutionTimeout,
+      timeoutError: Self.mainThreadExecutionTimeoutError
+    ) {
+      self.observationUnavailable(command: command, reason: "observation_contract_mismatch")
+    }
   }
 
   func currentXCTestFailureCount() -> Int {

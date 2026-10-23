@@ -124,10 +124,6 @@ export function withCaptureDisclosures(params: {
   );
 }
 
-/**
- * The observe-only proof this request's own capture carried, as a typed fact with no sentence. A
- * failure that already carries the runner's own `details.observation` refusal keeps it.
- */
 export function withObservationEvidence(
   response: DaemonResponse,
   observation: RequestCaptureProof['observation'],

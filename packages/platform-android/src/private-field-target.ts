@@ -12,7 +12,7 @@ export function resolveFocusedPrivateTarget(
   const focused: AndroidUiHierarchy[] = [];
   function visit(node: AndroidUiHierarchy, window?: AndroidUiHierarchy) {
     const owner = node.windowIndex !== undefined ? node : window;
-    if (node.focused === true && node.editable === true) focused.push(node);
+    if (node.focused === true && node.passiveFacts.editable === true) focused.push(node);
     if (
       matchesIdentity(node, input) &&
       matchesRect(node.rect, rect!) &&
@@ -52,7 +52,11 @@ function matchesRect(actual: Rect | undefined, expected: Rect): boolean {
 }
 
 function isAvailableInput(node: AndroidUiHierarchy): boolean {
-  return node.editable === true && node.enabled !== false && node.visibleToUser !== false;
+  return (
+    node.passiveFacts.editable === true &&
+    node.passiveFacts.enabled !== false &&
+    node.visibleToUser !== false
+  );
 }
 
 function isFocusedApplicationWindow(window: AndroidUiHierarchy | undefined): boolean {

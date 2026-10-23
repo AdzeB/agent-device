@@ -13,10 +13,6 @@ import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
 const MAX_STREAM_BASE64_LENGTH = 16 * 1024 * 1024 - 8192;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-/**
- * File screenshots keep the shared interactor path. A memory-only stream is answered only by the
- * ready runner session bound to this request's lease, through the non-activating observe route.
- */
 export function bindAppleScreenshotRuntime(
   host: PlatformRuntimeHost,
   request: Readonly<{ device: DeviceInfo; signal: AbortSignal }>,
@@ -49,6 +45,7 @@ export function bindAppleScreenshotRuntime(
           runnerSessionId: session.sessionId,
           observation: { ...observation },
         });
+        return {};
       } catch {
         throw unavailable();
       }

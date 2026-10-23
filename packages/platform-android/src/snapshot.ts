@@ -127,7 +127,6 @@ export async function captureAndroidCompleteUiHierarchy(
   device: DeviceInfo,
   options: AndroidSnapshotOptions = {},
 ): Promise<AndroidUiHierarchy | undefined> {
-  const adb = resolveAndroidAdbProvider(device, options.helperAdb).exec;
   const capture = await captureAndroidUiHierarchy(device, options);
   if (
     capture.metadata.helperTruncated !== false ||

@@ -56,7 +56,6 @@ export function buildSnapshotState(
     systemSurface?: IosSystemSurfaceProvenance;
     /** Foreground repair this capture's own command performed (#2682). */
     targetActivation?: IosTargetActivation;
-    /** Non-activating proof an observe-only capture carried; never present beside a repair. */
     observation?: ObserveOnlyEvidence;
     /** The keyboard band the producer measured, carried to the state the tap guards read (#2660). */
     keyboard?: SnapshotKeyboardBandFact;

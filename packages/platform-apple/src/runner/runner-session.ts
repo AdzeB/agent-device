@@ -575,9 +575,8 @@ export function readRunnerSessionLiveness(deviceId: string): RunnerSessionRegist
   };
 }
 
-/** The registered session only when it is ready and its process is alive; never starts one. */
 export function getReadyRunnerSession(deviceId: string): RunnerSession | undefined {
-  const session = runnerSessions.get(deviceId);
+  const session = runnerSessions().get(deviceId);
   return session?.state === 'ready' && isRunnerProcessAlive(session.child.pid)
     ? session
     : undefined;

@@ -2,22 +2,13 @@ import { observeOnlyRefusal } from '@agent-device/contracts/capture';
 import { AppError } from '@agent-device/kernel/errors';
 import { errorResponse } from '@agent-device/kernel/contracts';
 import { checkFindArgs, isReadOnlyFindAction } from '@agent-device/selectors';
-import type { DeviceLease } from '@agent-device/contracts/device';
-import type { DaemonRequest, DaemonResponse } from './daemon-request.ts';
+import type { DaemonRequest } from './daemon-request.ts';
+import type { DaemonResponse } from '@agent-device/kernel/contracts';
 import type { SessionState } from './session-state.ts';
 import type { InspectDeviceRuntimeFacts } from './request-runtime-binding.ts';
 
 function observationRefusal(reason: string) {
   return { observation: observeOnlyRefusal(reason) };
-}
-
-export function requireObserveOnlyLease(lease: DeviceLease | undefined): DeviceLease {
-  if (lease) return lease;
-  throw new AppError(
-    'COMMAND_FAILED',
-    '--observe-only cannot read an expired session.',
-    observationRefusal('session_expired'),
-  );
 }
 
 export function observeOnlyCommandResponse(req: DaemonRequest): DaemonResponse | undefined {

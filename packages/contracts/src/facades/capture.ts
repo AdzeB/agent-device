@@ -31,7 +31,6 @@ export {
   readObserveOnlyEvidence,
   readSerializedSnapshotCaptureAnnotations,
   readSnapshotQualityNotes,
-  readSnapshotObservation,
   snapshotCaptureAnnotationsFrom,
 } from '../snapshot-capture-annotations.ts';
 export type {

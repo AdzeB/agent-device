@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { expect, it } from 'vitest';
-import { privateComparisonArgs, runPrivateFieldComparison } from '@agent-device/daemon-contracts/private-field-comparison';
+import { privateComparisonArgs, runPrivateFieldComparison } from './private-field-comparison.ts';
 import { serializePrivateSocketRequest } from '@agent-device/daemon-contracts/private-field-comparison';
 
 const args = [

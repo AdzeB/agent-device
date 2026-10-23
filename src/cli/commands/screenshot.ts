@@ -18,7 +18,8 @@ export const screenshotCommand: ClientCommandHandler = async ({
   client,
   host,
 }) => {
-  if (flags.screenshotStream && !flags.json) throw new AppError('INVALID_ARGS', '--stream requires --json');
+  if (flags.screenshotStream && !flags.json)
+    throw new AppError('INVALID_ARGS', '--stream requires --json');
   const result = (await runCliCommand({
     client,
     command: 'screenshot',

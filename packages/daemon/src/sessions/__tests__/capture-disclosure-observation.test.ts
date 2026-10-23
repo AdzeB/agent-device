@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { iosTargetActivationDisclosure } from '@agent-device/contracts/ios-target-activation';
 import type { IosTargetActivation, ObserveOnlyEvidence } from '@agent-device/kernel/snapshot';
-import { recordCaptureProof, withCaptureDisclosures } from '../capture-disclosure.ts';
-import type { RequestCaptureProof } from '../capture-disclosure.ts';
-import { RESPONSE_VIEWS } from '../response-views.ts';
+import { recordCaptureProof, withCaptureDisclosures } from '../../core/capture-disclosure.ts';
+import type { RequestCaptureProof } from '../../core/capture-disclosure.ts';
+import { RESPONSE_VIEWS } from '../../server/response-views.ts';
 
 const PROOF: ObserveOnlyEvidence = {
   mode: 'observe-only',

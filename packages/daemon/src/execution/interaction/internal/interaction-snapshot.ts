@@ -1,6 +1,6 @@
 import { observeOnlyRefusal } from '@agent-device/contracts/capture';
 import { AppError } from '@agent-device/kernel/errors';
-import { isActiveProviderDevice } from '../../../provider-device-runtime.ts';
+import { isActiveProviderDevice } from '../../../core/provider-device-admission.ts';
 import type { CommandFlags } from '@agent-device/contracts/command';
 import type { SnapshotState } from '@agent-device/kernel/snapshot';
 import type { DaemonCommandContext } from '../../../core/context.ts';

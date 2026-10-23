@@ -29,9 +29,7 @@ import type {
 // pinned to it by `commands/command-input-option-field.test.ts`.
 export type CaptureSnapshotOptions = AgentDeviceRequestOverrides &
   AgentDeviceSelectionOptions &
-  Omit<SnapshotCommandOptionFields, 'customActions' | 'observeOnly'> & {
-    /** Operator-only: refuse acquisition that would launch, activate, or recover the target app. */
-    observeOnly?: SnapshotCommandOptionFields['observeOnly'];
+  Omit<SnapshotCommandOptionFields, 'customActions'> & {
     /**
      * Name the affordances an element merged away (iOS UIAccessibilityCustomAction,
      * React Native accessibilityActions) — a card whose reply/options controls are not
