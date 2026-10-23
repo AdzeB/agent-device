@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   consumePrivateFieldComparison,
-  hasOutgoingPrivateFieldComparison,
   parsePrivateFieldComparison,
-  serializePrivateSocketRequest,
-  withOutgoingPrivateFieldComparison,
   withPrivateFieldComparison,
 } from './private-field-comparison.ts';
 
@@ -15,17 +12,6 @@ const payload = {
 };
 
 describe('private comparison scope', () => {
-  it('adds private input only at final serialization and consumes it once', async () => {
-    const request = { command: 'get', positionals: ['attrs', '@e1~s2'] };
-    await withOutgoingPrivateFieldComparison(payload, async () => {
-      expect(JSON.stringify(request)).not.toContain(payload.expectedValue);
-      expect(JSON.parse(serializePrivateSocketRequest(request)).privateFieldComparison).toEqual(
-        payload,
-      );
-      expect(() => serializePrivateSocketRequest(request)).toThrow();
-    });
-    expect(hasOutgoingPrivateFieldComparison()).toBe(false);
-  });
   it('isolates concurrent scopes even with identical caller IDs', async () => {
     await Promise.all(
       ['one', 'two'].map(async (expectedValue) => {

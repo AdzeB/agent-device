@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { createLiveTestHostEnvironment } from '@agent-device/test-kit';
 import { requirePrivateFieldDaemonIdentity } from './private-field-daemon-identity.ts';
 import { sendRequest } from './daemon-client-transport.ts';
-import { withOutgoingPrivateFieldComparison } from '@agent-device/daemon-contracts/private-field-comparison';
+import { withOutgoingPrivateFieldComparison } from './daemon-client-rpc.ts';
 import { resolveDaemonPaths } from '@agent-device/daemon-contracts/daemon-resolution';
 import { resolveLocalDaemonCodeIdentity } from './daemon-launch-spec.ts';
 

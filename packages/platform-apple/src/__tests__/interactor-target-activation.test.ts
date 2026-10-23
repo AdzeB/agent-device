@@ -64,6 +64,9 @@ test.each([
   async (_leaf, device) => {
     const observation = {
       mode: 'observe-only',
+      capability: 'non-activating-foreground-v1',
+      foregroundVerified: true,
+      targetAppBundleId: 'com.example.app',
       activationPerformed: false,
       appState: 'runningForeground',
       appStateSource: 'xcuiapplication-state',
@@ -108,6 +111,9 @@ test('observe-only refuses a contradictory activation fact', async () => {
       ...HEALTHY_TREE,
       observation: {
         mode: 'observe-only',
+        capability: 'non-activating-foreground-v1',
+        foregroundVerified: true,
+        targetAppBundleId: 'com.example.app',
         activationPerformed: false,
         appState: 'runningForeground',
         appStateSource: 'xcuiapplication-state',
