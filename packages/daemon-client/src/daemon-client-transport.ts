@@ -28,6 +28,7 @@ import {
   hasOutgoingPrivateFieldComparison,
   serializePrivateSocketRequest,
   sendPrivateFieldComparisonRequest,
+  sendScreenshotStreamRequest,
 } from './daemon-client-rpc.ts';
 import { handleRequestTimeout } from './daemon-client-timeout.ts';
 import { isRemoteDaemon, type DaemonInfo } from './daemon-client-metadata.ts';
@@ -419,19 +420,15 @@ async function sendRequestWithFallback(
   // that begins after the abort must not send either — every attempt starts behind this check.
   refuseAbortedRequest(options.signal, req.meta?.requestId);
   if (req.flags?.screenshotStream === true) {
-    if (transport !== 'socket' || info.baseUrl)
-      throw new AppError('INVALID_ARGS', 'Memory screenshot requires the local socket transport');
-    try {
-      const { requirePrivateFieldDaemonIdentity } =
-        await import('./private-field-daemon-identity.ts');
-      await requirePrivateFieldDaemonIdentity(info);
-      return await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
-        ...options,
-        onProgress: () => {},
-      });
-    } catch {
-      throw new AppError('COMMAND_FAILED', 'Memory screenshot transport unavailable');
-    }
+    return await sendScreenshotStreamRequest({
+      info,
+      transport,
+      send: () =>
+        sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
+          ...options,
+          onProgress: () => {},
+        }),
+    });
   }
   if (hasOutgoingPrivateFieldComparison()) {
     return await sendPrivateFieldComparisonRequest({
