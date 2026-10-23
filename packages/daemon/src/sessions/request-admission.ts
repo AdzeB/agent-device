@@ -119,9 +119,11 @@ function admitLease(
   assertRequestSessionLeaseMatches(resolveLeaseScope(req), session?.lease);
   const leaseScope = resolveRequestOrSessionLeaseScope(req, session);
   if (req.flags?.observeOnly) {
-    return requireObserveOnlyLease(
+    const lease = requireObserveOnlyLease(
       leaseRegistry.peekActiveLease(leaseScopeToHeartbeatRequest(leaseScope)),
     );
+    assertMacOsAppLeaseAdmitsRequest(lease, req, session, env);
+    return lease;
   }
   leaseRegistry.assertLeaseAdmission(leaseScopeToHeartbeatRequest(leaseScope));
   // Admission renews for the window the lease already carries, or the window this request named.
