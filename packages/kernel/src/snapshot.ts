@@ -1,3 +1,6 @@
+import type { ObserveOnlyEvidence } from './snapshot-observation.ts';
+export type { ObserveOnlyEvidence, ObserveOnlyRefusal } from './snapshot-observation.ts';
+
 /**
  * Structured quality verdict computed once by a platform snapshot capture/presentation plan.
  * The daemon renders it; it never re-derives degradation from node shapes.
@@ -87,34 +90,6 @@ export type Point = {
   y: number;
 };
 
-export type ObserveOnlyEvidence = Readonly<{
-  mode: 'observe-only';
-  capability: 'non-activating-foreground-v1';
-  foregroundVerified: true;
-  targetAppBundleId: string;
-  /** Observation never activates; a capture that needed activation is refused instead. */
-  activationPerformed: false;
-  /** The target's `XCUIApplication.state` re-read after capture, by name. */
-  appState: 'runningForeground';
-  appStateSource: 'xcuiapplication-state';
-}>;
-
-/**
- * The refusal block an observe-only read carries under `error.details.observation`. A refusal
- * performed no activation; `appState` is present only when the runner measured the target.
- */
-export type ObserveOnlyRefusal = Readonly<{
-  mode: 'observe-only';
-  capability: 'non-activating-foreground-v1';
-  foregroundVerified: false;
-  activationPerformed: false;
-  reason: string;
-  targetAppBundleId?: string;
-  appState?: string;
-  appStateSource?: 'xcuiapplication-state';
-  targetState?: number;
-}>;
-
 export type SnapshotOptions = {
   observeOnly?: boolean;
   interactiveOnly?: boolean;
@@ -165,7 +140,6 @@ export const SNAPSHOT_OPTION_FLAGS = {
   depth: 'snapshotDepth',
   scope: 'snapshotScope',
   raw: 'snapshotRaw',
-  observeOnly: 'snapshotObserveOnly',
   customActions: 'snapshotCustomActions',
   forceFull: 'snapshotForceFull',
   includeHiddenContentHints: 'snapshotIncludeHiddenContentHints',

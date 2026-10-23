@@ -124,8 +124,6 @@ test('serialized clipping notes are bounded and independent of verdicts', () => 
   }
 });
 
-// F3/F13: observe-only proof is all-or-nothing; refusals keep foregroundVerified:false and say no
-// activation happened.
 const OBSERVE_ONLY_PROOF = {
   mode: 'observe-only',
   capability: 'non-activating-foreground-v1',

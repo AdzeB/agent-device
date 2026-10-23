@@ -182,7 +182,6 @@ test('findText on a physical iOS device resolves the runner regardless of sessio
   expect(resolve).toHaveBeenCalledOnce();
 });
 
-// F6: observe-only proof only comes from the runner's non-activating route.
 test('observe-only snapshots bypass the alternate Apple snapshot route', async () => {
   const snapshot = vi.fn(async () => ({ nodes: [], backend: 'xctest' }) as never);
   const resolve = vi.fn(async () => ({ snapshot }) as never);
@@ -190,7 +189,7 @@ test('observe-only snapshots bypass the alternate Apple snapshot route', async (
   const route = { capture } as unknown as AppleSnapshotRoute;
   const operation = bindAppleSnapshotRuntime(
     { ...platformRuntimeHostFixture(), localInteractors: { resolve } },
-    { device: ios, signal: new AbortController().signal },
+    { device: ios, signal: new AbortController().signal, appBackend: 'xctest' },
     route,
   );
 
@@ -212,6 +211,7 @@ test('observe-only refuses a macOS helper surface without capturing', async () =
     {
       device: { ...ios, appleOs: 'macos', kind: 'device', target: 'desktop' },
       signal: new AbortController().signal,
+      appBackend: 'native',
     },
   );
   await expect(

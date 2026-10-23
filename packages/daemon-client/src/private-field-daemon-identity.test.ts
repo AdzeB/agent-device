@@ -1,8 +1,9 @@
 import { expect, it, vi } from 'vitest';
+import { createLiveTestHostEnvironment } from '@agent-device/test-kit';
 import { requirePrivateFieldDaemonIdentity } from './private-field-daemon-identity.ts';
 import { sendRequest } from './daemon-client-transport.ts';
 import { withOutgoingPrivateFieldComparison } from '@agent-device/daemon-contracts/private-field-comparison';
-import { resolveDaemonPaths } from '../daemon-resolution.ts';
+import { resolveDaemonPaths } from '@agent-device/daemon-contracts/daemon-resolution';
 import { resolveLocalDaemonCodeIdentity } from './daemon-launch-spec.ts';
 
 vi.mock('@agent-device/host-kit/version', () => ({ readVersion: () => '0.20.11-a1' }));
@@ -70,6 +71,7 @@ it('does not connect or serialize private input when startup returns stale metad
           'socket',
           resolveDaemonPaths('/tmp/private-field-identity-fixture'),
           100,
+          { host: createLiveTestHostEnvironment() },
         ),
     );
     expect(result).toMatchObject({ ok: true, data: { status: 'unknown' } });

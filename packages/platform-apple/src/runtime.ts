@@ -28,10 +28,7 @@ import {
 } from '@agent-device/contracts/focus-runtime';
 import { bindLocalGestureInteractor } from '@agent-device/contracts/gesture-runtime';
 import { bindLocalScrollInteractor } from '@agent-device/contracts/scroll-runtime';
-import {
-  bindLocalScreenshotInteractor,
-  screenshotRuntimeOperationFacts,
-} from '@agent-device/contracts/screenshot-runtime';
+import { screenshotRuntimeOperationFacts } from '@agent-device/contracts/screenshot-runtime';
 import {
   selectorObservationRuntimeOperationFacts,
   type SelectorObservationRuntimeOperations,

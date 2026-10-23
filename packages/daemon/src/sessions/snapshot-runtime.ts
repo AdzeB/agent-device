@@ -43,17 +43,19 @@ export async function dispatchSnapshotViaRuntime(
         publicNodes === result.nodes ? result : { ...result, nodes: publicNodes },
       );
       const session = getSession();
-      const fallbackScreenshot = request.flags?.observeOnly ? undefined : await captureSparseFallbackScreenshot({
-        createCommandSurface: params.createCommandSurface,
-        req: request,
-        session,
-        sessionName: resolvedSessionName,
-        logPath: params.logPath,
-        verdict: result.snapshotQuality,
-        inspectFacts: params.inspectFacts,
-        platformServices: params.platformServices,
-        bindDevice: params.bindDevice,
-      });
+      const fallbackScreenshot = request.flags?.observeOnly
+        ? undefined
+        : await captureSparseFallbackScreenshot({
+            createCommandSurface: params.createCommandSurface,
+            req: request,
+            session,
+            sessionName: resolvedSessionName,
+            logPath: params.logPath,
+            verdict: result.snapshotQuality,
+            inspectFacts: params.inspectFacts,
+            platformServices: params.platformServices,
+            bindDevice: params.bindDevice,
+          });
       const published = copySnapshotClickabilityEvidence(
         publicResult,
         fallbackScreenshot

@@ -44,8 +44,6 @@ import {
   type BoundNativeTextRead,
 } from './selector-operation-binding.ts';
 import { errorResponse } from '@agent-device/kernel/contracts';
-import { AppError } from '@agent-device/kernel/errors';
-import { isHandheldAppleDevice } from '@agent-device/kernel/device';
 
 export type SnapshotRuntimeRouteParams = {
   /** Builds the command surface this request's snapshot runtime executes through. */

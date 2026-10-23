@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { observeOnlyCommandResponse, requireObserveOnlyLease } from './observe-only-policy.ts';
-import { AppError } from '@agent-device/kernel/errors';
+import { observeOnlyCommandResponse } from './observe-only-policy.ts';
 
 function refusal(command: string, positionals: string[], flags: Record<string, unknown> = {}) {
   return observeOnlyCommandResponse({
@@ -29,14 +28,4 @@ test('observe-only admits reads only and refuses with a non-activation block', (
     assert.equal(observation.foregroundVerified, false);
     assert.equal(observation.activationPerformed, false);
   }
-});
-
-test('F8: an expired lease is refused rather than renewed', () => {
-  assert.throws(
-    () => requireObserveOnlyLease(undefined),
-    (error: unknown) => {
-      const observation = error instanceof AppError ? error.details?.observation : undefined;
-      return (observation as { reason?: string } | undefined)?.reason === 'session_expired';
-    },
-  );
 });

@@ -63,11 +63,6 @@ export function assertObserveOnlyRunnerCapability(data: Record<string, unknown>)
   }
 }
 
-/**
- * The observe-only exchange: only an already-ready session is used, the runner must advertise the
- * non-activating capability before the command is sent, and the answer must carry the matching
- * proof and no activation fact. Nothing here starts, restarts, or adopts a runner.
- */
 export async function executeObserveOnlyRunnerExchange(params: {
   device: DeviceInfo;
   session: RunnerSession;
@@ -85,7 +80,7 @@ export async function executeObserveOnlyRunnerExchange(params: {
   const capability = await parseRunnerResponse(
     await sendRunnerCommandOnce(
       device,
-      session.port,
+      session.endpoint,
       withRunnerCommandId({ command: 'uptime' }),
       deadline.remainingMs(),
       signal,
@@ -114,7 +109,6 @@ function isInlineScreenshot(command: RunnerCommand): boolean {
   return command.command === 'screenshot' && command.inlineScreenshot === true;
 }
 
-/** Memory-only pixels bypass the text parser: the body is read under a byte ceiling and zeroed. */
 async function readInlineScreenshot(
   device: DeviceInfo,
   session: RunnerSession,
@@ -124,7 +118,7 @@ async function readInlineScreenshot(
 ): Promise<Record<string, unknown>> {
   const response = await sendRunnerCommandOnce(
     device,
-    session.port,
+    session.endpoint,
     withRunnerCommandId(command),
     deadline.remainingMs(),
     signal,

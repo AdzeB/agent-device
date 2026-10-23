@@ -1,22 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import type { AgentDeviceBackend, BackendSnapshotOptions } from '../../../backend.ts';
+import type { AgentDeviceBackend, BackendSnapshotOptions } from '@agent-device/contracts/backend';
 import type { ObserveOnlyEvidence, SnapshotState } from '@agent-device/kernel/snapshot';
 import { createLocalArtifactAdapter } from '../../../io.ts';
-import {
-  createAgentDevice,
-  createMemorySessionStore,
-  localCommandPolicy,
-} from '../../../runtime.ts';
+import { createAgentDevice } from '../../../runtime.ts';
+import { createMemorySessionStore } from '../../../command-runtime/runtime-factory.ts';
+import { localCommandPolicy } from '@agent-device/contracts/command-policy';
 import { selector } from './selector-read-utils.ts';
 import {
   buttonSnapshot,
   createFakeClock,
   welcomeSnapshot,
 } from './__tests__/settle-device-fixtures.ts';
-
-// F9: `--settle --settle-observe-only` keeps the action's own authorization, asks every settle
-// capture for the non-activating route, and never fails the action when that route is unavailable.
 
 const PROOF: ObserveOnlyEvidence = {
   mode: 'observe-only',
@@ -39,7 +34,10 @@ function device(params: {
   return createAgentDevice({
     backend: {
       platform: 'ios',
-      captureSnapshot: async (_context, options) => params.capture(options, (index += 1)),
+      captureSnapshot: async (_context, options) => {
+        const { snapshot, observation } = params.capture(options, (index += 1));
+        return { snapshot: { ...snapshot, ...(observation ? { observation } : {}) } };
+      },
       tap: async () => {
         params.taps.count += 1;
         return { ok: true };

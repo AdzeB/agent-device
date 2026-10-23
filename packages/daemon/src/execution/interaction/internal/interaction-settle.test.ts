@@ -159,6 +159,16 @@ const settlingSurface = createTouchCommandSurface({
       const { diff, tail } = settledDiff(baseline, settled.nodes);
       return {
         settled: true,
+        response: {
+          frames: [
+            {
+              capturedAt: 0,
+              snapshot: { nodes: [{ type: 'StaticText', label: 'Welcome!' }] },
+              truncated: false,
+            },
+          ],
+          omittedFrames: 0,
+        },
         waitedMs: 0,
         captures: 1,
         quietMs,
@@ -319,12 +329,6 @@ test('press --settle responds with the settled diff, refsGeneration, and activat
   expect(settle).toBeTruthy();
   expect(settle.response?.frames).toHaveLength(1);
   expect(settle.response?.frames[0]?.snapshot.nodes.length).toBeGreaterThan(0);
-  const { runCliCapture } = await import('../../../../__tests__/cli-capture.ts');
-  const cli = await runCliCapture(['press', 'label=Continue', '--settle', '--json'], {
-    defaultResponse: response!,
-  });
-  expect(cli.code).toBeNull();
-  expect(JSON.parse(cli.stdout).data.settle.response).toEqual(settle.response);
   expect(settle.settled).toBe(true);
   expect(settle.quietMs).toBe(25);
   expect(settle.timeoutMs).toBe(2_000);

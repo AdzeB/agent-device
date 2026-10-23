@@ -95,7 +95,7 @@ extension RunnerTests {
     command: Command,
     target: SnapshotCaptureTarget,
     systemSurface: SystemSurfaceHost?,
-    observation: SnapshotObservationPayload?
+    observation: ObservationEvidence?
   ) throws -> Response {
     let options = Self.presentationOptions(from: command)
     do {
@@ -113,7 +113,7 @@ extension RunnerTests {
       }
       if let observation {
         guard let capturedProcessIdentifier = target.processIdentifier else {
-          return observeOnlyUnavailableResponse()
+          return try observeOnlyUnavailableResponse(command: command)
         }
         let unchanged = try runMainThreadWork(
           "observe_only_state",
@@ -123,7 +123,7 @@ extension RunnerTests {
           target.app.state == .runningForeground
             && Self.processIdentifier(of: target.app) == capturedProcessIdentifier
         }
-        guard unchanged else { return observeOnlyUnavailableResponse() }
+        guard unchanged else { return try observeOnlyUnavailableResponse(command: command) }
         payload.observation = observation
       }
       setNeedsPostSnapshotInteractionDelay()

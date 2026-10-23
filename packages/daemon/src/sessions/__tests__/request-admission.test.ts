@@ -4,7 +4,11 @@ import { makeIosSession, makeMacOsSession } from '../../__tests__/support/sessio
 import { parseDaemonPolicy } from '@agent-device/daemon-contracts/daemon-policy-file';
 import { AppError } from '@agent-device/kernel/errors';
 import { LeaseRegistry } from '../../resources/lease-registry.ts';
-import { assertRequestLeaseAdmission, isConfinedToAppLease } from '../request-admission.ts';
+import {
+  assertRequestLeaseAdmission,
+  isConfinedToAppLease,
+  requireObserveOnlyLease,
+} from '../request-admission.ts';
 import type { DaemonRequest } from '../../core/daemon-request.ts';
 import type { ProviderAppCatalog } from '@agent-device/contracts/device';
 
@@ -461,5 +465,15 @@ test('a daemon policy that requires a macos-app lease refuses unleased and other
       { env: process.env, daemonPolicy: policy },
     )?.leaseId,
     lease.leaseId,
+  );
+});
+
+test('F8: an expired lease is refused rather than renewed', () => {
+  assert.throws(
+    () => requireObserveOnlyLease(undefined),
+    (error: unknown) => {
+      const observation = error instanceof AppError ? error.details?.observation : undefined;
+      return (observation as { reason?: string } | undefined)?.reason === 'session_expired';
+    },
   );
 });

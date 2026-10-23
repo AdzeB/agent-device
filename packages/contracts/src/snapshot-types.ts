@@ -5,7 +5,6 @@ import type {
   SnapshotOptions,
   SnapshotQualityVerdict,
   SnapshotQualityNote,
-  IosSnapshotObservation,
   ScreenshotOverlayRef,
   SnapshotViewportSize,
 } from '@agent-device/kernel/snapshot';
@@ -49,7 +48,6 @@ export type BackendSnapshotResult = {
   quality?: SnapshotQualityVerdict;
   qualityNotes?: SnapshotQualityNote[];
   warnings?: string[];
-  observation?: IosSnapshotObservation;
 };
 export type BackendSnapshotOptions = SnapshotOptions & {
   includeRects?: boolean;

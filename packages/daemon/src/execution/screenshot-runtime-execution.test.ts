@@ -391,7 +391,8 @@ test('the crop plan is refused up front when the target cannot capture a tree', 
 test('the result record carries the display rotation the capture reported', async () => {
   const fixture = screenshotRuntimeFixture({
     onCapture: (input) => {
-      writeSolidPng(input.outPath);
+      expect(input.outPath).toBeDefined();
+      writeSolidPng(input.outPath!);
       return { displayRotation: 'landscape-left' };
     },
   });
@@ -439,7 +440,8 @@ for (const backend of ['coredevice', 'xctest', undefined] as const) {
     test(`physical iPhone capture backend=${backend}, crop=${crop} enforces capture evidence`, async () => {
       const fixture = screenshotRuntimeFixture({
         onCapture: ({ outPath }) => {
-          writeSolidPng(outPath);
+          expect(outPath).toBeDefined();
+          writeSolidPng(outPath!);
           return backend ? { iosPhysicalCaptureBackend: backend } : {};
         },
         snapshotResult: () => ({ nodes: CROP_TREE, backend: 'xctest', producer: 'apple-runner' }),

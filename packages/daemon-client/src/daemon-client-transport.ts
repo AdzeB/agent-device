@@ -182,7 +182,6 @@ export async function canConnect(
   probeTimeoutMs?: number,
 ): Promise<boolean> {
   const deadline = Date.now() + (probeTimeoutMs ?? Number.POSITIVE_INFINITY);
-    return await sendPixelRequest(info, req, statePaths, timeoutMs, transport);
   const transport = chooseTransport(info, preference);
   const fallback = chooseAutoFallbackTransport(info, preference, transport);
   const firstBudget = (deadline - Date.now()) / (fallback ? 2 : 1);
@@ -413,10 +412,26 @@ async function sendRequestWithFallback(
   // A canceled caller must not open a connection just to lose it, and a fallback or instance retry
   // that begins after the abort must not send either — every attempt starts behind this check.
   refuseAbortedRequest(options.signal, req.meta?.requestId);
+  if (req.flags?.screenshotStream === true) {
+    if (transport !== 'socket' || info.baseUrl)
+      throw new AppError('INVALID_ARGS', 'Memory screenshot requires the local socket transport');
+    try {
+      const { requirePrivateFieldDaemonIdentity } =
+        await import('./private-field-daemon-identity.ts');
+      await requirePrivateFieldDaemonIdentity(info);
+      return await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
+        ...options,
+        onProgress: () => {},
+      });
+    } catch {
+      throw new AppError('COMMAND_FAILED', 'Memory screenshot transport unavailable');
+    }
+  }
   const { hasOutgoingPrivateFieldComparison } =
     await import('@agent-device/daemon-contracts/private-field-comparison');
   if (hasOutgoingPrivateFieldComparison()) {
-    const { sanitizePrivateFieldResponse } = await import('@agent-device/daemon-contracts/private-field-response');
+    const { sanitizePrivateFieldResponse } =
+      await import('@agent-device/daemon-contracts/private-field-response');
     if (transport !== 'socket' || info.baseUrl) {
       throw new AppError('INVALID_ARGS', 'Private comparison requires the local socket transport');
     }
@@ -426,6 +441,7 @@ async function sendRequestWithFallback(
       await requirePrivateFieldDaemonIdentity(info);
       return sanitizePrivateFieldResponse(
         await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
+          ...options,
           onProgress: () => {},
         }),
       );
@@ -635,7 +651,8 @@ async function sendSocketRequest(
   timeoutMs: number | undefined,
   options: SendRequestOptions,
 ): Promise<DaemonResponse> {
-  const { serializePrivateSocketRequest } = await import('@agent-device/daemon-contracts/private-field-comparison');
+  const { serializePrivateSocketRequest } =
+    await import('@agent-device/daemon-contracts/private-field-comparison');
   const port = info.port;
   if (!port) throw daemonEndpointUnavailableError('socket');
   const callerSignal = options.signal;
@@ -970,26 +987,5 @@ export async function cachedRemoteDaemonHealth(info: DaemonInfo): Promise<Remote
   } catch (error) {
     if (remoteHealthCache === entry) remoteHealthCache = undefined;
     throw error;
-  }
-}
-
-async function sendPixelRequest(
-  info: DaemonInfo,
-  req: DaemonRequest,
-  statePaths: DaemonPaths,
-  timeoutMs: number | undefined,
-  transport: ResolvedDaemonTransport,
-): Promise<DaemonResponse> {
-  if (transport !== 'socket' || info.baseUrl)
-    throw new AppError('INVALID_ARGS', 'Memory screenshot requires the local socket transport');
-  try {
-    const { requirePrivateFieldDaemonIdentity } =
-      await import('./private-field-daemon-identity.ts');
-    await requirePrivateFieldDaemonIdentity(info);
-    return await sendRequestWithTransport(info, req, statePaths, timeoutMs, transport, {
-      onProgress: () => {},
-    });
-  } catch {
-    throw new AppError('COMMAND_FAILED', 'Memory screenshot transport unavailable');
   }
 }

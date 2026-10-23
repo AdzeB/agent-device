@@ -297,7 +297,6 @@ export async function executeRunnerCommand(
   }
 }
 
-/** Observe-only never starts, restarts, or adopts a runner: it uses the ready session or refuses. */
 async function executeObserveOnlyRunnerCommand(
   device: DeviceInfo,
   command: RunnerCommand,

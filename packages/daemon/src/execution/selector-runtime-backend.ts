@@ -1,6 +1,6 @@
 import type { DaemonResponse } from '@agent-device/kernel/contracts';
 import type { DaemonPlatformServices } from '../core/platform-services.ts';
-import { observeOnlySessionResponse } from './observe-only-policy.ts';
+import { observeOnlySessionResponse } from '../core/observe-only-policy.ts';
 import type {
   AgentDeviceBackend,
   BackendCommandContext,
@@ -188,7 +188,6 @@ function createSelectorBackend(params: SelectorRuntimeDeviceParams): AgentDevice
     ((flags, appBundleId, traceLogPath) =>
       contextFromFlags(logPath ?? '', flags, appBundleId, traceLogPath));
   const readTextAtPoint = params.bound?.readText;
-  // Observe-only answers from the fresh non-activating capture; the native text probe carries no proof.
   const boundFindText = req.flags?.observeOnly === true ? undefined : params.bound?.findText;
   // The native reading must run in the SAME runner context as the capture it short-circuits:
   // one requestId so diagnostics land in one request file, the session's log/trace paths, and

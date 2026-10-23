@@ -76,7 +76,6 @@ type CaptureSnapshotResult = {
 export async function captureSnapshot(
   params: CaptureSnapshotParams,
 ): Promise<CaptureSnapshotResult> {
-  // Observe-only reads the current target once; deferred interaction outcomes may re-capture.
   const deferred = params.flags?.observeOnly
     ? undefined
     : await resolveDeferredInteractionOutcome({

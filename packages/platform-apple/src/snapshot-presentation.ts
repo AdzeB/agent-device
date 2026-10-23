@@ -23,7 +23,7 @@ import {
 } from '@agent-device/capture-kit/ios-snapshot-planning';
 import { emitDiagnostic } from '@agent-device/host-kit/diagnostics';
 import { AppError } from '@agent-device/kernel/errors';
-import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
+import { readObserveOnlyEvidence, readSnapshotQualityNotes } from '@agent-device/contracts/capture';
 import {
   isRecord,
   readPresentedSurfaceFact,
@@ -39,14 +39,12 @@ import type {
   SnapshotQualityNote,
   SnapshotViewportSize,
   IosTargetActivation,
-  IosSnapshotObservation,
 } from '@agent-device/kernel/snapshot';
 import {
   iosSystemSurfaceHost,
   type IosSystemSurfaceProvenance,
 } from '@agent-device/contracts/ios-system-surface';
 import { TARGET_ACTIVATION_WIRE_KEY, readTargetActivationFact } from './target-activation.ts';
-import { readSnapshotObservation, readSnapshotQualityNotes } from '@agent-device/contracts/capture';
 
 export type AppleRunnerSnapshotResult = Readonly<{
   observation?: ObserveOnlyEvidence;
@@ -67,7 +65,6 @@ export type AppleRunnerSnapshotResult = Readonly<{
   keyboard?: SnapshotKeyboardBandFact;
   /** Foreground repair this capture's own command had to perform (#2682). */
   targetActivation?: IosTargetActivation;
-  observation?: IosSnapshotObservation;
 }>;
 
 export function readAppleSnapshotResult(
@@ -77,7 +74,6 @@ export function readAppleSnapshotResult(
   const systemSurface = readSystemSurfaceProvenance(result.systemSurface);
   const presentedSurface = readPresentedSurfaceFact(result);
   const keyboard = readSnapshotKeyboardBandFact(result.keyboard);
-  const observation = readSnapshotObservation(result.observation);
   const targetActivation = readTargetActivationFact(result[TARGET_ACTIVATION_WIRE_KEY], (detail) =>
     emitDiagnostic({
       level: 'debug',
@@ -104,7 +100,6 @@ export function readAppleSnapshotResult(
     ...(systemSurface ? { systemSurface } : {}),
     ...(presentedSurface ? { presentedSurface } : {}),
     ...(targetActivation ? { targetActivation } : {}),
-    ...(observation ? { observation } : {}),
     message:
       typeof result.message === 'string' && result.message.trim().length > 0
         ? result.message

@@ -2,16 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import type { SnapshotState } from '@agent-device/kernel/snapshot';
 import { createLocalArtifactAdapter } from '../../../io.ts';
-import {
-  createAgentDevice,
-  createMemorySessionStore,
-  localCommandPolicy,
-} from '../../../runtime.ts';
+import { createAgentDevice } from '../../../runtime.ts';
+import { createMemorySessionStore } from '../../../command-runtime/runtime-factory.ts';
+import { localCommandPolicy } from '@agent-device/contracts/command-policy';
 import { makeSnapshotState } from '@agent-device/selectors/snapshot-geometry-fixtures';
 import { selector } from './selector-read-utils.ts';
 
 function screen(label: string): SnapshotState {
-  return makeSnapshotState([
+  const snapshot = makeSnapshotState([
     {
       index: 0,
       depth: 0,
@@ -21,6 +19,8 @@ function screen(label: string): SnapshotState {
       hittable: true,
     },
   ]);
+  snapshot.presentedSurface = 'absent';
+  return snapshot;
 }
 
 async function pressThrough(
@@ -78,6 +78,13 @@ test.each(['ios', 'android'] as const)(
     assert.equal(stored?.snapshot?.nodes[0]?.label, 'Ready');
     assert.equal(captures, 1 + result.settle!.captures);
     assert.equal(taps, 1);
+    const { runCliCapture } = await import('../../../__tests__/cli-capture.ts');
+    const response = { ok: true, data: { settle: result.settle } } as const;
+    const cli = await runCliCapture(['press', 'label=Continue', '--settle', '--json'], {
+      defaultResponse: response,
+    });
+    assert.equal(cli.code, null);
+    assert.deepEqual(JSON.parse(cli.stdout).data.settle.response, result.settle?.response);
   },
 );
 

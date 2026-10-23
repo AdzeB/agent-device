@@ -4,7 +4,7 @@ import {
   SNAPSHOT_COMMAND_OPTION_KEYS,
   snapshotOptionsFromFlags,
 } from '@agent-device/kernel/snapshot';
-import { OBSERVATION_FLAGS, SNAPSHOT_FLAGS } from '@agent-device/command-registry/flag-groups';
+import { SNAPSHOT_FLAGS } from '@agent-device/command-registry/flag-groups';
 import {
   booleanField,
   integerField,
@@ -43,7 +43,6 @@ const snapshotCommandMetadata = defineFieldCommandMetadata(
     scope: stringField(),
     raw: booleanField(),
     customActions: optionField('snapshotCustomActions'),
-    observeOnly: optionField('snapshotObserveOnly'),
     forceFull: booleanField(),
     timeoutMs: integerField('Maximum wall-clock time for the snapshot command.'),
     // #1271 stage 2: `snapshot` is observation-only, so a repair-armed heal
@@ -61,9 +60,8 @@ const snapshotCliSchema = {
   allowedFlags: [
     'snapshotDiff',
     ...SNAPSHOT_FLAGS,
-    ...OBSERVATION_FLAGS,
     'snapshotCustomActions',
-    'snapshotObserveOnly',
+    'observeOnly',
     'snapshotForceFull',
     'timeoutMs',
     'record',

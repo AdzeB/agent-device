@@ -1,15 +1,18 @@
 import { AppError } from '@agent-device/kernel/errors';
 import type { NativePngStream } from '@agent-device/contracts/screenshot-runtime';
-import type { DaemonRequest } from './daemon-request.ts';
-import type { SessionState } from './session-state.ts';
-import type { ResolvedGenericExecution } from './request-generic-dispatch.ts';
+import type { DaemonRequest } from '../core/daemon-request.ts';
+import type { SessionState } from '../core/session-state.ts';
+import type { ResolvedGenericExecution } from '../core/generic-leaf-execution.ts';
 import {
   resolveBoundScreenshotRuntime,
   type ScreenshotRuntimeBindings,
 } from './screenshot-runtime-binding.ts';
-import { observeOnlyRuntimeFacts, observeOnlySessionResponse } from './observe-only-policy.ts';
-import { runtimeExecutionFromContext } from './snapshot-runtime-capture-input.ts';
-import { readSessionRuntimeRevision } from './ref-frame.ts';
+import {
+  observeOnlyRuntimeFacts,
+  observeOnlySessionResponse,
+} from '../core/observe-only-policy.ts';
+import { runtimeExecutionFromContext } from '../core/snapshot-runtime-capture-input.ts';
+import { readSessionRuntimeRevision } from '../core/ref-frame.ts';
 
 export async function resolveScreenshotStream(
   params: Readonly<{ req: DaemonRequest; session: SessionState }> & ScreenshotRuntimeBindings,

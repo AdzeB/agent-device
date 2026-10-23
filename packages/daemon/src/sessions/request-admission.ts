@@ -22,7 +22,7 @@ import type { SessionState } from '../core/session-state.ts';
 import { assertMacOsAppLeaseAdmitsRequest } from '../resources/macos-app-lease.ts';
 import { assertDaemonPolicyAdmitsLease } from '../core/daemon-policy.ts';
 import type { DaemonPolicy } from '@agent-device/daemon-contracts/daemon-policy-file';
-import { requireObserveOnlyLease } from './observe-only-policy.ts';
+import { observeOnlyRefusal } from '@agent-device/contracts/capture';
 
 export function scopeRequestSession(req: DaemonRequest): DaemonRequest {
   const isolation = resolveSessionIsolationMode(
@@ -120,7 +120,7 @@ function admitLease(
   const leaseScope = resolveRequestOrSessionLeaseScope(req, session);
   if (req.flags?.observeOnly) {
     return requireObserveOnlyLease(
-      leaseRegistry.readActiveLease(leaseScopeToHeartbeatRequest(leaseScope)),
+      leaseRegistry.peekActiveLease(leaseScopeToHeartbeatRequest(leaseScope)),
     );
   }
   leaseRegistry.assertLeaseAdmission(leaseScopeToHeartbeatRequest(leaseScope));
@@ -219,5 +219,12 @@ function assertMatchingLeaseField(
   throw new AppError('UNAUTHORIZED', `Lease does not match session owner (${field})`, {
     reason: 'LEASE_SESSION_MISMATCH',
     field,
+  });
+}
+
+export function requireObserveOnlyLease(lease: DeviceLease | undefined): DeviceLease {
+  if (lease) return lease;
+  throw new AppError('COMMAND_FAILED', '--observe-only cannot read an expired session.', {
+    observation: observeOnlyRefusal('session_expired'),
   });
 }
