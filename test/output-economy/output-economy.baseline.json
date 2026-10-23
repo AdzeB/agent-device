@@ -28,18 +28,18 @@
     "shape": "text"
   },
   "settle.default.json": {
-    "bytes": 431,
-    "lines": 1,
-    "refs": 3,
-    "hints": 0,
-    "shape": "$.message:string|$.ref:string|$.settle.captures:number|$.settle.diff.lines:array|$.settle.diff.lines[].kind:string|$.settle.diff.lines[].ref:string|$.settle.diff.lines[].text:string|$.settle.diff.lines[]:object|$.settle.diff.summary.additions:number|$.settle.diff.summary.removals:number|$.settle.diff.summary.unchanged:number|$.settle.diff.summary:object|$.settle.diff:object|$.settle.quietMs:number|$.settle.refsGeneration:number|$.settle.settled:boolean|$.settle.timeoutMs:number|$.settle.waitedMs:number|$.settle:object|$.x:number|$.y:number|$:object"
-  },
-  "settle.digest.json": {
-    "bytes": 274,
+    "bytes": 862,
     "lines": 1,
     "refs": 2,
     "hints": 0,
-    "shape": "$.message:string|$.settle.captures:number|$.settle.diff.summary.additions:number|$.settle.diff.summary.removals:number|$.settle.diff.summary.unchanged:number|$.settle.diff.summary:object|$.settle.diff:object|$.settle.quietMs:number|$.settle.refs:array|$.settle.refsGeneration:number|$.settle.refs[].ref:string|$.settle.refs[]:object|$.settle.settled:boolean|$.settle.timeoutMs:number|$.settle.waitedMs:number|$.settle:object|$.targetKind:string|$.x:number|$.y:number|$:object"
+    "shape": "$.message:string|$.settle.captures:number|$.settle.diff.lines:array|$.settle.diff.lines[].kind:string|$.settle.diff.lines[].ref:string|$.settle.diff.lines[].text:string|$.settle.diff.lines[]:object|$.settle.diff.summary.additions:number|$.settle.diff.summary.removals:number|$.settle.diff.summary.unchanged:number|$.settle.diff.summary:object|$.settle.diff:object|$.settle.quietMs:number|$.settle.refsGeneration:number|$.settle.response.frames:array|$.settle.response.frames[].capturedAt:number|$.settle.response.frames[].snapshot.nodes:array|$.settle.response.frames[].snapshot.nodes[].identifier:string|$.settle.response.frames[].snapshot.nodes[].label:string|$.settle.response.frames[].snapshot.nodes[].type:string|$.settle.response.frames[].snapshot.nodes[]:object|$.settle.response.frames[].snapshot:object|$.settle.response.frames[].truncated:boolean|$.settle.response.frames[]:object|$.settle.response.omittedFrames:number|$.settle.response:object|$.settle.settled:boolean|$.settle.timeoutMs:number|$.settle.waitedMs:number|$.settle:object|$.targetKind:string|$.x:number|$.y:number|$:object"
+  },
+  "settle.digest.json": {
+    "bytes": 684,
+    "lines": 1,
+    "refs": 2,
+    "hints": 0,
+    "shape": "$.message:string|$.settle.captures:number|$.settle.diff.summary.additions:number|$.settle.diff.summary.removals:number|$.settle.diff.summary.unchanged:number|$.settle.diff.summary:object|$.settle.diff:object|$.settle.quietMs:number|$.settle.refs:array|$.settle.refsGeneration:number|$.settle.refs[].ref:string|$.settle.refs[]:object|$.settle.response.frames:array|$.settle.response.frames[].capturedAt:number|$.settle.response.frames[].snapshot.nodes:array|$.settle.response.frames[].snapshot.nodes[].identifier:string|$.settle.response.frames[].snapshot.nodes[].label:string|$.settle.response.frames[].snapshot.nodes[].type:string|$.settle.response.frames[].snapshot.nodes[]:object|$.settle.response.frames[].snapshot:object|$.settle.response.frames[].truncated:boolean|$.settle.response.frames[]:object|$.settle.response.omittedFrames:number|$.settle.response:object|$.settle.settled:boolean|$.settle.timeoutMs:number|$.settle.waitedMs:number|$.settle:object|$.targetKind:string|$.x:number|$.y:number|$:object"
   },
   "settle-tail.default.text": {
     "bytes": 188,
@@ -49,11 +49,11 @@
     "shape": "text"
   },
   "settle-tail.digest.json": {
-    "bytes": 306,
+    "bytes": 627,
     "lines": 1,
     "refs": 1,
     "hints": 0,
-    "shape": "$.message:string|$.settle.captures:number|$.settle.diff.summary.additions:number|$.settle.diff.summary.removals:number|$.settle.diff.summary.unchanged:number|$.settle.diff.summary:object|$.settle.diff:object|$.settle.quietMs:number|$.settle.refsGeneration:number|$.settle.settled:boolean|$.settle.tail:array|$.settle.tail[].label:string|$.settle.tail[].ref:string|$.settle.tail[].role:string|$.settle.tail[]:object|$.settle.timeoutMs:number|$.settle.waitedMs:number|$.settle:object|$.targetKind:string|$.x:number|$.y:number|$:object"
+    "shape": "$.message:string|$.settle.captures:number|$.settle.diff.summary.additions:number|$.settle.diff.summary.removals:number|$.settle.diff.summary.unchanged:number|$.settle.diff.summary:object|$.settle.diff:object|$.settle.quietMs:number|$.settle.refsGeneration:number|$.settle.response.frames:array|$.settle.response.frames[].capturedAt:number|$.settle.response.frames[].snapshot.nodes:array|$.settle.response.frames[].snapshot.nodes[].identifier:string|$.settle.response.frames[].snapshot.nodes[].label:string|$.settle.response.frames[].snapshot.nodes[].type:string|$.settle.response.frames[].snapshot.nodes[]:object|$.settle.response.frames[].snapshot:object|$.settle.response.frames[].truncated:boolean|$.settle.response.frames[]:object|$.settle.response.omittedFrames:number|$.settle.response:object|$.settle.settled:boolean|$.settle.tail:array|$.settle.tail[].label:string|$.settle.tail[].ref:string|$.settle.tail[].role:string|$.settle.tail[]:object|$.settle.timeoutMs:number|$.settle.waitedMs:number|$.settle:object|$.targetKind:string|$.x:number|$.y:number|$:object"
   },
   "not-settled.default.text": {
     "bytes": 119,

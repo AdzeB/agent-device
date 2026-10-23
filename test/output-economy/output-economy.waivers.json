@@ -3,9 +3,17 @@
     "bytes": 214,
     "reason": "The public daemon route now supplies the live response-view input. Its production six-digit refsGeneration is four bytes larger than the old two-digit static fixture, matching the generation seed that prevents common cross-lifetime ref collisions."
   },
+  "settle.default.json": {
+    "bytes": 862,
+    "reason": "The paired default now comes from the same public daemon route as the digest. It includes the bounded, redacted response history carried by original fork commits 5f2492aa and e35d6a06. Production response fields and capture history are unchanged by this port."
+  },
   "settle.digest.json": {
-    "bytes": 274,
-    "reason": "The public daemon route now supplies the live settled-click response. Its retained targetKind and production six-digit refsGeneration make the measured digest 10 bytes larger than the prior static response fixture."
+    "bytes": 684,
+    "reason": "The public daemon route retains targetKind and production six-digit refsGeneration. It also retains the bounded, redacted response history from original fork commits 5f2492aa and e35d6a06. The digest preserves that existing history."
+  },
+  "settle-tail.digest.json": {
+    "bytes": 627,
+    "reason": "The public daemon route retains the bounded, redacted settle response history from original fork commits 5f2492aa and e35d6a06. The tail digest preserves this existing history alongside its actionable fallback refs."
   },
   "screenshot.default.json": {
     "bytes": 650,
