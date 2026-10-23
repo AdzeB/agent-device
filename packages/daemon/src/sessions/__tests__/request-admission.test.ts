@@ -344,6 +344,88 @@ test('a request under a macos-app lease is confined to the leased app', () => {
   );
 });
 
+const OBSERVE_ONLY_READS = [
+  ['snapshot', []],
+  ['get', ['text', 'label=Login']],
+  ['is', ['visible', 'label=Login']],
+  ['find', ['Confirmation', 'exists']],
+] as const;
+
+function macOsAppLeaseDenial(rule: string) {
+  return (error: { code?: string; details?: Record<string, unknown> }) =>
+    error.code === 'UNAUTHORIZED' &&
+    error.details?.reason === 'MACOS_APP_LEASE_DENIED' &&
+    error.details.rule === rule;
+}
+
+test('an observe-only read under a macos-app lease is confined to the leased app', () => {
+  const registry = new LeaseRegistry();
+  const lease = hostMacOsAppLease(registry);
+  const cases = [
+    { session: makeMacOsSession('default', { appBundleId: 'com.other.app' }), rule: 'app' },
+    { session: makeIosSession('default', { appBundleId: 'com.other.app' }), rule: 'app' },
+    {
+      session: makeMacOsSession('default', { appBundleId: 'com.example.app' }),
+      surface: 'desktop' as const,
+      rule: 'surface',
+    },
+  ];
+  for (const { session, surface, rule } of cases) {
+    for (const [command, positionals] of OBSERVE_ONLY_READS) {
+      for (const observeOnly of [false, true]) {
+        assert.throws(
+          () =>
+            assertRequestLeaseAdmission(
+              makeRequest({
+                command,
+                positionals: [...positionals],
+                flags: { surface, observeOnly },
+                meta: leaseMeta(lease),
+              }),
+              registry,
+              session,
+              { env: process.env },
+            ),
+          macOsAppLeaseDenial(rule),
+          `${command} observeOnly=${observeOnly} rule=${rule}`,
+        );
+      }
+    }
+  }
+});
+
+test('an observe-only read of the leased app is admitted without renewing the lease', () => {
+  let now = 1_000;
+  const registry = new LeaseRegistry({ now: () => now });
+  const lease = hostMacOsAppLease(registry);
+  const session = makeMacOsSession('default', { appBundleId: 'com.example.app' });
+  now = 2_000;
+  for (const [command, positionals] of OBSERVE_ONLY_READS) {
+    const admitted = assertRequestLeaseAdmission(
+      makeRequest({
+        command,
+        positionals: [...positionals],
+        flags: { observeOnly: true },
+        meta: leaseMeta(lease),
+      }),
+      registry,
+      session,
+      { env: process.env },
+    );
+    assert.equal(admitted?.heartbeatAt, lease.heartbeatAt, command);
+    assert.equal(admitted?.expiresAt, lease.expiresAt, command);
+  }
+  assert.equal(
+    assertRequestLeaseAdmission(
+      makeRequest({ command: 'snapshot', meta: leaseMeta(lease) }),
+      registry,
+      session,
+      { env: process.env },
+    )?.heartbeatAt,
+    2_000,
+  );
+});
+
 test('a request under a macos-app lease that names no existing session is refused', () => {
   const registry = new LeaseRegistry();
   const lease = hostMacOsAppLease(registry);

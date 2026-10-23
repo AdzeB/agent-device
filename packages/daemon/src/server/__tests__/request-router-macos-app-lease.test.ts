@@ -36,12 +36,12 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function leasedRouter() {
+function leasedRouter(appBundleId = BUNDLE_ID) {
   const sessionStore = makeSessionStore('agent-device-router-macos-app-lease-');
   sessionStore.publish(
     'tenant-a:default',
     makeMacOsSession('tenant-a:default', {
-      appBundleId: BUNDLE_ID,
+      appBundleId,
       surface: 'app',
       sessionScope: { kind: 'tenant', id: 'tenant-a' },
     }),
@@ -121,6 +121,51 @@ test('a leased snapshot carries the app tree and nothing about the host', async 
 
   expect(response.ok).toBe(true);
   expectNoHostFacts(response, hostFacts(sessionStore));
+});
+
+const OBSERVE_ONLY_READS = [
+  ['snapshot', []],
+  ['get', ['text', 'label=Login']],
+  ['is', ['visible', 'label=Login']],
+  ['find', ['Confirmation', 'exists']],
+] as const;
+
+function macOsAppLeaseDenial(rule: string) {
+  return {
+    ok: false,
+    error: { code: 'UNAUTHORIZED', details: { reason: 'MACOS_APP_LEASE_DENIED', rule } },
+  };
+}
+
+test('an observe-only read of another app is refused like a plain read', async () => {
+  const { handler } = leasedRouter('com.other.app');
+
+  for (const [command, positionals] of OBSERVE_ONLY_READS) {
+    for (const observeOnly of [false, true]) {
+      const response = await handler(
+        leasedRequest(command, `req-${command}-${observeOnly}`, {
+          positionals: [...positionals],
+          flags: { platform: 'macos', observeOnly },
+        }),
+      );
+      expect(response, `${command} observeOnly=${observeOnly}`).toMatchObject(
+        macOsAppLeaseDenial('app'),
+      );
+    }
+  }
+});
+
+test('an observe-only read of the desktop surface is refused like a plain read', async () => {
+  const { handler } = leasedRouter();
+
+  for (const observeOnly of [false, true]) {
+    const response = await handler(
+      leasedRequest('snapshot', `req-desktop-${observeOnly}`, {
+        flags: { platform: 'macos', surface: 'desktop', observeOnly },
+      }),
+    );
+    expect(response, `observeOnly=${observeOnly}`).toMatchObject(macOsAppLeaseDenial('surface'));
+  }
 });
 
 test('a request without a macos-app lease keeps its log locators', async () => {
