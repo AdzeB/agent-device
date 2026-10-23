@@ -298,3 +298,24 @@ export async function sendPrivateFieldComparisonRequest({
     };
   }
 }
+
+export async function sendScreenshotStreamRequest({
+  info,
+  transport,
+  send,
+}: Readonly<{
+  info: DaemonInfo;
+  transport: Exclude<DaemonTransportPreference, 'auto'>;
+  send: () => Promise<DaemonResponse>;
+}>): Promise<DaemonResponse> {
+  if (transport !== 'socket' || info.baseUrl)
+    throw new AppError('INVALID_ARGS', 'Memory screenshot requires the local socket transport');
+  try {
+    const { requirePrivateFieldDaemonIdentity } =
+      await import('./private-field-daemon-identity.ts');
+    await requirePrivateFieldDaemonIdentity(info);
+    return await send();
+  } catch {
+    throw new AppError('COMMAND_FAILED', 'Memory screenshot transport unavailable');
+  }
+}
