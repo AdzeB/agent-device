@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import type { PrivateFieldComparison } from '@agent-device/daemon-contracts/private-field-comparison';
 import type { HostEnvironment } from '@agent-device/kernel/source-value';
 import type { DaemonWireRequest } from '@agent-device/contracts/command';
 import type { DaemonResponse } from '@agent-device/kernel/contracts';
@@ -230,4 +232,37 @@ function buildLeaseRpcParams(
     token: req.token,
     session: req.session,
   });
+}
+
+type OutgoingPrivateScope = { payload?: PrivateFieldComparison };
+const outgoingPrivateComparison = new AsyncLocalStorage<OutgoingPrivateScope>();
+
+export async function withOutgoingPrivateFieldComparison<T>(
+  payload: PrivateFieldComparison,
+  run: () => Promise<T>,
+): Promise<T> {
+  const scope: OutgoingPrivateScope = { payload };
+  const clear = () => {
+    scope.payload = undefined;
+  };
+  const timer = setTimeout(clear, 60_000);
+  timer.unref();
+  try {
+    return await outgoingPrivateComparison.run(scope, run);
+  } finally {
+    clearTimeout(timer);
+    clear();
+  }
+}
+
+export function hasOutgoingPrivateFieldComparison(): boolean {
+  return outgoingPrivateComparison.getStore() !== undefined;
+}
+
+export function serializePrivateSocketRequest(request: object): string {
+  const scope = outgoingPrivateComparison.getStore();
+  const payload = scope?.payload;
+  if (scope && !payload) throw new AppError('INVALID_ARGS', 'Invalid private comparison payload');
+  if (scope) scope.payload = undefined;
+  return JSON.stringify(payload ? { ...request, privateFieldComparison: payload } : request);
 }

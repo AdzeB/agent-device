@@ -1,7 +1,7 @@
 import { bindTestCommandHost } from '@agent-device/test-kit';
 import fs from 'node:fs';
 import path from 'node:path';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import type { GesturePlan } from '@agent-device/contracts/gesture-plan-types';
 import type { Interactor, PressPointOptions } from '@agent-device/contracts/interactor-types';
 import type { DeviceInfo } from '@agent-device/kernel/device';
@@ -24,6 +24,30 @@ import {
   type RecordedRunnerCall,
 } from './recording-runner-provider.ts';
 import { mkdtempForTest } from './tmp-dir.ts';
+
+const localObservationCalls = vi.hoisted(() => [] as RecordedRunnerCall[]);
+vi.mock('../runner/runner-lifecycle.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../runner/runner-lifecycle.ts')>()),
+  executeRunnerCommand: async (
+    _device: unknown,
+    command: RunnerCommand,
+    options: RecordedRunnerCall['options'],
+  ) => {
+    localObservationCalls.push({ command, options });
+    return {
+      nodes: [{ index: 0, type: 'Application', rect: { x: 0, y: 0, width: 390, height: 844 } }],
+      observation: {
+        mode: 'observe-only',
+        capability: 'non-activating-foreground-v1',
+        foregroundVerified: true,
+        targetAppBundleId: 'com.example.app',
+        activationPerformed: false,
+        appState: 'runningForeground',
+        appStateSource: 'xcuiapplication-state',
+      },
+    };
+  },
+}));
 
 bindTestCommandHost();
 
@@ -240,26 +264,15 @@ test('every Apple request site builds exactly its golden runner request', async 
     );
     captured.push([name, onlyRequest(name, calls)]);
   }
-  const observationCalls: RecordedRunnerCall[] = [];
+  localObservationCalls.length = 0;
   await createAppleInteractor(
     IOS_SIMULATOR,
     { appBundleId: APP },
     { env: process.env, cwd: process.cwd() },
-    recordingRunnerProvider(observationCalls, {
-      snapshot: {
-        nodes: [{ index: 0, type: 'Application', rect: { x: 0, y: 0, width: 390, height: 844 } }],
-        observation: {
-          mode: 'observe-only',
-          activationPerformed: false,
-          appState: 'runningForeground',
-          appStateSource: 'xcuiapplication-state',
-        },
-      },
-    }),
   ).snapshot({ appBundleId: APP, observeOnly: true });
   captured.push([
     'ios-simulator.interactor-snapshot.observe-only',
-    onlyRequest('ios-simulator.interactor-snapshot.observe-only', observationCalls),
+    onlyRequest('ios-simulator.interactor-snapshot.observe-only', localObservationCalls),
   ]);
   const dir = await mkdtempForTest('agent-device-runner-requests-');
   const runnerScreenshot = path.join(dir, 'runner.png');

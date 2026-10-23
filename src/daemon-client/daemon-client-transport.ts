@@ -22,7 +22,12 @@ import {
   DAEMON_HTTP_UPSTREAM_INSTANCE_HEADER,
   DAEMON_RPC_PROTOCOL_VERSION,
 } from '@agent-device/contracts/daemon-http';
-import { buildHttpRpcPayload, handleDaemonHttpResponseBody } from './daemon-client-rpc.ts';
+import {
+  buildHttpRpcPayload,
+  handleDaemonHttpResponseBody,
+  hasOutgoingPrivateFieldComparison,
+  serializePrivateSocketRequest,
+} from './daemon-client-rpc.ts';
 import { handleRequestTimeout } from './daemon-client-timeout.ts';
 import { isRemoteDaemon, type DaemonInfo } from './daemon-client-metadata.ts';
 import type { HostEnvironment } from '@agent-device/kernel/source-value';
@@ -427,8 +432,6 @@ async function sendRequestWithFallback(
       throw new AppError('COMMAND_FAILED', 'Memory screenshot transport unavailable');
     }
   }
-  const { hasOutgoingPrivateFieldComparison } =
-    await import('@agent-device/daemon-contracts/private-field-comparison');
   if (hasOutgoingPrivateFieldComparison()) {
     const { sanitizePrivateFieldResponse } =
       await import('@agent-device/daemon-contracts/private-field-response');
@@ -651,8 +654,6 @@ async function sendSocketRequest(
   timeoutMs: number | undefined,
   options: SendRequestOptions,
 ): Promise<DaemonResponse> {
-  const { serializePrivateSocketRequest } =
-    await import('@agent-device/daemon-contracts/private-field-comparison');
   const port = info.port;
   if (!port) throw daemonEndpointUnavailableError('socket');
   const callerSignal = options.signal;

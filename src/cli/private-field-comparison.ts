@@ -1,9 +1,9 @@
+import { withOutgoingPrivateFieldComparison } from '../daemon-client/daemon-client-rpc.ts';
 import type { Readable } from 'node:stream';
 import { AppError } from '@agent-device/kernel/errors';
 import {
   parsePrivateFieldComparison,
   PRIVATE_COMPARISON_MAX_BYTES,
-  withOutgoingPrivateFieldComparison,
 } from '@agent-device/daemon-contracts/private-field-comparison';
 
 export function privateComparisonArgs(argv: string[]): string[] {

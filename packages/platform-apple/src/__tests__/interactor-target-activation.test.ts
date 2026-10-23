@@ -1,10 +1,22 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { AppError } from '@agent-device/kernel/errors';
 import type { SnapshotResult } from '@agent-device/contracts/interactor-types';
 import { IOS_SIMULATOR, IPADOS_SIMULATOR } from './device-fixtures.ts';
-import type { AppleRunnerProvider, RunnerCommand } from '../runner/index.ts';
+import type { RunnerCommand } from '../runner/index.ts';
 import { createAppleInteractor } from '../interactor.ts';
+
+const localRunner = vi.hoisted(() => ({
+  payload: {} as Record<string, unknown>,
+  commands: [] as RunnerCommand[],
+}));
+vi.mock('../runner/runner-lifecycle.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../runner/runner-lifecycle.ts')>()),
+  executeRunnerCommand: async (_device: unknown, command: RunnerCommand) => {
+    localRunner.commands.push(command);
+    return localRunner.payload;
+  },
+}));
 
 const HEALTHY_TREE = {
   nodes: [
@@ -27,15 +39,12 @@ const HEALTHY_TREE = {
 };
 
 function interactorServing(payload: Record<string, unknown>) {
-  const runnerProvider: AppleRunnerProvider = {
-    hasLiveSession: () => true,
-    runCommand: async () => payload,
-  };
+  localRunner.payload = payload;
+  localRunner.commands = [];
   return createAppleInteractor(
     IOS_SIMULATOR,
     { appBundleId: 'com.example.app' },
     { env: process.env, cwd: process.cwd() },
-    runnerProvider,
   );
 }
 
@@ -64,29 +73,25 @@ test.each([
   async (_leaf, device) => {
     const observation = {
       mode: 'observe-only',
+      capability: 'non-activating-foreground-v1',
+      foregroundVerified: true,
+      targetAppBundleId: 'com.example.app',
       activationPerformed: false,
       appState: 'runningForeground',
       appStateSource: 'xcuiapplication-state',
     };
-    const commands: RunnerCommand[] = [];
-    const runnerProvider: AppleRunnerProvider = {
-      hasLiveSession: () => true,
-      runCommand: async (_device, command) => {
-        commands.push(command);
-        return { ...HEALTHY_TREE, observation };
-      },
-    };
+    localRunner.commands = [];
+    localRunner.payload = { ...HEALTHY_TREE, observation };
     const snapshot = (await createAppleInteractor(
       device,
       {},
       { env: process.env, cwd: process.cwd() },
-      runnerProvider,
     ).snapshot({
       appBundleId: 'com.example.app',
       observeOnly: true,
     })) as SnapshotResult;
     assert.deepEqual(
-      commands.map((command) => [command.command, command.observeOnly]),
+      localRunner.commands.map((command) => [command.command, command.observeOnly]),
       [['snapshot', true]],
     );
     assert.deepEqual(snapshot.observation, observation);
@@ -108,6 +113,9 @@ test('observe-only refuses a contradictory activation fact', async () => {
       ...HEALTHY_TREE,
       observation: {
         mode: 'observe-only',
+        capability: 'non-activating-foreground-v1',
+        foregroundVerified: true,
+        targetAppBundleId: 'com.example.app',
         activationPerformed: false,
         appState: 'runningForeground',
         appStateSource: 'xcuiapplication-state',

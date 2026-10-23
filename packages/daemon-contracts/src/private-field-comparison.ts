@@ -7,7 +7,6 @@ export type PrivateFieldComparison = {
   expectedValue: string;
 };
 type PrivateScope = { payload?: PrivateFieldComparison };
-const outgoing = new AsyncLocalStorage<PrivateScope>();
 const incoming = new AsyncLocalStorage<PrivateScope>();
 export const PRIVATE_COMPARISON_MAX_BYTES = 32_768;
 
@@ -51,27 +50,6 @@ async function scoped<T>(
     signal?.removeEventListener('abort', clear);
     clear();
   }
-}
-
-export function withOutgoingPrivateFieldComparison<T>(
-  payload: PrivateFieldComparison,
-  run: () => Promise<T>,
-): Promise<T> {
-  return scoped(outgoing, payload, run);
-}
-
-export function hasOutgoingPrivateFieldComparison(): boolean {
-  return outgoing.getStore() !== undefined;
-}
-
-export function serializePrivateSocketRequest(request: unknown): string {
-  const scope = outgoing.getStore();
-  const payload = scope?.payload;
-  if (scope && !payload) throw invalid();
-  if (scope) scope.payload = undefined;
-  return JSON.stringify(
-    payload ? { ...(request as object), privateFieldComparison: payload } : request,
-  );
 }
 
 export function withPrivateFieldComparison<T>(

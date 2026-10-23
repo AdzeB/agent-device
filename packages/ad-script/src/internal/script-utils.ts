@@ -70,6 +70,7 @@ const TYPING_NUMERIC_FLAG_MAP = new Map<string, 'delayMs'>([['--delay-ms', 'dela
  * the recording path could never reproduce.
  */
 const SCROLL_SCRIPT_FLAG_MAP = new Map<string, ScriptFlagEntry>([
+  ['--settle-observe-only', { key: 'settleObserveOnly', kind: 'boolean' }],
   ['--until', { key: 'until', kind: 'string' }],
   ['--max-passes', { key: 'maxPasses', kind: 'int' }],
 ]);
@@ -93,7 +94,13 @@ const WAIT_SCRIPT_FLAG_MAP = new Map<string, ScriptFlagEntry>([
 
 /** How one script flag token carries its value. */
 type ScriptFlagEntry = {
-  key: 'until' | 'maxPasses' | 'snapshotRaw' | 'snapshotDepth' | 'snapshotScope';
+  key:
+    | 'until'
+    | 'maxPasses'
+    | 'snapshotRaw'
+    | 'snapshotDepth'
+    | 'snapshotScope'
+    | 'settleObserveOnly';
   kind: 'boolean' | 'int' | 'string';
 };
 

@@ -144,6 +144,7 @@ test('unavailable observation projects only completed loop counters', () => {
     new Error('presentation failed'),
   );
   assert.deepEqual(result.observation, {
+    captureError: { code: 'COMMAND_FAILED', reason: 'capture_failed' },
     settled: false,
     captures: 3,
     waitedMs: 240,

@@ -1,8 +1,14 @@
 import { createTestHostEnvironment } from '@agent-device/test-kit';
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import { AppError } from '@agent-device/kernel/errors';
-import { buildHttpRpcPayload, handleDaemonHttpResponseBody } from './daemon-client-rpc.ts';
+import {
+  buildHttpRpcPayload,
+  handleDaemonHttpResponseBody,
+  hasOutgoingPrivateFieldComparison,
+  serializePrivateSocketRequest,
+  withOutgoingPrivateFieldComparison,
+} from './daemon-client-rpc.ts';
 
 test('lease allocation transports an optional initial provider app', () => {
   const payload = buildHttpRpcPayload(
@@ -188,4 +194,23 @@ test('HTTP RPC errors sanitize an untrusted cause before rehydration', () => {
   assert.match(cause.code ?? '', /^apiKey=\[REDACTED\]/);
   assert.equal(cause.code?.length, 400);
   assert.match(cause.code ?? '', /<truncated>$/);
+});
+
+describe('private comparison scope', () => {
+  const payload = {
+    protocol: 'android-private-input-v1' as const,
+    requestId: '12345678-1234-1234-1234-123456789abc',
+    expectedValue: 'private-fixture-value',
+  };
+  it('adds private input only at final serialization and consumes it once', async () => {
+    const request = { command: 'get', positionals: ['attrs', '@e1~s2'] };
+    await withOutgoingPrivateFieldComparison(payload, async () => {
+      expect(JSON.stringify(request)).not.toContain(payload.expectedValue);
+      expect(JSON.parse(serializePrivateSocketRequest(request)).privateFieldComparison).toEqual(
+        payload,
+      );
+      expect(() => serializePrivateSocketRequest(request)).toThrow();
+    });
+    expect(hasOutgoingPrivateFieldComparison()).toBe(false);
+  });
 });
