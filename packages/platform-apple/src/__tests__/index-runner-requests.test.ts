@@ -36,7 +36,7 @@ vi.mock('../core/runner-client.ts', async (importOriginal) => {
       options: RecordedRunnerCall['options'],
     ) => {
       if (!command.observeOnly) return original.runAppleRunnerCommand(device, command, options);
-      localObservationCalls.push({ command: { ...command, commandId: 'local' }, options });
+      localObservationCalls.push({ command, options });
       return {
         nodes: [{ index: 0, type: 'Application', rect: { x: 0, y: 0, width: 390, height: 844 } }],
         observation: {
