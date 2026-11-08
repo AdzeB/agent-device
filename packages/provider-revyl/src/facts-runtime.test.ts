@@ -61,6 +61,8 @@ const EXPECTED_CELLS = {
   bootTargetHeadless: 'mode',
   captureSnapshotWithCustomActions: 'mode',
   clearRuntimeHints: 'mode',
+  // Only the Android owner implements private comparison; every other owner leaves the fact out.
+  comparePrivateField: 'owner',
   configureProviderPortReverse: 'mode',
   deployApp: 'mode',
   deployMaterializedApp: 'mode',
@@ -123,10 +125,14 @@ const EXPECTED_CELLS = {
   volumeUp: 'mode',
   wake: 'mode',
   writeClipboard: 'mode',
-} as const satisfies Readonly<Record<RevylOperation, 'available' | 'mode' | 'kind'>>;
+} as const satisfies Readonly<Record<RevylOperation, 'available' | 'mode' | 'kind' | 'owner'>>;
 
 /** The typed reason one verdict of the matrix carries. */
-const REFUSAL_REASONS = { mode: 'unsupported-provider-mode', kind: 'unsupported-device-kind' };
+const REFUSAL_REASONS = {
+  mode: 'unsupported-provider-mode',
+  kind: 'unsupported-device-kind',
+  owner: 'owner-capability-missing',
+};
 
 test('every operation cell reports the verdict its matrix row promises', () => {
   const operations = revylFacts(IOS_DEVICE).operations;
@@ -138,7 +144,7 @@ test('every operation cell reports the verdict its matrix row promises', () => {
   );
   for (const [cell, expected] of Object.entries(EXPECTED_CELLS) as [
     RevylOperation,
-    'available' | 'mode' | 'kind',
+    'available' | 'mode' | 'kind' | 'owner',
   ][]) {
     const fact = operations[cell];
     if (expected === 'available') {

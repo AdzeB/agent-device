@@ -11,8 +11,8 @@ const runner = vi.hoisted(() => ({
   data: {} as Record<string, unknown>,
   calls: [] as Record<string, unknown>[],
 }));
-vi.mock('./runner/runner-session.ts', () => ({ getReadyRunnerSession: () => runner.session }));
-vi.mock('./runner/runner-client.ts', () => ({
+vi.mock('./core/runner-client.ts', () => ({
+  getReadyRunnerSession: () => runner.session,
   runAppleRunnerCommand: async (_device: unknown, command: Record<string, unknown>) => {
     runner.calls.push(command);
     return runner.data;

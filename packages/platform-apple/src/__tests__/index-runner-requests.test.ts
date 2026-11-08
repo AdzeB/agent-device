@@ -26,28 +26,32 @@ import {
 import { mkdtempForTest } from './tmp-dir.ts';
 
 const localObservationCalls = vi.hoisted(() => [] as RecordedRunnerCall[]);
-vi.mock('../runner/runner-lifecycle.ts', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../runner/runner-lifecycle.ts')>()),
-  executeRunnerCommand: async (
-    _device: unknown,
-    command: RunnerCommand,
-    options: RecordedRunnerCall['options'],
-  ) => {
-    localObservationCalls.push({ command, options });
-    return {
-      nodes: [{ index: 0, type: 'Application', rect: { x: 0, y: 0, width: 390, height: 844 } }],
-      observation: {
-        mode: 'observe-only',
-        capability: 'non-activating-foreground-v1',
-        foregroundVerified: true,
-        targetAppBundleId: 'com.example.app',
-        activationPerformed: false,
-        appState: 'runningForeground',
-        appStateSource: 'xcuiapplication-state',
-      },
-    };
-  },
-}));
+vi.mock('../core/runner-client.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../core/runner-client.ts')>();
+  return {
+    ...original,
+    runAppleRunnerCommand: async (
+      device: DeviceInfo,
+      command: RunnerCommand,
+      options: RecordedRunnerCall['options'],
+    ) => {
+      if (!command.observeOnly) return original.runAppleRunnerCommand(device, command, options);
+      localObservationCalls.push({ command: { ...command, commandId: 'local' }, options });
+      return {
+        nodes: [{ index: 0, type: 'Application', rect: { x: 0, y: 0, width: 390, height: 844 } }],
+        observation: {
+          mode: 'observe-only',
+          capability: 'non-activating-foreground-v1',
+          foregroundVerified: true,
+          targetAppBundleId: 'com.example.app',
+          activationPerformed: false,
+          appState: 'runningForeground',
+          appStateSource: 'xcuiapplication-state',
+        },
+      };
+    },
+  };
+});
 
 bindTestCommandHost();
 

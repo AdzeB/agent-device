@@ -62,9 +62,9 @@ function harness(simulatorSetPath?: string) {
   };
   const cleanup = () => {
     for (const [input] of runtime.captureScreenshot.mock.calls) {
-      fs.rmSync(input.outPath, { force: true });
+      fs.rmSync(input.outPath!, { force: true });
       try {
-        fs.rmdirSync(path.dirname(input.outPath));
+        fs.rmdirSync(path.dirname(input.outPath!));
       } catch {}
     }
   };
@@ -108,8 +108,8 @@ test('remote Maestro animation wait consumes normalized screenshot paths and dis
     expect(h.runtime.captureSnapshot).not.toHaveBeenCalled();
     expect(h.runtime.captureScreenshot).toHaveBeenCalledTimes(2);
     for (const [input] of h.runtime.captureScreenshot.mock.calls) {
-      expect(fs.existsSync(input.outPath)).toBe(false);
-      expect(fs.existsSync(path.dirname(input.outPath))).toBe(false);
+      expect(fs.existsSync(input.outPath!)).toBe(false);
+      expect(fs.existsSync(path.dirname(input.outPath!))).toBe(false);
     }
   } finally {
     h.cleanup();
@@ -124,7 +124,7 @@ test('remote Maestro retries an unchanged iOS tap with real returned screenshot 
     expect(h.runtime.tapPoint).toHaveBeenCalledTimes(2);
     expect(h.runtime.captureScreenshot).toHaveBeenCalledTimes(2);
     for (const [input] of h.runtime.captureScreenshot.mock.calls)
-      expect(fs.existsSync(input.outPath)).toBe(false);
+      expect(fs.existsSync(input.outPath!)).toBe(false);
   } finally {
     h.cleanup();
   }
@@ -138,7 +138,7 @@ test('remote Maestro takeScreenshot reports its generated path and preserves an 
     const response = await h.run(`- takeScreenshot: ${victim}`);
     expect(response).toMatchObject({ ok: true, data: { replayed: 1 } });
     expect(fs.readFileSync(victim, 'utf8')).toBe('protected');
-    const actual = h.runtime.captureScreenshot.mock.calls[0]![0].outPath;
+    const actual = h.runtime.captureScreenshot.mock.calls[0]![0].outPath!;
     expect(actual).not.toBe(victim);
     expect(fs.existsSync(actual)).toBe(true);
     expect(response.ok && response.data?.artifactPaths).toContain(actual);

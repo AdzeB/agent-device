@@ -1,10 +1,22 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { AppError } from '@agent-device/kernel/errors';
 import type { SnapshotResult } from '@agent-device/contracts/interactor-types';
 import { IOS_SIMULATOR, IPADOS_SIMULATOR } from './device-fixtures.ts';
-import type { AppleRunnerProvider, RunnerCommand } from '@agent-device/apple-runner';
+import type { RunnerCommand } from '@agent-device/apple-runner';
 import { createAppleInteractor } from '../interactor.ts';
+
+const localRunner = vi.hoisted(() => ({
+  payload: {} as Record<string, unknown>,
+  commands: [] as RunnerCommand[],
+}));
+vi.mock('../core/runner-client.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../core/runner-client.ts')>()),
+  runAppleRunnerCommand: async (_device: unknown, command: RunnerCommand) => {
+    localRunner.commands.push(command);
+    return localRunner.payload;
+  },
+}));
 
 const HEALTHY_TREE = {
   nodes: [
@@ -27,15 +39,12 @@ const HEALTHY_TREE = {
 };
 
 function interactorServing(payload: Record<string, unknown>) {
-  const runnerProvider: AppleRunnerProvider = {
-    hasLiveSession: () => true,
-    runCommand: async () => payload,
-  };
+  localRunner.payload = payload;
+  localRunner.commands = [];
   return createAppleInteractor(
     IOS_SIMULATOR,
     { appBundleId: 'com.example.app' },
     { env: process.env, cwd: process.cwd() },
-    runnerProvider,
   );
 }
 
@@ -71,25 +80,18 @@ test.each([
       appState: 'runningForeground',
       appStateSource: 'xcuiapplication-state',
     };
-    const commands: RunnerCommand[] = [];
-    const runnerProvider: AppleRunnerProvider = {
-      hasLiveSession: () => true,
-      runCommand: async (_device, command) => {
-        commands.push(command);
-        return { ...HEALTHY_TREE, observation };
-      },
-    };
+    localRunner.commands = [];
+    localRunner.payload = { ...HEALTHY_TREE, observation };
     const snapshot = (await createAppleInteractor(
       device,
       {},
       { env: process.env, cwd: process.cwd() },
-      runnerProvider,
     ).snapshot({
       appBundleId: 'com.example.app',
       observeOnly: true,
     })) as SnapshotResult;
     assert.deepEqual(
-      commands.map((command) => [command.command, command.observeOnly]),
+      localRunner.commands.map((command) => [command.command, command.observeOnly]),
       [['snapshot', true]],
     );
     assert.deepEqual(snapshot.observation, observation);

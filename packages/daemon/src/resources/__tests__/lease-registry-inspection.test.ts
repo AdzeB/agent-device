@@ -75,3 +75,25 @@ test('expiry consumption sweeps expired holds even when the named lease is absen
     .holdsByDevice;
   assert.equal(heldDevices.size, 0);
 });
+
+test('F8: peekActiveLease answers without renewing, and refuses an expired lease without sweeping it', () => {
+  let now = 1_000;
+  const expired: string[] = [];
+  const registry = new LeaseRegistry({
+    now: () => now,
+    defaultLeaseTtlMs: 10_000,
+    onLeaseExpired: (lease) => expired.push(lease.leaseId),
+  });
+  const lease = registry.allocateLease({ tenantId: 'tenant-a', runId: 'run-1' });
+  now = 5_000;
+  const read = registry.peekActiveLease({ leaseId: lease.leaseId, tenantId: 'tenant-a' });
+  assert.equal(read?.heartbeatAt, lease.heartbeatAt);
+  assert.equal(read?.expiresAt, lease.expiresAt);
+  assert.throws(
+    () => registry.peekActiveLease({ leaseId: lease.leaseId, tenantId: 'tenant-b' }),
+    /Lease does not match tenant\/run scope/,
+  );
+  now = 20_000;
+  assert.equal(registry.peekActiveLease({ leaseId: lease.leaseId }), undefined);
+  assert.deepEqual(expired, []);
+});

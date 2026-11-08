@@ -38,7 +38,10 @@ export type CapturedSnapshot = {
   snapshot: SnapshotState;
 };
 
-export type SelectorSnapshotOptions = Pick<SnapshotCommandOptionFields, 'depth' | 'scope' | 'raw'> & {
+export type SelectorSnapshotOptions = Pick<
+  SnapshotCommandOptionFields,
+  'depth' | 'scope' | 'raw'
+> & {
   observeOnly?: boolean;
 };
 

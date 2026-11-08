@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import type { AgentDeviceBackend, BackendSnapshotOptions } from '@agent-device/contracts/backend';
 import type { ObserveOnlyEvidence, SnapshotState } from '@agent-device/kernel/snapshot';
-import { createLocalArtifactAdapter } from '../../../io.ts';
+import { createLocalArtifactAdapter } from '@agent-device/host-kit/local-artifact-adapter';
 import { createAgentDevice } from '../../../runtime.ts';
 import { createMemorySessionStore } from '../../../command-runtime/runtime-factory.ts';
 import { localCommandPolicy } from '@agent-device/contracts/command-policy';

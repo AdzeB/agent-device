@@ -65,6 +65,7 @@ export {
 } from './runner-lease.ts';
 export {
   detachIosRunnerSessionsForShutdown,
+  getReadyRunnerSession,
   readRunnerSessionLiveness,
   releaseIosRunnerOnClose,
   stopAllIosRunnerSessions,

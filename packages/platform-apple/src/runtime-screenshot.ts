@@ -6,8 +6,7 @@ import {
   type ScreenshotRuntimeOperations,
 } from '@agent-device/contracts/screenshot-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
-import { runAppleRunnerCommand } from './runner/runner-client.ts';
-import { getReadyRunnerSession } from './runner/runner-session.ts';
+import { getReadyRunnerSession, runAppleRunnerCommand } from './core/runner-client.ts';
 import { readObserveOnlyEvidence } from '@agent-device/contracts/capture';
 
 const MAX_STREAM_BASE64_LENGTH = 16 * 1024 * 1024 - 8192;

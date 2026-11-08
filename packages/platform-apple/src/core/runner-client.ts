@@ -16,6 +16,7 @@ export {
   cleanupRunnerLeasesForOwner,
   detachIosRunnerSessionsForShutdown,
   findRunnerXctestrun,
+  getReadyRunnerSession,
   hasCachedAppleRunnerArtifact,
   hasLiveIosRunnerSession,
   notifyIosRunnerAppRelaunched,

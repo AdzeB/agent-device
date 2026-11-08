@@ -1,7 +1,21 @@
 import { Readable } from 'node:stream';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { privateComparisonArgs, runPrivateFieldComparison } from './private-field-comparison.ts';
-import { serializePrivateSocketRequest } from '../daemon-client/daemon-client-rpc.ts';
+
+const scopes = vi.hoisted(() => [] as unknown[]);
+vi.mock('@agent-device/daemon-client', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@agent-device/daemon-client')>();
+  return {
+    ...original,
+    withOutgoingPrivateFieldComparison: <T>(payload: unknown, run: () => Promise<T>) => {
+      scopes.push(payload);
+      return original.withOutgoingPrivateFieldComparison(
+        payload as Parameters<typeof original.withOutgoingPrivateFieldComparison>[0],
+        run,
+      );
+    },
+  };
+});
 
 const args = [
   'compare-field',
@@ -46,7 +60,7 @@ it('keeps input out of translated argv and preserves Unicode', async () => {
     args,
     async (translated) => {
       expect(JSON.stringify(translated)).not.toContain(payload.expectedValue);
-      expect(JSON.parse(serializePrivateSocketRequest({})).privateFieldComparison).toEqual(payload);
+      expect(scopes).toEqual([payload]);
     },
     Readable.from([body.subarray(0, body.length - 8), body.subarray(body.length - 8)]),
   );

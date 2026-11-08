@@ -1,6 +1,7 @@
-import { withOutgoingPrivateFieldComparison } from '../daemon-client/daemon-client-rpc.ts';
+import { withOutgoingPrivateFieldComparison } from '@agent-device/daemon-client';
 import type { Readable } from 'node:stream';
 import { AppError } from '@agent-device/kernel/errors';
+import { printJson } from '../commands/output/json.ts';
 import {
   parsePrivateFieldComparison,
   PRIVATE_COMPARISON_MAX_BYTES,
@@ -85,5 +86,20 @@ export async function runPrivateFieldComparison(
   } finally {
     clearTimeout(timer);
     body = '';
+  }
+}
+
+export async function runCompareFieldCli(
+  argv: string[],
+  run: (args: string[]) => Promise<void>,
+): Promise<void> {
+  try {
+    await runPrivateFieldComparison(argv, run);
+  } catch {
+    printJson({
+      success: false,
+      error: { code: 'INVALID_ARGS', message: 'Private field comparison failed' },
+    });
+    process.exitCode = 1;
   }
 }
